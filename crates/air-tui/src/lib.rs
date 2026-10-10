@@ -66,7 +66,7 @@ pub use input::{
 };
 pub use model::{
     AirChangeSet, AirGeneration, AirModel, AirTextAction, AirTextBuffer, AirTextChange,
-    AirTextPosition,
+    AirTextMotion, AirTextPosition,
 };
 pub use surface::AirSurface;
 pub use terminal::AirTerminal;

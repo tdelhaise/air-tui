@@ -47,7 +47,7 @@
 
 pub mod text;
 
-pub use text::{AirTextAction, AirTextBuffer, AirTextChange, AirTextPosition};
+pub use text::{AirTextAction, AirTextBuffer, AirTextChange, AirTextMotion, AirTextPosition};
 
 /// Un compteur de génération monotone.
 ///
