@@ -18,35 +18,40 @@
 //! éviter. En rendant les commandes, le contrôleur les traite **après**, et il est seul à
 //! tenir quoi que ce soit.
 //!
+//! # Elle ne possède pas l'arbre non plus, et c'est le même argument
+//!
+//! La racine est **passée en paramètre** à [`AirApplication::draw`] et à
+//! [`AirApplication::pump`]. Le contrôleur la possède.
+//!
+//! La première écriture de ce module faisait l'inverse : l'application possédait un
+//! [`AirScreen`], et une pile d'écrans par-dessus. C'était intenable dès la première
+//! application réelle. `children` rend des `Box<dyn AirView>` : une fois la vue d'édition
+//! confiée à l'application, plus personne ne pouvait lui demander de se synchroniser sur
+//! le modèle ni lui prendre ses intentions. Le contrôleur a besoin d'un accès **typé** à
+//! ses vues, et le seul moyen de le lui laisser est de ne pas les lui prendre.
+//!
+//! La pile d'écrans en découle : elle appartient à l'appelant, qui tient autant d'arbres
+//! qu'il veut et passe celui qu'il veut dessiner. C'est plus simple que ce qui était
+//! écrit ici, et cela ne retire aucune possibilité.
+//!
 //! Le tour de boucle d'une application MVC complète :
 //!
 //! ```text
 //! loop {
-//!     view.synchronize(&model);          // 3. faits → réaction
-//!     application.draw()?;               // 4. rendu différentiel
-//!     if application.pump(…, &mut commands)? == Closed { break }   // 1. entrée
-//!     for action in view.drain_actions() { model.apply(action, …) } // 2. mutation
+//!     view.synchronize(&model);                      // 3. faits → réaction
+//!     application.draw(&root)?;                      // 4. rendu différentiel
+//!     if application.pump(&mut screen, &mut root, …, &mut commands)? == Closed { break } // 1. entrée
+//!     for action in view.drain_actions() { model.apply(action, …) }         // 2. mutation
 //!     for command in &commands { … }
 //! }
 //! ```
 //!
-//! # La pile d'écrans
-//!
-//! Un [`AirScreen`] est un chrome plein écran, et l'application en tient une **pile** : le
-//! sommet est dessiné et reçoit les événements, ce qui est dessous attend. C'est ce que
-//! Turbo Vision ne savait pas faire — il n'avait qu'un chrome figé — et c'est ce qui
-//! permettra à `redit` et `rmc` de partager le moteur avec deux chromes radicalement
-//! différents.
-//!
-//! L'invariant « il y a toujours un écran » est tenu par les types : l'écran courant est un
-//! champ, pas une entrée de vecteur, et [`AirApplication::pop_screen`] rend `None` quand
-//! il n'y a rien dessous.
-//!
 //! # Ce que la boucle fait sans qu'on le demande
 //!
-//! - elle **relit la dimension du terminal** à chaque tour et replace l'écran quand elle a
-//!   changé. Sans signal, sans `SIGWINCH` : une lecture d'`ioctl` par tour coûte moins que
-//!   le gestionnaire de signal qu'il faudrait écrire dans la couche 0 ;
+//! - elle **relit la dimension du terminal** à chaque tour et redimensionne la racine
+//!   quand elle a changé, par [`crate::view::AirView::resize`] — qu'un conteneur à
+//!   disposition redéfinit. Sans signal, sans `SIGWINCH` : une lecture d'`ioctl` par tour
+//!   coûte moins que le gestionnaire de signal qu'il faudrait écrire dans la couche 0 ;
 //! - elle traite la **fin de flux** comme une fermeture. Un `poll` prêt qui ne rend aucun
 //!   octet est une fin de flux sur certaines plateformes et un `POLLHUP` sur d'autres ;
 //!   sans ce test, le premier cas boucle indéfiniment. Ce défaut a existé dans l'exemple du
@@ -70,7 +75,9 @@ use crate::surface::AirSurface;
 use crate::terminal::AirTerminal;
 use crate::theme::AirTheme;
 use crate::view::painter::AirPainter;
-use crate::view::{AirContext, AirDrawContext, AirEvent, AirOutcome, dispatch_event, draw_view};
+use crate::view::{
+    AirContext, AirDrawContext, AirEvent, AirOutcome, AirView, dispatch_event, draw_view,
+};
 
 /// La capacité du tampon de lecture, en octets.
 ///
@@ -97,10 +104,6 @@ pub struct AirApplication {
     theme: AirTheme,
     /// Le jeu d'activation des commandes.
     commands: AirCommandSet,
-    /// L'écran courant — le sommet de la pile.
-    screen: AirScreen,
-    /// Les écrans en dessous, du plus ancien au plus récent.
-    stack: Vec<AirScreen>,
     /// Le décodeur d'entrée.
     decoder: AirAnsiDecoder,
     /// Les octets lus et pas encore décodés.
@@ -120,29 +123,23 @@ pub struct AirApplication {
 }
 
 impl AirApplication {
-    /// Une application, sur un périphérique et un écran.
+    /// Une application, sur un périphérique.
     ///
     /// Le terminal passe en mode brut à la construction et sera restauré à la destruction
-    /// (RAII). L'écran est redimensionné à la dimension du terminal avant tout dessin.
+    /// (RAII). L'arbre, lui, reste à l'appelant : il le passe à [`Self::draw`] et à
+    /// [`Self::pump`].
     ///
     /// # Errors
     ///
     /// Si le terminal refuse le mode brut ou ne rend pas sa dimension.
-    pub fn new(
-        device: Box<dyn TerminalDevice>,
-        theme: AirTheme,
-        mut screen: AirScreen,
-    ) -> Result<Self, PlatformError> {
+    pub fn new(device: Box<dyn TerminalDevice>, theme: AirTheme) -> Result<Self, PlatformError> {
         let terminal = AirTerminal::new(device)?;
         let size = terminal.size()?;
-        screen.resize(size);
         Ok(Self {
             terminal,
             surface: AirSurface::new(size),
             theme,
             commands: AirCommandSet::new(),
-            screen,
-            stack: Vec::new(),
             decoder: AirAnsiDecoder::new(),
             pending: Vec::with_capacity(READ_BUFFER_SIZE),
             input: [0; READ_BUFFER_SIZE],
@@ -192,49 +189,13 @@ impl AirApplication {
         &mut self.commands
     }
 
-    /// L'écran courant.
-    #[must_use]
-    pub const fn screen(&self) -> &AirScreen {
-        &self.screen
-    }
-
-    /// L'écran courant, en écriture.
-    pub const fn screen_mut(&mut self) -> &mut AirScreen {
-        &mut self.screen
-    }
-
-    /// Empile un nouvel écran, qui devient l'écran courant.
-    pub fn push_screen(&mut self, mut screen: AirScreen) {
-        screen.resize(self.size);
-        let previous = core::mem::replace(&mut self.screen, screen);
-        self.stack.push(previous);
-    }
-
-    /// Dépile l'écran courant et rend l'écran précédent au premier plan.
-    ///
-    /// Rend l'écran retiré, ou `None` quand il n'y a rien dessous : une application sans
-    /// écran n'aurait rien à dessiner, et l'invariant vaut mieux qu'un cas à traiter
-    /// partout.
-    pub fn pop_screen(&mut self) -> Option<AirScreen> {
-        let below = self.stack.pop()?;
-        let mut removed = core::mem::replace(&mut self.screen, below);
-        removed.resize(self.size);
-        Some(removed)
-    }
-
-    /// Le nombre d'écrans empilés, l'écran courant compris.
-    #[must_use]
-    pub fn screen_count(&self) -> usize {
-        self.stack.len().saturating_add(1)
-    }
-
     /// La dimension du terminal au dernier tour.
     #[must_use]
     pub const fn size(&self) -> AirSize {
         self.size
     }
 
-    /// Dessine l'écran courant et pose le curseur.
+    /// Dessine un arbre et pose le curseur.
     ///
     /// Le curseur rendu est celui de la vue focalisée la plus profonde, et il est émis
     /// **après** les cellules — sans quoi le rendu le déplacerait.
@@ -242,34 +203,33 @@ impl AirApplication {
     /// # Errors
     ///
     /// Si l'écriture sur le terminal échoue.
-    pub fn draw(&mut self) -> Result<(), PlatformError> {
+    pub fn draw(&mut self, root: &dyn AirView) -> Result<(), PlatformError> {
         let context = AirDrawContext::new(&self.theme, &self.commands);
         let cursor = {
             let mut painter = AirPainter::new(&mut self.surface);
-            draw_view(&self.screen, &mut painter, &context)
+            draw_view(root, &mut painter, &context)
         };
         self.terminal.set_cursor(cursor);
         self.terminal.present(&mut self.surface)
     }
 
-    /// Relit la dimension du terminal et replace l'écran si elle a changé.
+    /// Relit la dimension du terminal et redimensionne l'arbre si elle a changé.
     ///
-    /// Rend `true` quand la dimension a changé.
+    /// Rend `true` quand la dimension a changé. L'appelant qui tient plusieurs arbres —
+    /// une pile d'écrans — redimensionne les autres lui-même : seul lui sait qu'ils
+    /// existent.
     ///
     /// # Errors
     ///
     /// Si le terminal ne rend pas sa dimension.
-    pub fn refresh_size(&mut self) -> Result<bool, PlatformError> {
+    pub fn refresh_size(&mut self, root: &mut dyn AirView) -> Result<bool, PlatformError> {
         let size = self.terminal.size()?;
         if size == self.size {
             return Ok(false);
         }
         self.size = size;
         self.surface.resize(size);
-        self.screen.resize(size);
-        for screen in &mut self.stack {
-            screen.resize(size);
-        }
+        root.resize(size);
         Ok(true)
     }
 
@@ -289,6 +249,7 @@ impl AirApplication {
     /// fermeture.
     pub fn pump(
         &mut self,
+        root: &mut dyn AirView,
         timeout: Option<Duration>,
         commands: &mut Vec<AirCommand>,
     ) -> Result<AirPumpOutcome, PlatformError> {
@@ -316,9 +277,9 @@ impl AirApplication {
             Err(error) => return Err(error),
         }
 
-        self.refresh_size()?;
+        self.refresh_size(root)?;
         self.decode_pending();
-        self.dispatch_events(commands);
+        self.dispatch_events(root, commands);
         Ok(AirPumpOutcome::Continued)
     }
 
@@ -341,16 +302,14 @@ impl AirApplication {
     }
 
     /// Distribue les événements décodés et collecte les commandes.
-    fn dispatch_events(&mut self, commands: &mut Vec<AirCommand>) {
+    fn dispatch_events(&mut self, root: &mut dyn AirView, commands: &mut Vec<AirCommand>) {
         core::mem::swap(&mut self.events, &mut self.dispatching);
         for input in self.dispatching.drain(..) {
             let mut event = AirEvent::new(input);
             let mut context = AirContext {
                 commands: &mut self.commands,
             };
-            if let AirOutcome::Command(command) =
-                dispatch_event(&mut self.screen, &mut event, &mut context)
-            {
+            if let AirOutcome::Command(command) = dispatch_event(root, &mut event, &mut context) {
                 commands.push(command);
             }
         }
@@ -364,7 +323,6 @@ impl core::fmt::Debug for AirApplication {
         formatter
             .debug_struct("AirApplication")
             .field("size", &self.size)
-            .field("screens", &self.screen_count())
             .field("pending", &self.pending.len())
             .finish_non_exhaustive()
     }
@@ -496,13 +454,17 @@ mod tests {
         screen
     }
 
-    /// Une application sur un périphérique en mémoire, et l'état de ce périphérique.
+    /// Une application sur un périphérique en mémoire, son écran, et l'état du
+    /// périphérique.
+    ///
+    /// L'écran est rendu séparément : il appartient à l'appelant, comme dans une vraie
+    /// application.
     fn application(
         columns: u16,
         rows: u16,
         readiness: Vec<InputReadiness>,
         reads: Vec<&str>,
-    ) -> (AirApplication, Rc<RefCell<DeviceState>>) {
+    ) -> (AirApplication, AirScreen, Rc<RefCell<DeviceState>>) {
         let state = Rc::new(RefCell::new(DeviceState {
             size: Some(WindowSize { columns, rows }),
             reads: reads
@@ -515,38 +477,36 @@ mod tests {
         let device = MemoryDevice {
             state: Rc::clone(&state),
         };
-        let application = AirApplication::new(
-            Box::new(device),
-            AirTheme::turbo_vision(),
-            screen_with_chrome(1),
-        )
-        .expect("le périphérique en mémoire accepte le mode brut");
-        (application, state)
+        let application = AirApplication::new(Box::new(device), AirTheme::turbo_vision())
+            .expect("le périphérique en mémoire accepte le mode brut");
+        let mut screen = screen_with_chrome(1);
+        screen.resize(application.size());
+        (application, screen, state)
     }
 
     #[test]
-    fn une_application_neuve_redimensionne_son_ecran() {
-        let (application, _state) = application(80, 25, Vec::new(), Vec::new());
+    fn une_application_neuve_lit_la_dimension_du_terminal() {
+        let (application, screen, _state) = application(80, 25, Vec::new(), Vec::new());
         assert_eq!(application.size(), AirSize::new(80, 25));
-        assert_eq!(application.screen().size(), AirSize::new(80, 25));
-        assert_eq!(application.screen_count(), 1);
+        // L'écran appartient à l'appelant : c'est lui qui l'a redimensionné.
+        assert_eq!(screen.size(), AirSize::new(80, 25));
     }
 
     #[test]
     fn le_dessin_ecrit_sur_le_terminal() {
-        let (mut application, state) = application(20, 5, Vec::new(), Vec::new());
-        application.draw().expect("le dessin aboutit");
+        let (mut application, screen, state) = application(20, 5, Vec::new(), Vec::new());
+        application.draw(&screen).expect("le dessin aboutit");
         assert_ne!(state.borrow().written, [] as [u8; 0]);
     }
 
     #[test]
     fn une_touche_de_fonction_rend_sa_commande() {
         // `F10` est publiée par la barre de statut, en post-traitement.
-        let (mut application, _state) =
+        let (mut application, mut screen, _state) =
             application(40, 10, vec![InputReadiness::Ready], vec!["\u{1b}[21~"]);
         let mut commands: Vec<AirCommand> = Vec::new();
         let outcome = application
-            .pump(Some(Duration::from_millis(1)), &mut commands)
+            .pump(&mut screen, Some(Duration::from_millis(1)), &mut commands)
             .expect("le tour aboutit");
         assert_eq!(outcome, AirPumpOutcome::Continued);
         assert_eq!(commands, vec![QUIT]);
@@ -555,7 +515,7 @@ mod tests {
     #[test]
     fn les_commandes_sont_videes_a_chaque_tour() {
         // Sans ce vidage, une commande déjà traitée serait rejouée au tour suivant.
-        let (mut application, _state) = application(
+        let (mut application, mut screen, _state) = application(
             40,
             10,
             vec![InputReadiness::Ready, InputReadiness::TimedOut],
@@ -563,23 +523,23 @@ mod tests {
         );
         let mut commands: Vec<AirCommand> = Vec::new();
         application
-            .pump(Some(Duration::from_millis(1)), &mut commands)
+            .pump(&mut screen, Some(Duration::from_millis(1)), &mut commands)
             .expect("le premier tour aboutit");
         assert_eq!(commands, vec![QUIT]);
         application
-            .pump(Some(Duration::from_millis(1)), &mut commands)
+            .pump(&mut screen, Some(Duration::from_millis(1)), &mut commands)
             .expect("le second tour aboutit");
         assert_eq!(commands, [] as [AirCommand; 0]);
     }
 
     #[test]
     fn une_attente_expiree_continue_sans_commande() {
-        let (mut application, _state) =
+        let (mut application, mut screen, _state) =
             application(40, 10, vec![InputReadiness::TimedOut], Vec::new());
         let mut commands: Vec<AirCommand> = Vec::new();
         assert_eq!(
             application
-                .pump(Some(Duration::from_millis(1)), &mut commands)
+                .pump(&mut screen, Some(Duration::from_millis(1)), &mut commands)
                 .expect("le tour aboutit"),
             AirPumpOutcome::Continued
         );
@@ -588,12 +548,12 @@ mod tests {
 
     #[test]
     fn une_fermeture_annoncee_arrete_la_boucle() {
-        let (mut application, _state) =
+        let (mut application, mut screen, _state) =
             application(40, 10, vec![InputReadiness::Closed], Vec::new());
         let mut commands: Vec<AirCommand> = Vec::new();
         assert_eq!(
             application
-                .pump(None, &mut commands)
+                .pump(&mut screen, None, &mut commands)
                 .expect("le tour aboutit"),
             AirPumpOutcome::Closed
         );
@@ -603,12 +563,12 @@ mod tests {
     fn un_prêt_sans_octet_est_une_fermeture() {
         // Le défaut de l'exemple du jalon M5b : selon la plateforme, la fin de flux se
         // signale par `POLLHUP` ou par un `POLLIN` qui ne rend rien.
-        let (mut application, _state) =
+        let (mut application, mut screen, _state) =
             application(40, 10, vec![InputReadiness::Ready], Vec::new());
         let mut commands: Vec<AirCommand> = Vec::new();
         assert_eq!(
             application
-                .pump(None, &mut commands)
+                .pump(&mut screen, None, &mut commands)
                 .expect("le tour aboutit"),
             AirPumpOutcome::Closed
         );
@@ -616,7 +576,7 @@ mod tests {
 
     #[test]
     fn un_redimensionnement_du_terminal_replace_l_ecran() {
-        let (mut application, state) =
+        let (mut application, mut screen, state) =
             application(40, 10, vec![InputReadiness::TimedOut], Vec::new());
         state.borrow_mut().size = Some(WindowSize {
             columns: 100,
@@ -624,23 +584,29 @@ mod tests {
         });
         let mut commands: Vec<AirCommand> = Vec::new();
         application
-            .pump(Some(Duration::from_millis(1)), &mut commands)
+            .pump(&mut screen, Some(Duration::from_millis(1)), &mut commands)
             .expect("le tour aboutit");
         assert_eq!(application.size(), AirSize::new(100, 30));
-        assert_eq!(application.screen().size(), AirSize::new(100, 30));
+        // L'arbre passé à `pump` a été redimensionné par `AirView::resize`, que l'écran
+        // redéfinit pour replacer ses pièces.
+        assert_eq!(screen.size(), AirSize::new(100, 30));
     }
 
     #[test]
     fn relire_la_dimension_sans_changement_ne_rend_rien() {
-        let (mut application, _state) = application(40, 10, Vec::new(), Vec::new());
-        assert!(!application.refresh_size().expect("la dimension est lue"));
+        let (mut application, mut screen, _state) = application(40, 10, Vec::new(), Vec::new());
+        assert!(
+            !application
+                .refresh_size(&mut screen)
+                .expect("la dimension est lue")
+        );
     }
 
     #[test]
     fn une_sequence_coupee_en_deux_lectures_produit_un_seul_evenement() {
         // La propriété qui compte sur un terminal : une séquence arrive coupée sans
         // prévenir, et le décodeur garde le reste jusqu'au tour suivant.
-        let (mut application, _state) = application(
+        let (mut application, mut screen, _state) = application(
             40,
             10,
             vec![InputReadiness::Ready, InputReadiness::Ready],
@@ -648,47 +614,33 @@ mod tests {
         );
         let mut commands: Vec<AirCommand> = Vec::new();
         application
-            .pump(None, &mut commands)
+            .pump(&mut screen, None, &mut commands)
             .expect("le premier tour aboutit");
         assert_eq!(commands, [] as [AirCommand; 0]);
         application
-            .pump(None, &mut commands)
+            .pump(&mut screen, None, &mut commands)
             .expect("le second tour aboutit");
         assert_eq!(commands, vec![QUIT]);
     }
 
     #[test]
-    fn un_ecran_empile_devient_l_ecran_courant() {
-        let (mut application, _state) = application(40, 10, Vec::new(), Vec::new());
-        application.push_screen(screen_with_chrome(2));
-        assert_eq!(application.screen_count(), 2);
-        assert_eq!(application.screen().state().identifier(), identifier(2));
-        assert_eq!(application.screen().size(), AirSize::new(40, 10));
-    }
-
-    #[test]
-    fn depiler_rend_l_ecran_precedent() {
-        let (mut application, _state) = application(40, 10, Vec::new(), Vec::new());
-        application.push_screen(screen_with_chrome(2));
-        let removed = application.pop_screen().expect("un écran retiré");
-        assert_eq!(removed.state().identifier(), identifier(2));
-        assert_eq!(application.screen().state().identifier(), identifier(1));
-        assert_eq!(application.screen_count(), 1);
-    }
-
-    #[test]
-    fn depiler_le_dernier_ecran_est_refuse() {
-        // L'invariant « il y a toujours un écran » est tenu par les types.
-        let (mut application, _state) = application(40, 10, Vec::new(), Vec::new());
-        assert!(application.pop_screen().is_none());
-        assert_eq!(application.screen_count(), 1);
+    fn plusieurs_arbres_se_dessinent_tour_a_tour() {
+        // La pile d'écrans appartient à l'appelant : il tient autant d'arbres qu'il veut
+        // et passe celui qu'il dessine. C'est ce que l'application possédait avant, et
+        // elle n'avait aucune raison de le posséder.
+        let (mut application, first, _state) = application(40, 10, Vec::new(), Vec::new());
+        let mut second = screen_with_chrome(2);
+        second.resize(application.size());
+        application.draw(&first).expect("le premier dessin aboutit");
+        application.draw(&second).expect("le second dessin aboutit");
+        assert_eq!(second.size(), AirSize::new(40, 10));
     }
 
     #[test]
     fn le_theme_se_change_a_chaud() {
-        let (mut application, _state) = application(40, 10, Vec::new(), Vec::new());
+        let (mut application, screen, _state) = application(40, 10, Vec::new(), Vec::new());
         application.set_theme(AirTheme::turbo_vision());
-        application.draw().expect("le dessin aboutit");
+        application.draw(&screen).expect("le dessin aboutit");
         assert_eq!(
             application.theme().glyphs.desktop_fill,
             AirTheme::turbo_vision().glyphs.desktop_fill
@@ -697,7 +649,7 @@ mod tests {
 
     #[test]
     fn le_jeu_de_commandes_est_accessible_dans_les_deux_sens() {
-        let (mut application, _state) = application(40, 10, Vec::new(), Vec::new());
+        let (mut application, _screen, _state) = application(40, 10, Vec::new(), Vec::new());
         application.commands_mut().disable(SAVE);
         assert!(!application.commands().is_enabled(SAVE));
     }
@@ -706,12 +658,12 @@ mod tests {
     fn une_commande_desactivee_n_est_pas_emise() {
         // Une seule source, deux chemins : le grisage et le refus d'activer lisent le même
         // jeu (ADR-007).
-        let (mut application, _state) =
+        let (mut application, mut screen, _state) =
             application(40, 10, vec![InputReadiness::Ready], vec!["\u{1b}[21~"]);
         application.commands_mut().disable(QUIT);
         let mut commands: Vec<AirCommand> = Vec::new();
         application
-            .pump(None, &mut commands)
+            .pump(&mut screen, None, &mut commands)
             .expect("le tour aboutit");
         assert_eq!(commands, [] as [AirCommand; 0]);
     }
@@ -719,12 +671,12 @@ mod tests {
     #[test]
     fn une_entree_indecodable_ne_fige_pas_la_boucle() {
         // Un octet de continuation UTF-8 isolé : aucune suite ne peut le compléter.
-        let (mut application, _state) =
+        let (mut application, mut screen, _state) =
             application(40, 10, vec![InputReadiness::Ready], vec!["\u{feff}"]);
         let mut commands: Vec<AirCommand> = Vec::new();
         assert_eq!(
             application
-                .pump(None, &mut commands)
+                .pump(&mut screen, None, &mut commands)
                 .expect("le tour aboutit"),
             AirPumpOutcome::Continued
         );
@@ -732,7 +684,7 @@ mod tests {
 
     #[test]
     fn la_negociation_du_protocole_clavier_ecrit_sur_le_terminal() {
-        let (mut application, state) = application(40, 10, Vec::new(), Vec::new());
+        let (mut application, _screen, state) = application(40, 10, Vec::new(), Vec::new());
         let before = state.borrow().written.len();
         let _ = application.enable_best_keyboard_protocol(Duration::from_millis(1));
         assert!(state.borrow().written.len() > before);
@@ -740,16 +692,16 @@ mod tests {
 
     #[test]
     fn le_terminal_est_restaure_a_la_destruction() {
-        let (application, state) = application(40, 10, Vec::new(), Vec::new());
+        let (application, _screen, state) = application(40, 10, Vec::new(), Vec::new());
         drop(application);
         assert!(state.borrow().restored);
     }
 
     #[test]
-    fn une_application_s_affiche_avec_sa_dimension_et_sa_pile() {
-        let (application, _state) = application(40, 10, Vec::new(), Vec::new());
+    fn une_application_s_affiche_avec_sa_dimension() {
+        let (application, _screen, _state) = application(40, 10, Vec::new(), Vec::new());
         let text = format!("{application:?}");
         assert!(text.contains("AirApplication"), "rendu : {text}");
-        assert!(text.contains("screens: 1"), "rendu : {text}");
+        assert!(text.contains("size: AirSize"), "rendu : {text}");
     }
 }

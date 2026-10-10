@@ -253,13 +253,6 @@ impl AirScreen {
         self.state.bounds().size
     }
 
-    /// Change la dimension de l'écran et replace ses trois pièces.
-    pub fn resize(&mut self, size: AirSize) {
-        self.state
-            .set_bounds(AirRectangle::from_parts(0, 0, size.columns, size.rows));
-        self.relayout();
-    }
-
     /// Replace les trois pièces dans la dimension courante.
     ///
     /// La barre de menu mange la première ligne, la barre de statut la dernière, et le
@@ -321,6 +314,16 @@ impl AirScreen {
 impl AirView for AirScreen {
     fn state(&self) -> &AirViewState {
         &self.state
+    }
+
+    /// Change la dimension de l'écran et replace ses pièces.
+    ///
+    /// C'est la redéfinition que le trait annonce : l'écran porte une disposition, donc
+    /// prendre les nouvelles limites ne suffit pas.
+    fn resize(&mut self, size: AirSize) {
+        self.state
+            .set_bounds(AirRectangle::from_parts(0, 0, size.columns, size.rows));
+        self.relayout();
     }
 
     fn state_mut(&mut self) -> &mut AirViewState {

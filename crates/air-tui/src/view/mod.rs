@@ -479,6 +479,19 @@ pub trait AirView {
         None
     }
 
+    /// Redimensionne la vue pour occuper un écran entier.
+    ///
+    /// Par défaut, la vue prend ces limites à partir de l'origine. Un conteneur qui porte
+    /// une **disposition** — [`crate::application::AirScreen`] et ses barres — la
+    /// redéfinit pour replacer ses pièces.
+    ///
+    /// Existe pour que [`crate::application::AirApplication`] puisse suivre un
+    /// redimensionnement de terminal sans connaître le type de la racine qu'on lui confie.
+    fn resize(&mut self, size: AirSize) {
+        self.state_mut()
+            .set_bounds(AirRectangle::new(AirPoint::ORIGIN, size));
+    }
+
     /// Les vues contenues, de l'arrière vers l'avant. Vide par défaut.
     fn children(&self) -> &[Box<dyn AirView>] {
         &[]

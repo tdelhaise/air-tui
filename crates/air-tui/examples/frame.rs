@@ -211,11 +211,10 @@ fn main() -> Result<(), PlatformError> {
         .map_or(AirSize::new(80, 25), |window| {
             AirSize::new(window.columns, window.rows)
         });
-    let mut application = AirApplication::new(
-        Box::new(device),
-        AirTheme::turbo_vision(),
-        build_screen(size),
-    )?;
+    // L'écran reste à l'exemple : c'est l'appelant qui possède l'arbre, et c'est ce qui
+    // laisse un contrôleur atteindre ses vues typées (jalon M6).
+    let mut screen = build_screen(size);
+    let mut application = AirApplication::new(Box::new(device), AirTheme::turbo_vision())?;
     // Le meilleur protocole clavier que le terminal accepte : sans lui, `Alt`+lettre
     // n'arrive pas de façon fiable (ADR-003).
     let _ = application.enable_best_keyboard_protocol(Duration::from_millis(100));
@@ -226,12 +225,13 @@ fn main() -> Result<(), PlatformError> {
 
     let mut commands: Vec<AirCommand> = Vec::new();
     loop {
-        application.draw()?;
-        let outcome = match application.pump(Some(Duration::from_millis(250)), &mut commands) {
-            Ok(outcome) => outcome,
-            Err(error) if error.kind() == PlatformErrorKind::InvalidDevice => break,
-            Err(error) => return Err(error),
-        };
+        application.draw(&screen)?;
+        let outcome =
+            match application.pump(&mut screen, Some(Duration::from_millis(250)), &mut commands) {
+                Ok(outcome) => outcome,
+                Err(error) if error.kind() == PlatformErrorKind::InvalidDevice => break,
+                Err(error) => return Err(error),
+            };
         if outcome == AirPumpOutcome::Closed || commands.contains(&QUIT) {
             break;
         }
