@@ -6,6 +6,55 @@ tête. On ajoute, on ne réécrit jamais une entrée passée.
 Une entrée par campagne, pas par commit. Répartition des rôles : `etat-avancement.md` est
 l'état vivant, ce journal est la trace figée, `INDEX.md` est la carte structurelle.
 
+## 2026-10-10 — Le gate `check-dco`, écrit par le défaut qu'il ne pouvait pas empêcher
+
+- **Le troisième des trois contrôles « à outiller » est écrit**, et c'est le commit de
+  fusion du jalon M7g qui l'a demandé : `806f7ae` est le seul commit de `main` sans
+  `Signed-off-by`, parce qu'un corps de fusion écrit à la main a remplacé celui que GitHub
+  aurait construit depuis les commits de la branche, trailers compris.
+- **Mesurer avant d'écrire a changé la conception, deux fois.** Vingt-trois commits sur
+  `main`, un seul sans signature, zéro `Co-Authored-By` : une portée « tout l'historique »
+  est donc tenable, à un pardon près. Et dix-neuf de ces vingt-trois sont des fusions squash
+  que GitHub signe de `…@users.noreply.github.com` alors que la signature porte l'adresse de
+  l'auteur — donc **ne pas** confronter les deux adresses. Je l'aurais fait d'instinct, et
+  presque tout l'historique aurait échoué pour une raison qui n'est pas celle du DCO.
+- **Un pardon nommé plutôt qu'une portée restreinte en douce.** La tentation était de ne
+  garder que la plage de la branche : le contrôle serait passé au vert sans mentir, et plus
+  personne n'aurait su que `main` porte un commit sans DCO. Le pardon est donc une constante
+  avec l'empreinte complète, la raison écrite à côté, et un compte rendu qui l'annonce à
+  **chaque** exécution, succès compris. Un contrôle qui taît ce qu'il ne regarde pas donne
+  la même assurance qu'un contrôle absent.
+- **Ce contrôle ne peut pas empêcher le défaut qui l'a motivé, et c'est écrit partout où il
+  est décrit.** Une fusion squash est fabriquée **après** le dernier passage de la CI sur la
+  branche : aucune vérification de branche ne peut la voir. D'où deux portées — la plage sur
+  une pull request, l'historique entier sur une poussée vers `main` — et une phrase qu'il
+  faut assumer : sur `main`, le contrôle **constate** au lieu de prévenir. C'est tout ce
+  qu'un dépôt qui interdit le force-push peut obtenir, et c'est déjà le passage du silence
+  au rouge.
+- **Un contrôle plus large que sa règle écrite est le défaut symétrique de celui qu'il
+  répare.** `CLAUDE.md` nommait `Co-Authored-By: Claude …` et rien d'autre ; le client
+  propose aussi un trailer `Claude-Session:`. J'ai refusé les deux — et **étendu la règle
+  écrite** dans `docs/CONVENTIONS-fr.md` au lieu de laisser le code dépasser le document en
+  silence. De même, un co-auteur **humain** reste légitime : aucune règle du dépôt ne
+  l'interdit, et la liste des marques d'agent est courte et explicite plutôt que large et
+  devinée.
+- **La lecture d'un seul appel à `git log`, avec l'ambiguïté détectée au lieu d'être
+  supposée absente.** Les séparateurs sont U+001E et U+001F ; un message qui en porterait un
+  ferait rendre trois champs à un enregistrement, et le découpage **refuse** en nommant le
+  caractère. Mal lire un message de commit pour conclure qu'il est signé serait pire que ne
+  pas le lire.
+- **Vérifié par ses contrôles négatifs avant d'y croire.** Sur une branche jetable : un
+  commit sans signature, un `Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>` et un
+  `Claude-Session:` sont chacun attrapés et nommés, la commande rend le code 1, et
+  l'historique propre repasse au vert. Un gate qu'on n'a pas vu échouer ne garde rien —
+  c'est la même discipline que le test de garde des attributs au jalon M7g.
+- **Seize essais, tous sur la partie pure** : un commit y est une empreinte et un message,
+  donc les règles se vérifient sans dépôt, sans branche jetable et sans `git`.
+- Il reste **deux** contrôles à outiller : `check-licence-headers` et
+  `check-safety-comments`. Le décompte est corrigé partout où il figurait — `CLAUDE.md`,
+  `docs/CONVENTIONS-fr.md`, `docs/etat-avancement.md` —, parce qu'un décompte de dettes est
+  exactement le genre de nombre qui survit à sa dette.
+
 ## 2026-10-10 — Jalon M7g : les deux limites du thème, et une troisième qui n'en était pas une
 
 - **Le résultat tient en deux nombres : neuf skins importables sur trente-neuf avant, les

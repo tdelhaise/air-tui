@@ -225,6 +225,7 @@ chaque PR (`.github/workflows/ci.yml`) :
 | `check-naming` | une abréviation du glossaire ci-dessus dans un nom **déclaré** (ADR-004) |
 | `check-versions` | une crate touchée dont la version n'avance pas (ADR-009) |
 | `check-codec-coverage` | un codec sous 100 % de régions, de fonctions ou de lignes (ADR-012) |
+| `check-dco` | un commit sans `Signed-off-by`, ou un trailer qui fait d'un agent un auteur |
 | `import-mc-skin --check` | un artefact de thème qui a dérivé de son skin, ou un skin qui n'est pas le sien (ADR-008) |
 
 Deux précisions sur `check-naming`, parce qu'un contrôle dont on ignore la portée donne
@@ -237,12 +238,28 @@ une fausse assurance :
   reconnaître demanderait de distinguer un motif d'une expression, donc une analyse
   syntaxique que le contrôle ne porte pas. La règle reste tenue à la main là.
 
+Deux précisions sur `check-dco`, de la même nature :
+
+- il a **deux portées**. Sans `--all`, il garde les commits de la branche ; avec, tout
+  l'historique joignable depuis `HEAD`. La CI exécute la première sur une pull request et la
+  seconde sur une poussée vers `main`, parce qu'une **fusion squash** est fabriquée après le
+  dernier passage de la CI sur la branche : aucune vérification de branche ne peut la voir.
+  Sur `main`, le contrôle constate donc au lieu de prévenir, et c'est tout ce qu'un dépôt
+  qui interdit le force-push peut obtenir ;
+- il **ne confronte pas** l'adresse du `Signed-off-by` à celle de l'auteur du commit. Les
+  fusions squash sont signées par GitHub de son adresse `…@users.noreply.github.com` alors
+  que la signature porte celle de l'auteur : exiger l'accord ferait échouer presque tout
+  l'historique pour une raison qui n'est pas celle du DCO.
+
+Les trailers refusés sont `Co-Authored-By` nommant un agent — la liste des marques est
+courte et explicite, `claude` et `anthropic` — et `Claude-Session`. Un co-auteur **humain**
+reste légitime : aucune règle de ce dépôt ne l'interdit.
+
 # À outiller
 
-Les trois contrôles ci-dessous ne sont **pas** écrits. Ils sont à exécuter à la main, et
+Les deux contrôles ci-dessous ne sont **pas** écrits. Ils sont à exécuter à la main, et
 **ne doivent pas être annoncés comme automatisés** avant de l'être (NO GO n° 1).
 
 - `check-licence-headers` — en-tête MPL présent sur chaque `.rs`.
 - `check-safety-comments` — un `// SAFETY:` par bloc `unsafe` dans
   `air-tui-platform-posix`.
-- `check-dco` — `Signed-off-by` sur chaque commit, aucun `Co-Authored-By: Claude`.

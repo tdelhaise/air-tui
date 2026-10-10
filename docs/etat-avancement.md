@@ -3,8 +3,8 @@
 Document de suivi **vivant** : où en est-on, quelle est la prochaine tâche. Il se met à
 jour à chaque session. L'historique figé est dans [`JOURNAL.md`](JOURNAL.md).
 
-**Dernière mise à jour : 2026-10-10** (jalon M7g — les deux limites du thème, et une
-troisième qui n'en était pas une ; jalon M7f — les cases à cocher et les boutons radio).
+**Dernière mise à jour : 2026-10-10** (le gate `check-dco` ; jalon M7g — les deux limites
+du thème, et une troisième qui n'en était pas une).
 
 ## Dépôt
 
@@ -616,14 +616,48 @@ affirmations de M7b se sont révélées fausses. Elles sont corrigées ici plut�
   annonçait le quantificateur « prévu au jalon M5 et **n'est pas écrit** », celui
   d'`AirCell` les tables UCD de même. Les deux existent depuis M5 et M3.
 
+### Fait après M7g — le gate `check-dco`
+
+- **Le troisième des trois contrôles « à outiller » est écrit.** `cargo xtask check-dco`
+  refuse un commit sans `Signed-off-by`, et tout trailer qui ferait d'un agent un auteur :
+  `Co-Authored-By` nommant `claude` ou `anthropic`, et `Claude-Session`. Il en reste deux à
+  écrire, `check-licence-headers` et `check-safety-comments`.
+- **Deux portées, et la distinction est le cœur du contrôle.** Sans `--all`, il garde les
+  commits de la branche, ce qu'une pull request vérifie avant la fusion. Avec `--all`, il
+  parcourt tout l'historique — et c'est le seul moment où le commit de **fusion squash**
+  existe, puisqu'il est fabriqué après le dernier passage de la CI sur la branche. La CI
+  exécute la première portée sur une pull request et la seconde sur une poussée vers `main`.
+- **Sur `main`, ce contrôle constate au lieu de prévenir**, et il faut le dire plutôt que
+  laisser croire le contraire : un commit de `main` ne s'amende pas, le force-push y étant
+  interdit sans exception. C'est tout ce qu'un dépôt ainsi protégé peut obtenir, et c'est
+  déjà le passage du silence au rouge.
+- **Un pardon, nommé et motivé** : `806f7ae`, la fusion du jalon M7g, le seul commit de
+  `main` sans DCO. Le compte rendu l'annonce à **chaque** exécution, succès compris. Un
+  contrôle qui taît ce qu'il ne regarde pas donne la même assurance qu'un contrôle absent,
+  et restreindre sa portée pour qu'il passe aurait été le défaut qu'il existe pour empêcher.
+- **Trois décisions tranchées par la mesure, pas par l'intuition** : l'adresse du
+  `Signed-off-by` n'est **pas** confrontée à celle de l'auteur, parce que dix-neuf des
+  vingt-trois commits de `main` sont des fusions squash que GitHub signe de
+  `…@users.noreply.github.com` ; un co-auteur **humain** reste légitime, aucune règle du
+  dépôt ne l'interdisant ; et la casse d'une clef de trailer ne décide pas, puisque
+  `git interpret-trailers` les compare sans elle.
+- **La lecture se fait d'un seul appel à `git log`**, séparateurs U+001E et U+001F. Un
+  message qui en contiendrait un ferait rendre trois champs à un enregistrement : le cas est
+  refusé **en le nommant** plutôt que mal lu.
+- **Vérifié par ses contrôles négatifs**, sur une branche jetable : un commit sans
+  signature, un `Co-Authored-By: Claude …` et un `Claude-Session:` sont chacun attrapés, et
+  la commande rend le code 1. Un gate qu'on n'a pas vu échouer ne garde rien.
+- Seize essais, tous sur la partie pure : un commit y est une empreinte et un message, donc
+  les règles se vérifient sans dépôt.
+
 ### Défauts ouverts
 
 - **Le commit de fusion du jalon M7g (`806f7ae`) ne porte pas de `Signed-off-by`.** Les
   quatre commits de la branche le portaient tous ; la fusion squash a reçu un corps écrit à
   la main, et le trailer que GitHub aurait repris des commits a disparu avec lui. Ce commit
   n'est **pas réparable** : amender un commit de `main` demanderait un force-push, que ce
-  dépôt interdit sans exception. La consigne est écrite dans `CLAUDE.md`, et c'est
-  précisément ce que le gate `check-dco`, toujours à écrire, rattraperait.
+  dépôt interdit sans exception. `check-dco` le **pardonne nommément** et l'annonce à chaque
+  exécution ; il reste donc visible au lieu d'être oublié.
 
 ### Pas fait — et à ne pas annoncer comme fait
 
@@ -665,9 +699,9 @@ affirmations de M7b se sont révélées fausses. Elles sont corrigées ici plut�
   validés la demanderait.
 - Couverture de tests : **100 % tenu sur les codecs** (ADR-012) et élevé sur `air-tui`,
   mais `air-tui-platform-posix` demande un vrai terminal et reste bas.
-- Les gates `check-licence-headers`, `check-safety-comments` et `check-dco` de
-  `docs/CONVENTIONS-fr.md` : les trois autres sont écrits (M6b), ces trois-là restent
-  manuels.
+- Les gates `check-licence-headers` et `check-safety-comments` de
+  `docs/CONVENTIONS-fr.md` : les autres sont écrits — les trois premiers à M6b, `check-dco`
+  après M7g —, ces deux-là restent manuels.
 - La couverture de `xtask` : 34 % à 81 % selon le module. C'est de l'outillage hors
   exécution du framework, qu'ADR-012 ne couvre pas — mais ce n'est pas une raison de le
   laisser là.
@@ -701,9 +735,9 @@ vérifier est exactement ce que ce dépôt refuse. Les candidats, du plus petit 
    `AirDecorations` et l'ombre portée. À trancher avant d'écrire la troisième assiette du
    triplet de l'ADR-008, pas après.
 
-Dettes plus anciennes, inchangées : remonter la couverture de `air-tui-platform-posix` par
-des tests sous pty ; les trois gates `check-licence-headers`, `check-safety-comments` et
-`check-dco` ; la **console Linux native**, dont dépend tout M8 ; et le protocole Kitty
+Dettes plus anciennes : remonter la couverture de `air-tui-platform-posix` par des tests
+sous pty ; les deux gates `check-licence-headers` et `check-safety-comments`, le troisième
+étant écrit ; la **console Linux native**, dont dépend tout M8 ; et le protocole Kitty
 **contre un vrai terminal** — il est décodé et négocié d'après la spécification, et les
 tests le pilotent avec un périphérique en mémoire, ce qui prouve le code mais pas la table
 des numéros de touches fonctionnelles.

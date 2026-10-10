@@ -41,7 +41,7 @@ L'**avancement** vit dans [`etat-avancement.md`](etat-avancement.md), l'**histor
 | `crates/rmc` | la coquille à deux panneaux — même règle pour la plateforme | 0.1.5 |
 | `crates/air-tui-platform-air` | implémentation `linux-air` | **à écrire** |
 | `fuzz/` | cibles `cargo-fuzz`, espace de travail séparé (nightly) | `ansi_decoder` |
-| `xtask/` | outillage du dépôt, en Rust | 0.4.0 — tables Unicode, conformité des segmentations, les trois contrôles de conventions, et l'importeur de skins MC |
+| `xtask/` | outillage du dépôt, en Rust | 0.5.0 — tables Unicode, conformité des segmentations, les contrôles de conventions, le DCO, et l'importeur de skins MC |
 | `tools/` | outillage qui ne peut pas être en Rust sans un appel C de plus | `pty-drive.py` |
 
 ## Les modules d'`air-tui`
@@ -68,7 +68,7 @@ L'**avancement** vit dans [`etat-avancement.md`](etat-avancement.md), l'**histor
 
 | Module | Rôle |
 |---|---|
-| `main` | la ligne de commande : sept sous-commandes |
+| `main` | la ligne de commande : huit sous-commandes |
 | `ucd` | la lecture des fichiers du référentiel Unicode |
 | `unicode_tables` | la génération du fichier de tables, et sa vérification à l'octet |
 | `segmentation_conformance` | la confrontation aux fichiers d'essais de l'annexe 29 |
@@ -77,6 +77,7 @@ L'**avancement** vit dans [`etat-avancement.md`](etat-avancement.md), l'**histor
 | `mc_theme` | la table de correspondance vers les rôles d'air-tui, et l'émetteur de l'artefact |
 | `versions` | `check-versions` — l'incrément par crate et la dérive des dépendances (ADR-009) |
 | `codec_coverage` | `check-codec-coverage` — les 100 % exigés des codecs (ADR-012) |
+| `dco` | `check-dco` — la signature de chaque commit, et aucun agent parmi les auteurs |
 
 ## Les modules de `rmc`
 
