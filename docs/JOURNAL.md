@@ -6,6 +6,41 @@ tête. On ajoute, on ne réécrit jamais une entrée passée.
 Une entrée par campagne, pas par commit. Répartition des rôles : `etat-avancement.md` est
 l'état vivant, ce journal est la trace figée, `INDEX.md` est la carte structurelle.
 
+## 2026-10-10 — M3, les tables Unicode
+
+- `xtask/` : l'outillage du dépôt, en Rust et sans dépendance, avec `download-ucd` et
+  `generate-unicode-tables` (plus un mode `--check` qui refuse un fichier généré périmé).
+  Le téléchargement passe par `curl` comme processus plutôt que par une pile TLS en
+  dépendance, et l'URL porte la **version** et non `latest` : une génération doit pouvoir
+  être rejouée des années plus tard (ADR-025).
+- `air-tui/src/unicode/` : largeur d'affichage et segmentation en graphèmes, tables
+  générées en **Unicode 18.0.0** — sept tables, 2546 plages, 113 Ko de source committée.
+  Les règles `GB3` à `GB13` de l'annexe 29 sont implémentées, **`GB9c` comprise** : la
+  coupure conjointe indienne, sans laquelle le curseur coupe au milieu d'un `क्ष`.
+- **Le parseur a trouvé la règle que j'aurais manquée.** Il a refusé une ligne à trois
+  champs de `DerivedCoreProperties.txt` — `094D ; InCB ; Linker` — parce qu'il était
+  strict. C'est ainsi que `GB9c` est entrée dans le périmètre : un parseur tolérant aurait
+  ignoré ces lignes en silence et la segmentation des écritures indiennes aurait été
+  fausse sans que rien ne le signale.
+- **Les tables servent à quelque chose** : `AirSurface::draw_text` parcourt les grappes et
+  pose une cellule de continuation après une grappe large, que le rendu saute. Un texte
+  idéographique n'écrase plus la bordure de sa fenêtre, et ce défaut a son test.
+- Choix consigné : la largeur d'une grappe est le **maximum** des largeurs de ses
+  caractères, pas leur somme — une famille d'emoji occupe deux colonnes, pas huit.
+- Un fichier généré passe les mêmes contrôles que le code écrit à la main : les
+  doc-comments émis manquaient d'accents graves autour des noms de règles et faisaient
+  échouer `clippy -D warnings`. Corrigé dans le **générateur**, pas dans le produit.
+- `air-tui` passe en **0.4.0** : `AirCell` gagne `is_continuation`, donc rupture pour
+  toute construction littérale (ADR-009). `xtask` naît en 0.1.0, non publiée.
+- `NOTICE` ajouté : les données du référentiel Unicode sont sous `Unicode-3.0`, et c'est la
+  seule donnée tierce du dépôt.
+- 322 tests. Sept modules à 100 % de couverture : les six de codec et d'entrée, plus
+  `unicode/mod.rs`.
+- **Génération reproductible, et vérifiée comme telle** : macOS `x86_64`, hydrogen
+  (Linux `x86_64`) et neon (Linux `aarch64`) ont chacune retéléchargé le référentiel et
+  régénéré les tables. Le fichier committé correspond à l'octet dans les trois cas. C'est
+  ce qu'ADR-025 promet, constaté plutôt qu'affirmé.
+
 ## 2026-10-10 — M2, le protocole clavier Kitty
 
 - `air-tui/src/input/kitty.rs` et l'extension du décodeur : frappes `CSI … u` avec

@@ -41,8 +41,8 @@ note   = "les six déclarations existent dans air-tui-platform-posix"
 
 ["006"]
 objet  = "Unicode : tables UCD générées et committées"
-statut = "a-faire"
-note   = "statut de décision Proposé ; forme des tables à arrêter au jalon M3"
+statut = "en-cours"
+note   = "largeur et graphèmes faits (M3, Unicode 18.0.0) ; segmentation en mots reportée à M6"
 
 ["007"]
 objet  = "MVC par journal de changements, sans Observer ni Rc/RefCell"

@@ -60,3 +60,6 @@ clavier que le terminal annonce. Le détail est dans
 ## Licence
 
 Mozilla Public License 2.0, par fichier. Voir [`LICENSE`](LICENSE).
+
+Les tables Unicode de `crates/air-tui/src/unicode/tables.rs` sont générées depuis le
+référentiel de caractères Unicode, sous licence `Unicode-3.0` — voir [`NOTICE`](NOTICE).

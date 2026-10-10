@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "air-tui"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "air-tui-platform",
  "air-tui-platform-posix",
@@ -20,3 +20,7 @@ version = "0.1.1"
 dependencies = [
  "air-tui-platform",
 ]
+
+[[package]]
+name = "xtask"
+version = "0.1.0"

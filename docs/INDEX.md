@@ -15,6 +15,8 @@ L'**avancement** vit dans [`etat-avancement.md`](etat-avancement.md), l'**histor
 | `rust-toolchain.toml` | toolchain pinnée et datée (ADR-025) |
 | `deny.toml` | bornes de licences et de sources |
 | `LICENSE` | MPL-2.0 |
+| `NOTICE` | attribution des données Unicode incorporées |
+| `.cargo/config.toml` | l'alias `cargo xtask` |
 
 ## Documentation
 
@@ -36,10 +38,11 @@ L'**avancement** vit dans [`etat-avancement.md`](etat-avancement.md), l'**histor
 | `crates/air-tui` | le cœur, dépend uniquement du contrat | socle M0 |
 | `crates/air-tui-platform-air` | implémentation `linux-air` | **à écrire** |
 | `fuzz/` | cibles `cargo-fuzz`, espace de travail séparé (nightly) | `ansi_decoder` |
+| `xtask/` | outillage du dépôt, en Rust | génération des tables Unicode |
 
 ## Ce qui reste à produire
 
 Les modules annoncés dans l'architecture et **non encore écrits** : `input/evdev` et
-`input/vt` (M8), `unicode/` (tables UCD générées), `view/` (arbre, trois phases,
+`input/vt` (M8), (tables UCD générées), `view/` (arbre, trois phases,
 focus, découpage, bordures), `widgets/`, `theme/` au-delà du minimum de M0, `mvc/`, les
 applications d'exemple `redit` et `rmc`, la crate `air-tui-platform-air`, et `xtask/`.
