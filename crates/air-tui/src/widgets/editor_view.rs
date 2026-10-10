@@ -35,10 +35,21 @@
 //! deux donnerait soit un curseur qu'on perd en tapant, soit une molette qui ne sert à
 //! rien.
 //!
+//! # La sélection, et où elle vit
+//!
+//! Faite au jalon M7d. La sélection est **dans le tampon**, pas ici : le texte est au
+//! modèle, et son étendue sélectionnée en fait partie. La vue n'en garde que ce qu'elle
+//! dessine — l'intervalle de colonnes de chaque ligne visible, capturé au moment du
+//! reflet, seul instant où elle voit le tampon. Les bornes sont des décalages en octets,
+//! et les convertir en colonnes demande le début de la ligne, que le reflet ne garde pas.
+//!
+//! Le copier-coller **sort par le canal des commandes** et non par celui des intentions :
+//! le presse-papiers n'appartient pas à cette vue, et c'est le contrôleur qui le tient.
+//!
 //! # Ce qui n'est pas là
 //!
-//! La **sélection** : la vue n'a qu'un curseur, pas d'étendue. `Maj`+flèche, le
-//! copier-coller interne et la surbrillance attendent, et avec eux le double-clic.
+//! Le **double clic**, qui sélectionnerait un mot : il demande une horloge, et le
+//! décodeur est pur. Tant que personne ne décide où l'horloge vit, le geste n'existe pas.
 //!
 //! La **tabulation** : insérer un `\t` demande de choisir des taquets et de les appliquer
 //! au rendu comme au calcul de colonne. Tant que ce choix n'est pas fait, `Tab` n'est pas
@@ -46,11 +57,12 @@
 //! caractère dont l'affichage serait faux.
 
 use crate::cell::{AirAttributes, AirCell};
+use crate::command::AirCommand;
 use crate::geometry::{AirColumn, AirPoint, AirRectangle, AirRow, AirSize};
 use crate::input::event::{AirInputEvent, AirKey, AirMouseButton, AirMouseEventKind};
-use crate::model::{AirGeneration, AirTextAction, AirTextBuffer, AirTextPosition};
-use crate::theme::AirRole;
-use crate::unicode::{grapheme_width, graphemes};
+use crate::model::{AirGeneration, AirTextAction, AirTextBuffer, AirTextMotion, AirTextPosition};
+use crate::theme::{AirColorPair, AirRole};
+use crate::unicode::{grapheme_width, graphemes, text_width, width_between};
 use crate::view::painter::AirPainter;
 use crate::view::{AirContext, AirDrawContext, AirEvent, AirOutcome, AirView, AirViewState};
 
@@ -64,6 +76,23 @@ struct VisibleLine {
     column: u16,
     /// Le texte à poser, déjà borné à la largeur de la fenêtre.
     text: String,
+    /// L'intervalle de colonnes d'affichage sélectionné sur cette ligne.
+    ///
+    /// En colonnes **absolues** dans la ligne complète, et non dans la fenêtre : la
+    /// conversion est au dessin, qui connaît déjà le défilement horizontal. Calculé au
+    /// moment du reflet, seul instant où la vue voit le tampon — les bornes de la
+    /// sélection sont des décalages en octets, et les convertir en colonnes demande le
+    /// début de la ligne, que le reflet ne garde pas.
+    selected: Option<(usize, usize)>,
+}
+
+impl VisibleLine {
+    /// Une ligne dont rien n'est visible.
+    const EMPTY: Self = Self {
+        column: 0,
+        text: String::new(),
+        selected: None,
+    };
 }
 
 /// La tranche d'une ligne visible dans une fenêtre horizontale.
@@ -85,16 +114,10 @@ fn visible_slice(line: &str, left_column: usize, columns: usize) -> VisibleLine 
     }
     let Some((begin, padding)) = start else {
         // La ligne finit avant le bord gauche : rien n'en est visible.
-        return VisibleLine {
-            column: 0,
-            text: String::new(),
-        };
+        return VisibleLine::EMPTY;
     };
     let Some(tail) = line.get(begin..) else {
-        return VisibleLine {
-            column: 0,
-            text: String::new(),
-        };
+        return VisibleLine::EMPTY;
     };
     let mut end: usize = begin;
     let mut used: usize = padding;
@@ -109,7 +132,40 @@ fn visible_slice(line: &str, left_column: usize, columns: usize) -> VisibleLine 
     VisibleLine {
         column: u16::try_from(padding).unwrap_or(u16::MAX),
         text: line.get(begin..end).unwrap_or("").to_owned(),
+        selected: None,
     }
+}
+
+/// L'intervalle de colonnes d'affichage qu'une sélection couvre sur une ligne.
+///
+/// Rend `None` quand la ligne est hors de la sélection, ou quand l'intervalle est vide —
+/// ce qui arrive sur la dernière ligne d'une sélection qui s'arrête à son tout début.
+fn selected_columns(
+    line: &str,
+    index: usize,
+    start: AirTextPosition,
+    end: AirTextPosition,
+) -> Option<(usize, usize)> {
+    if index < start.line || index > end.line {
+        return None;
+    }
+    let first = if index == start.line {
+        width_between(line, 0, start.offset)
+    } else {
+        0
+    };
+    let last = if index == end.line {
+        width_between(line, 0, end.offset)
+    } else {
+        // Une colonne de plus que la ligne : c'est le saut de ligne, et il est bien dans
+        // la sélection. Sans lui, une ligne vide prise au milieu d'une sélection ne
+        // porterait aucune marque et le surlignage paraîtrait troué.
+        text_width(line).saturating_add(1)
+    };
+    if last <= first {
+        return None;
+    }
+    Some((first, last))
 }
 
 /// La vue d'édition d'un tampon de texte.
@@ -133,6 +189,8 @@ pub struct AirEditorView {
     seen_text_generation: AirGeneration,
     /// La génération de curseur déjà reflétée.
     seen_cursor_generation: AirGeneration,
+    /// La génération de sélection déjà reflétée.
+    seen_selection_generation: AirGeneration,
     /// La dimension de contenu du dernier reflet, ou `None` si rien n'a été reflété.
     synchronized_size: Option<AirSize>,
     /// Vrai quand le défilement a changé sans que le tampon bouge.
@@ -159,6 +217,7 @@ impl AirEditorView {
             cursor_display_column: 0,
             seen_text_generation: AirGeneration::new(),
             seen_cursor_generation: AirGeneration::new(),
+            seen_selection_generation: AirGeneration::new(),
             synchronized_size: None,
             scrolled: false,
             pending_actions: Vec::new(),
@@ -244,8 +303,9 @@ impl AirEditorView {
         let size = self.content_size();
         let cursor_moved = self.seen_cursor_generation != buffer.cursor_generation();
         let text_changed = self.seen_text_generation != buffer.text_generation();
+        let selection_changed = self.seen_selection_generation != buffer.selection_generation();
         let resized = self.synchronized_size != Some(size);
-        if !cursor_moved && !text_changed && !resized && !self.scrolled {
+        if !cursor_moved && !text_changed && !selection_changed && !resized && !self.scrolled {
             return;
         }
 
@@ -259,6 +319,7 @@ impl AirEditorView {
 
         self.seen_text_generation = buffer.text_generation();
         self.seen_cursor_generation = buffer.cursor_generation();
+        self.seen_selection_generation = buffer.selection_generation();
         self.synchronized_size = Some(size);
         self.scrolled = false;
     }
@@ -295,18 +356,138 @@ impl AirEditorView {
         if rows == 0 || columns == 0 {
             return;
         }
+        let selection = buffer.selection();
         for row in 0..rows {
             let index = self.top_line.saturating_add(row);
             // Au delà de la dernière ligne : une ligne vide, et non une absence. Le
             // dessin la remplit comme les autres, donc le fond reste uniforme.
-            let visible = match buffer.line(index) {
+            let mut visible = match buffer.line(index) {
                 Some(line) => visible_slice(line, self.left_column, columns),
-                None => VisibleLine {
-                    column: 0,
-                    text: String::new(),
-                },
+                None => VisibleLine::EMPTY,
             };
+            if let Some((start, end)) = selection {
+                let line = buffer.line(index).unwrap_or("");
+                visible.selected = selected_columns(line, index, start, end);
+            }
             self.visible_lines.push(visible);
+        }
+    }
+
+    /// Le déplacement que désigne une position de souris, dans les coordonnées du contenu.
+    fn motion_at(&self, position: AirPoint) -> AirTextMotion {
+        AirTextMotion::ToColumn {
+            line: self
+                .top_line
+                .saturating_add(usize::from(position.row.value())),
+            column: self
+                .left_column
+                .saturating_add(usize::from(position.column.value())),
+        }
+    }
+
+    /// Dessine une ligne visible, surlignage compris.
+    ///
+    /// Le cas sans sélection garde un **seul** appel de pose : c'est le cas courant, et le
+    /// dessin grappe par grappe n'a de raison d'être que là où la couleur change en cours
+    /// de ligne.
+    fn draw_line(
+        &self,
+        painter: &mut AirPainter<'_>,
+        row: u16,
+        line: &VisibleLine,
+        colors: AirColorPair,
+        marked: AirColorPair,
+    ) {
+        let Some((first, last)) = line.selected else {
+            if !line.text.is_empty() {
+                painter.draw_text(
+                    AirPoint::new(AirColumn::new(line.column), AirRow::new(row)),
+                    &line.text,
+                    colors.foreground,
+                    colors.background,
+                    AirAttributes::NONE,
+                );
+            }
+            return;
+        };
+        let size = painter.size();
+        // Le fond d'abord, sur tout l'intervalle visible : c'est lui qui montre le saut de
+        // ligne sélectionné et les lignes vides prises au milieu d'une sélection, qui ne
+        // portent aucun caractère à colorer.
+        let window_first = first.saturating_sub(self.left_column);
+        let window_last = last
+            .saturating_sub(self.left_column)
+            .min(usize::from(size.columns));
+        if last > self.left_column && window_last > window_first {
+            let width = window_last.saturating_sub(window_first);
+            painter.fill_rectangle(
+                AirRectangle::from_parts(
+                    u16::try_from(window_first).unwrap_or(u16::MAX),
+                    row,
+                    u16::try_from(width).unwrap_or(u16::MAX),
+                    1,
+                ),
+                AirCell::new(' ', marked.foreground, marked.background),
+            );
+        }
+        // Puis le texte, grappe par grappe : la couleur change en cours de ligne, et la
+        // colonne d'une grappe large avance de deux.
+        let mut column = self.left_column.saturating_add(usize::from(line.column));
+        for cluster in graphemes(&line.text) {
+            let inside = column >= first && column < last;
+            let pair = if inside { marked } else { colors };
+            let at = column.saturating_sub(self.left_column);
+            if let Ok(at) = u16::try_from(at) {
+                painter.draw_text(
+                    AirPoint::new(AirColumn::new(at), AirRow::new(row)),
+                    cluster,
+                    pair.foreground,
+                    pair.background,
+                    AirAttributes::NONE,
+                );
+            }
+            column = column.saturating_add(grapheme_width(cluster));
+        }
+    }
+
+    /// La commande de presse-papiers qu'une frappe demande, s'il y en a une.
+    ///
+    /// `Ctrl`+`C`, `Ctrl`+`X` et `Ctrl`+`V` : les gestes que tout le monde connaît.
+    /// Turbo Vision employait `Ctrl`+`Inser` et `Maj`+`Suppr`, que les terminaux ne
+    /// transmettent pas tous — ils demandent le protocole Kitty pour être distingués de
+    /// `Inser` et `Suppr` nus.
+    fn clipboard_command(key: &crate::input::event::AirKeyEvent) -> Option<AirCommand> {
+        if !key.modifiers.control {
+            return None;
+        }
+        match key.logical {
+            AirKey::Character('c' | 'C') => Some(crate::command::COPY),
+            AirKey::Character('x' | 'X') => Some(crate::command::CUT),
+            AirKey::Character('v' | 'V') => Some(crate::command::PASTE),
+            _ => None,
+        }
+    }
+
+    /// Le déplacement correspondant à une touche, s'il y en a un.
+    ///
+    /// Séparé de l'édition parce que **`Maj` ne décide qu'une chose** : étendre la
+    /// sélection ou l'effacer. Une table unique qui mêlerait les deux obligerait à
+    /// répéter cette décision sur chaque flèche.
+    const fn motion_for_key(key: AirKey, control: bool, page: usize) -> Option<AirTextMotion> {
+        match key {
+            AirKey::Left if control => Some(AirTextMotion::PreviousWord),
+            AirKey::Right if control => Some(AirTextMotion::NextWord),
+            AirKey::Left => Some(AirTextMotion::Left),
+            AirKey::Right => Some(AirTextMotion::Right),
+            AirKey::Up => Some(AirTextMotion::Up),
+            AirKey::Down => Some(AirTextMotion::Down),
+            AirKey::Home if control => Some(AirTextMotion::DocumentStart),
+            AirKey::End if control => Some(AirTextMotion::DocumentEnd),
+            AirKey::Home => Some(AirTextMotion::LineStart),
+            AirKey::End => Some(AirTextMotion::LineEnd),
+            AirKey::PageUp => Some(AirTextMotion::UpByLines(page)),
+            AirKey::PageDown => Some(AirTextMotion::DownByLines(page)),
+            _ => None,
         }
     }
 
@@ -314,29 +495,25 @@ impl AirEditorView {
     fn action_for_key(&self, key: &crate::input::event::AirKeyEvent) -> Option<AirTextAction> {
         let control = key.modifiers.control;
         let page = self.visible_rows().max(1);
+        if let Some(motion) = Self::motion_for_key(key.logical, control, page) {
+            return Some(if key.modifiers.shift {
+                AirTextAction::select_by(motion)
+            } else {
+                AirTextAction::move_by(motion)
+            });
+        }
         match key.logical {
             // Une frappe avec `Alt` appartient aux raccourcis ; la barre de menu en décide.
             AirKey::Character(_) if key.modifiers.alternate => None,
             // `Ctrl`+`Y` supprime la ligne : c'est le geste de Turbo Vision, et il n'a pas
             // d'autre équivalent au clavier.
             AirKey::Character('y' | 'Y') if control => Some(AirTextAction::DeleteLine),
+            AirKey::Character('a' | 'A') if control => Some(AirTextAction::SelectAll),
             AirKey::Character(_) if control => None,
             AirKey::Character(character) => Some(AirTextAction::InsertCharacter(character)),
             AirKey::Enter => Some(AirTextAction::InsertLineBreak),
             AirKey::Backspace => Some(AirTextAction::DeleteBackward),
             AirKey::Delete => Some(AirTextAction::DeleteForward),
-            AirKey::Left if control => Some(AirTextAction::MoveToPreviousWord),
-            AirKey::Right if control => Some(AirTextAction::MoveToNextWord),
-            AirKey::Left => Some(AirTextAction::MoveLeft),
-            AirKey::Right => Some(AirTextAction::MoveRight),
-            AirKey::Up => Some(AirTextAction::MoveUp),
-            AirKey::Down => Some(AirTextAction::MoveDown),
-            AirKey::Home if control => Some(AirTextAction::MoveToDocumentStart),
-            AirKey::End if control => Some(AirTextAction::MoveToDocumentEnd),
-            AirKey::Home => Some(AirTextAction::MoveToLineStart),
-            AirKey::End => Some(AirTextAction::MoveToLineEnd),
-            AirKey::PageUp => Some(AirTextAction::MoveUpByLines(page)),
-            AirKey::PageDown => Some(AirTextAction::MoveDownByLines(page)),
             _ => None,
         }
     }
@@ -353,6 +530,7 @@ impl AirView for AirEditorView {
 
     fn draw_content(&self, painter: &mut AirPainter<'_>, context: &AirDrawContext<'_>) {
         let colors = context.theme.palette.color_pair(AirRole::WindowText);
+        let marked = context.theme.palette.color_pair(AirRole::EditorSelected);
         let size = painter.size();
         painter.fill_rectangle(
             AirRectangle::new(AirPoint::ORIGIN, size),
@@ -365,16 +543,7 @@ impl AirView for AirEditorView {
             if row >= size.rows {
                 break;
             }
-            if line.text.is_empty() {
-                continue;
-            }
-            painter.draw_text(
-                AirPoint::new(AirColumn::new(line.column), AirRow::new(row)),
-                &line.text,
-                colors.foreground,
-                colors.background,
-                AirAttributes::NONE,
-            );
+            self.draw_line(painter, row, line, colors, marked);
         }
     }
 
@@ -406,14 +575,22 @@ impl AirView for AirEditorView {
                 let position = mouse.position;
                 match mouse.kind {
                     AirMouseEventKind::Pressed(AirMouseButton::Left) => {
-                        let line = self
-                            .top_line
-                            .saturating_add(usize::from(position.row.value()));
-                        let column = self
-                            .left_column
-                            .saturating_add(usize::from(position.column.value()));
-                        self.pending_actions
-                            .push(AirTextAction::MoveToColumn { line, column });
+                        // `Maj` et un clic étendent la sélection depuis son ancre, comme
+                        // `Maj` et une flèche : c'est le même geste par un autre organe.
+                        let motion = self.motion_at(position);
+                        self.pending_actions.push(if mouse.modifiers.shift {
+                            AirTextAction::select_by(motion)
+                        } else {
+                            AirTextAction::move_by(motion)
+                        });
+                    }
+                    // Le glisser n'a besoin d'aucun état dans la vue : l'appui a effacé la
+                    // sélection, donc le premier déplacement pose l'ancre là où le bouton
+                    // est tombé. Garder le point d'appui ici le dédoublerait avec l'ancre
+                    // que le tampon tient déjà.
+                    AirMouseEventKind::Moved(Some(AirMouseButton::Left)) => {
+                        let motion = self.motion_at(position);
+                        self.pending_actions.push(AirTextAction::select_by(motion));
                     }
                     AirMouseEventKind::WheelUp => {
                         self.scroll_to_line(self.top_line.saturating_sub(3));
@@ -427,10 +604,25 @@ impl AirView for AirEditorView {
                 AirOutcome::Consumed
             }
             AirInputEvent::Key(key) => {
+                // Les trois gestes du presse-papiers sortent par le canal des commandes
+                // et non par celui des intentions : le presse-papiers n'appartient pas à
+                // cette vue, et c'est le contrôleur qui le tient.
+                if let Some(command) = Self::clipboard_command(key) {
+                    event.consume();
+                    return AirOutcome::Command(command);
+                }
                 let Some(action) = self.action_for_key(key) else {
                     return AirOutcome::Ignored;
                 };
                 self.pending_actions.push(action);
+                event.consume();
+                AirOutcome::Consumed
+            }
+            // Le collage encadré du terminal. Le décodeur le produit depuis le jalon M1 et
+            // personne ne le consommait : la séquence était décodée, puis jetée.
+            AirInputEvent::Paste(pasted) => {
+                self.pending_actions
+                    .push(AirTextAction::InsertText(pasted.clone()));
                 event.consume();
                 AirOutcome::Consumed
             }
@@ -442,6 +634,7 @@ impl AirView for AirEditorView {
 #[cfg(test)]
 mod tests {
     use super::{AirEditorView, visible_slice};
+    use crate::cell::AirColor;
     use crate::command::AirCommandSet;
     use crate::geometry::{AirColumn, AirPoint, AirRectangle, AirRow, AirSize};
     use crate::input::event::{
@@ -450,7 +643,7 @@ mod tests {
     };
     use crate::model::{AirChangeSet, AirModel, AirTextAction, AirTextBuffer, AirTextPosition};
     use crate::surface::AirSurface;
-    use crate::theme::AirTheme;
+    use crate::theme::{AirRole, AirTheme};
     use crate::view::painter::AirPainter;
     use crate::view::{
         AirContext, AirDrawContext, AirEvent, AirOutcome, AirView, AirViewId, AirViewState,
@@ -498,6 +691,16 @@ mod tests {
         column: u16,
         row: u16,
     ) -> AirOutcome {
+        mouse_with(view, kind, column, row, AirModifiers::default())
+    }
+
+    fn mouse_with(
+        view: &mut AirEditorView,
+        kind: AirMouseEventKind,
+        column: u16,
+        row: u16,
+        modifiers: AirModifiers,
+    ) -> AirOutcome {
         let mut commands = AirCommandSet::new();
         let mut context = AirContext {
             commands: &mut commands,
@@ -505,7 +708,7 @@ mod tests {
         let mut event = AirEvent::new(AirInputEvent::Mouse(AirMouseEvent {
             position: AirPoint::new(AirColumn::new(column), AirRow::new(row)),
             kind,
-            modifiers: AirModifiers::default(),
+            modifiers,
         }));
         view.handle_event(&mut event, &mut context)
     }
@@ -530,6 +733,36 @@ mod tests {
             lines.push(line);
         }
         lines.join("\n")
+    }
+
+    /// Les fonds de chaque cellule d'une rangée, rendus sous le thème Turbo Vision.
+    ///
+    /// Le surlignage se vérifie sur la **couleur** et non sur le texte : un essai qui ne
+    /// regarderait que les caractères passerait alors que rien n'est surligné.
+    fn backgrounds(view: &AirEditorView, size: AirSize, row: u16) -> Vec<Option<AirColor>> {
+        let mut surface = AirSurface::new(size);
+        let theme = AirTheme::turbo_vision();
+        let commands = AirCommandSet::new();
+        {
+            let mut painter = AirPainter::new(&mut surface);
+            draw_view(view, &mut painter, &AirDrawContext::new(&theme, &commands));
+        }
+        (0..size.columns)
+            .map(|column| {
+                surface
+                    .cell(AirPoint::new(AirColumn::new(column), AirRow::new(row)))
+                    .map(|cell| cell.background)
+            })
+            .collect()
+    }
+
+    /// Le fond du texte sélectionné, et celui du texte ordinaire, sous Turbo Vision.
+    fn selection_backgrounds() -> (AirColor, AirColor) {
+        let theme = AirTheme::turbo_vision();
+        (
+            theme.palette.color_pair(AirRole::EditorSelected).background,
+            theme.palette.color_pair(AirRole::WindowText).background,
+        )
     }
 
     fn cursor_of(view: &AirEditorView, size: AirSize) -> Option<AirPoint> {
@@ -939,5 +1172,307 @@ mod tests {
         // l'idéogramme est sa **cellule de continuation** : c'est elle qui empêche le `b`
         // de s'écrire sur sa moitié droite.
         assert_eq!(render(&view, AirSize::new(5, 1)), "a漢 b ");
+    }
+
+    // ------------------------------------------------------ le surlignage
+
+    /// `Maj` et une touche, qui doit étendre la sélection.
+    fn press_with_shift(view: &mut AirEditorView, key: AirKey) -> AirOutcome {
+        press_with(
+            view,
+            key,
+            AirModifiers {
+                shift: true,
+                ..AirModifiers::default()
+            },
+        )
+    }
+
+    #[test]
+    fn maj_et_une_fleche_surlignent_le_texte() {
+        let (marked, normal) = selection_backgrounds();
+        let mut buffer = AirTextBuffer::from_text("abcd");
+        let mut view = editor(4, 1);
+        view.synchronize(&buffer);
+        press_with_shift(&mut view, AirKey::Right);
+        press_with_shift(&mut view, AirKey::Right);
+        turn(&mut view, &mut buffer);
+
+        assert_eq!(buffer.selected_text().as_deref(), Some("ab"));
+        assert_eq!(
+            backgrounds(&view, AirSize::new(4, 1), 0),
+            vec![Some(marked), Some(marked), Some(normal), Some(normal)],
+            "le surlignage ne couvre pas exactement les deux premières colonnes"
+        );
+    }
+
+    #[test]
+    fn une_fleche_nue_n_en_surligne_aucun() {
+        let (_, normal) = selection_backgrounds();
+        let mut buffer = AirTextBuffer::from_text("abcd");
+        let mut view = editor(4, 1);
+        view.synchronize(&buffer);
+        press(&mut view, AirKey::Right);
+        turn(&mut view, &mut buffer);
+        assert!(
+            backgrounds(&view, AirSize::new(4, 1), 0)
+                .iter()
+                .all(|background| *background == Some(normal))
+        );
+    }
+
+    #[test]
+    fn abandonner_la_selection_efface_le_surlignage() {
+        // Le piège que la génération de sélection évite : sans elle, le reflet ne serait
+        // pas repoussé et la surbrillance resterait à l'écran après son abandon.
+        let (_, normal) = selection_backgrounds();
+        let mut buffer = AirTextBuffer::from_text("abcd");
+        let mut view = editor(4, 1);
+        view.synchronize(&buffer);
+        press_with_shift(&mut view, AirKey::Right);
+        turn(&mut view, &mut buffer);
+
+        let mut changes = AirChangeSet::new();
+        buffer.apply(AirTextAction::ClearSelection, &mut changes);
+        view.synchronize(&buffer);
+        assert!(
+            backgrounds(&view, AirSize::new(4, 1), 0)
+                .iter()
+                .all(|background| *background == Some(normal)),
+            "la surbrillance a survécu à l'abandon de la sélection"
+        );
+    }
+
+    #[test]
+    fn une_selection_de_plusieurs_lignes_surligne_le_saut_de_ligne() {
+        // La colonne qui suit la fin de la ligne porte le saut de ligne, et il est bien
+        // dans la sélection : sans elle, une ligne courte paraîtrait trouée.
+        let (marked, normal) = selection_backgrounds();
+        let mut buffer = AirTextBuffer::from_text("ab\ncd");
+        let mut view = editor(4, 2);
+        view.synchronize(&buffer);
+        press_with_shift(&mut view, AirKey::Down);
+        turn(&mut view, &mut buffer);
+
+        assert_eq!(
+            backgrounds(&view, AirSize::new(4, 2), 0),
+            vec![Some(marked), Some(marked), Some(marked), Some(normal)],
+            "le saut de ligne n'est pas surligné"
+        );
+    }
+
+    #[test]
+    fn une_ligne_vide_prise_au_milieu_d_une_selection_porte_une_marque() {
+        let (marked, _) = selection_backgrounds();
+        let mut buffer = AirTextBuffer::from_text("a\n\nb");
+        let mut view = editor(4, 3);
+        view.synchronize(&buffer);
+        press_with_shift(&mut view, AirKey::Down);
+        press_with_shift(&mut view, AirKey::Down);
+        turn(&mut view, &mut buffer);
+
+        let middle = backgrounds(&view, AirSize::new(4, 3), 1);
+        assert_eq!(
+            middle.first().copied().flatten(),
+            Some(marked),
+            "la ligne vide ne porte aucune marque : la sélection paraît trouée"
+        );
+    }
+
+    #[test]
+    fn le_surlignage_suit_le_defilement_horizontal() {
+        // La vue ne garde que les colonnes visibles ; les bornes de la sélection sont des
+        // décalages en octets dans la ligne entière. C'est la conversion qui est éprouvée.
+        let (marked, normal) = selection_backgrounds();
+        let mut buffer = AirTextBuffer::from_text("abcdefgh");
+        let mut view = editor(4, 1);
+        view.synchronize(&buffer);
+        // Le curseur va en fin de ligne, la fenêtre défile, puis on sélectionne à gauche.
+        press(&mut view, AirKey::End);
+        turn(&mut view, &mut buffer);
+        press_with_shift(&mut view, AirKey::Left);
+        press_with_shift(&mut view, AirKey::Left);
+        turn(&mut view, &mut buffer);
+
+        assert_eq!(buffer.selected_text().as_deref(), Some("gh"));
+        // La fenêtre montre les colonnes 5 à 8 : `fgh` puis la place du curseur. Le `gh`
+        // sélectionné tombe donc aux positions 1 et 2, et c'est ce décalage qui est
+        // éprouvé ici — l'écrire de mémoire donne 2 et 3.
+        assert_eq!(render(&view, AirSize::new(4, 1)), "fgh ");
+        assert_eq!(
+            backgrounds(&view, AirSize::new(4, 1), 0),
+            vec![Some(normal), Some(marked), Some(marked), Some(normal)],
+            "le surlignage n'a pas suivi le défilement horizontal"
+        );
+    }
+
+    #[test]
+    fn ctrl_a_selectionne_tout() {
+        let mut buffer = AirTextBuffer::from_text("ab\ncd");
+        let mut view = editor(4, 2);
+        view.synchronize(&buffer);
+        press_with(
+            &mut view,
+            AirKey::Character('a'),
+            AirModifiers {
+                control: true,
+                ..AirModifiers::default()
+            },
+        );
+        turn(&mut view, &mut buffer);
+        assert_eq!(buffer.selected_text().as_deref(), Some("ab\ncd"));
+    }
+
+    #[test]
+    fn maj_et_un_clic_etendent_la_selection() {
+        let mut buffer = AirTextBuffer::from_text("abcdef");
+        let mut view = editor(6, 1);
+        view.synchronize(&buffer);
+        mouse(
+            &mut view,
+            AirMouseEventKind::Pressed(AirMouseButton::Left),
+            1,
+            0,
+        );
+        turn(&mut view, &mut buffer);
+        mouse_with(
+            &mut view,
+            AirMouseEventKind::Pressed(AirMouseButton::Left),
+            4,
+            0,
+            AirModifiers {
+                shift: true,
+                ..AirModifiers::default()
+            },
+        );
+        turn(&mut view, &mut buffer);
+        assert_eq!(buffer.selected_text().as_deref(), Some("bcd"));
+    }
+
+    #[test]
+    fn un_clic_nu_abandonne_la_selection() {
+        let mut buffer = AirTextBuffer::from_text("abcdef");
+        let mut view = editor(6, 1);
+        view.synchronize(&buffer);
+        press_with_shift(&mut view, AirKey::Right);
+        press_with_shift(&mut view, AirKey::Right);
+        turn(&mut view, &mut buffer);
+        assert!(buffer.has_selection());
+        mouse(
+            &mut view,
+            AirMouseEventKind::Pressed(AirMouseButton::Left),
+            4,
+            0,
+        );
+        turn(&mut view, &mut buffer);
+        assert_eq!(buffer.selection(), None);
+    }
+
+    #[test]
+    fn glisser_la_souris_selectionne() {
+        // Aucun état n'est gardé dans la vue : l'appui efface la sélection, et le premier
+        // déplacement pose l'ancre là où le bouton est tombé.
+        let mut buffer = AirTextBuffer::from_text("abcdef");
+        let mut view = editor(6, 1);
+        view.synchronize(&buffer);
+        mouse(
+            &mut view,
+            AirMouseEventKind::Pressed(AirMouseButton::Left),
+            1,
+            0,
+        );
+        turn(&mut view, &mut buffer);
+        mouse(
+            &mut view,
+            AirMouseEventKind::Moved(Some(AirMouseButton::Left)),
+            3,
+            0,
+        );
+        turn(&mut view, &mut buffer);
+        assert_eq!(buffer.selected_text().as_deref(), Some("bc"));
+        mouse(
+            &mut view,
+            AirMouseEventKind::Moved(Some(AirMouseButton::Left)),
+            5,
+            0,
+        );
+        turn(&mut view, &mut buffer);
+        assert_eq!(buffer.selected_text().as_deref(), Some("bcde"));
+    }
+
+    #[test]
+    fn un_deplacement_sans_bouton_ne_selectionne_rien() {
+        let mut buffer = AirTextBuffer::from_text("abcdef");
+        let mut view = editor(6, 1);
+        view.synchronize(&buffer);
+        let outcome = mouse(&mut view, AirMouseEventKind::Moved(None), 3, 0);
+        assert_eq!(outcome, AirOutcome::Ignored);
+        turn(&mut view, &mut buffer);
+        assert_eq!(buffer.selection(), None);
+    }
+
+    // --------------------------------------- le presse-papiers et le collage
+
+    fn control() -> AirModifiers {
+        AirModifiers {
+            control: true,
+            ..AirModifiers::default()
+        }
+    }
+
+    #[test]
+    fn les_trois_gestes_du_presse_papiers_sortent_en_commandes() {
+        // Par le canal des commandes et non celui des intentions : le presse-papiers
+        // n'appartient pas à la vue.
+        for (character, expected) in [
+            ('c', crate::command::COPY),
+            ('x', crate::command::CUT),
+            ('v', crate::command::PASTE),
+        ] {
+            let mut view = editor(10, 3);
+            let outcome = press_with(&mut view, AirKey::Character(character), control());
+            assert_eq!(outcome, AirOutcome::Command(expected));
+            assert!(
+                !view.has_pending_actions(),
+                "la vue a aussi produit une intention pour {character}"
+            );
+        }
+    }
+
+    #[test]
+    fn un_collage_encadre_est_insere_d_un_coup() {
+        // Le décodeur produit cet événement depuis le jalon M1, et jusqu'au jalon M7d
+        // personne ne le consommait : la séquence était décodée, puis jetée.
+        let mut buffer = AirTextBuffer::new();
+        let mut view = editor(10, 3);
+        view.synchronize(&buffer);
+        let mut commands = AirCommandSet::new();
+        let mut context = AirContext {
+            commands: &mut commands,
+        };
+        let mut event = AirEvent::new(AirInputEvent::Paste("ab\ncd".to_owned()));
+        let outcome = view.handle_event(&mut event, &mut context);
+        assert_eq!(outcome, AirOutcome::Consumed);
+        turn(&mut view, &mut buffer);
+        assert_eq!(buffer.lines(), ["ab", "cd"]);
+    }
+
+    #[test]
+    fn un_collage_encadre_remplace_la_selection() {
+        let mut buffer = AirTextBuffer::from_text("abcd");
+        let mut view = editor(10, 3);
+        view.synchronize(&buffer);
+        press_with_shift(&mut view, AirKey::Right);
+        press_with_shift(&mut view, AirKey::Right);
+        turn(&mut view, &mut buffer);
+
+        let mut commands = AirCommandSet::new();
+        let mut context = AirContext {
+            commands: &mut commands,
+        };
+        let mut event = AirEvent::new(AirInputEvent::Paste("XY".to_owned()));
+        view.handle_event(&mut event, &mut context);
+        turn(&mut view, &mut buffer);
+        assert_eq!(buffer.lines(), ["XYcd"]);
     }
 }

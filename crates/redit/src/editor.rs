@@ -25,7 +25,8 @@
 use std::path::{Path, PathBuf};
 
 use air_tui::application::{AirDesktop, AirScreen};
-use air_tui::command::{AirCommand, AirCommandSet, CANCEL, OK, OPEN, QUIT, SAVE};
+use air_tui::clipboard::AirClipboard;
+use air_tui::command::{AirCommand, AirCommandSet, CANCEL, COPY, CUT, OK, OPEN, PASTE, QUIT, SAVE};
 use air_tui::geometry::{AirRectangle, AirSize};
 use air_tui::input::event::AirKey;
 use air_tui::model::{AirChangeSet, AirModel, AirTextAction, AirTextChange};
@@ -45,6 +46,12 @@ pub const SAVE_AS: AirCommand = AirCommand::new(257);
 pub const DELETE_LINE: AirCommand = AirCommand::new(258);
 /// Afficher la version.
 pub const ABOUT: AirCommand = AirCommand::new(259);
+/// Tout sélectionner.
+///
+/// Numéro d'application : le framework n'en réserve pas pour ce geste, parce qu'il n'a pas
+/// de sens hors d'un contenu sélectionnable, et qu'une liste de fichiers l'entendrait
+/// autrement qu'un texte.
+pub const SELECT_ALL: AirCommand = AirCommand::new(260);
 
 /// La dimension minimale d'une fenêtre pour qu'elle porte un éditeur et ses ascenseurs.
 ///
@@ -92,6 +99,8 @@ pub struct Editor {
     prompt: Option<Prompt>,
     /// Le dernier message à afficher, s'il y en a un.
     message: Option<String>,
+    /// Le presse-papiers interne, que le contrôleur possède.
+    clipboard: AirClipboard,
     /// Vrai quand l'utilisateur a demandé à quitter.
     quit: bool,
 }
@@ -130,6 +139,7 @@ impl Editor {
             views,
             prompt: None,
             message: None,
+            clipboard: AirClipboard::new(),
             quit: false,
         }
     }
@@ -206,6 +216,23 @@ impl Editor {
         } else {
             commands.disable(SAVE);
         }
+
+        // Le même *pull* pour le presse-papiers : copier et couper n'ont pas de sens sans
+        // sélection, coller n'en a pas sur un presse-papiers vide. Rien n'est notifié —
+        // l'état est lu à chaque tour, et griser l'item de menu le grise partout.
+        let selected = self.document.buffer().has_selection();
+        for command in [COPY, CUT] {
+            if selected {
+                commands.enable(command);
+            } else {
+                commands.disable(command);
+            }
+        }
+        if self.clipboard.is_empty() {
+            commands.disable(PASTE);
+        } else {
+            commands.enable(PASTE);
+        }
     }
 
     /// Étape 2 : applique au modèle les intentions que les vues ont accumulées.
@@ -235,6 +262,16 @@ impl Editor {
         }
     }
 
+    /// Copie la sélection dans le presse-papiers, s'il y en a une.
+    ///
+    /// Une sélection vide ne touche pas au presse-papiers : `AirClipboard::set` refuse un
+    /// texte vide, pour qu'un geste sans effet ne détruise pas une copie antérieure.
+    fn copy_selection(&mut self) {
+        if let Some(selected) = self.document.buffer().selected_text() {
+            self.clipboard.set(selected);
+        }
+    }
+
     /// Exécute une commande rendue par l'application.
     pub fn execute(&mut self, command: AirCommand) {
         match command {
@@ -250,6 +287,26 @@ impl Editor {
                 self.document
                     .buffer_mut()
                     .apply(AirTextAction::DeleteLine, &mut self.changes);
+            }
+            // Le presse-papiers est au contrôleur : les vues demandent, lui seul tient le
+            // contenu. Copier et couper ne diffèrent que par la suppression qui suit.
+            COPY => self.copy_selection(),
+            CUT => {
+                self.copy_selection();
+                self.document
+                    .buffer_mut()
+                    .apply(AirTextAction::DeleteSelection, &mut self.changes);
+            }
+            PASTE => {
+                if let Some(pasted) = self.clipboard.content() {
+                    let action = AirTextAction::InsertText(pasted.to_owned());
+                    self.document.buffer_mut().apply(action, &mut self.changes);
+                }
+            }
+            SELECT_ALL => {
+                self.document
+                    .buffer_mut()
+                    .apply(AirTextAction::SelectAll, &mut self.changes);
             }
             ABOUT => {
                 self.message = Some(format!("redit {}", env!("CARGO_PKG_VERSION")));
@@ -461,7 +518,13 @@ fn build_menu_bar() -> AirMenuBar {
             .with_item(AirMenuItem::new("~Q~uitter", QUIT)),
     )
     .with_menu(
-        AirMenu::new("~E~dition").with_item(AirMenuItem::new("~S~upprimer la ligne", DELETE_LINE)),
+        AirMenu::new("~E~dition")
+            .with_item(AirMenuItem::new("Co~p~ier", COPY))
+            .with_item(AirMenuItem::new("Co~u~per", CUT))
+            .with_item(AirMenuItem::new("C~o~ller", PASTE))
+            .with_item(AirMenuItem::separator())
+            .with_item(AirMenuItem::new("~T~out sélectionner", SELECT_ALL))
+            .with_item(AirMenuItem::new("~S~upprimer la ligne", DELETE_LINE)),
     )
     .with_menu(AirMenu::new("~A~ide").with_item(AirMenuItem::new("À ~p~ropos", ABOUT)))
 }
@@ -487,10 +550,10 @@ fn build_status_line() -> AirStatusLine {
 
 #[cfg(test)]
 mod tests {
-    use air_tui::command::{AirCommandSet, CANCEL, OK, OPEN, QUIT, SAVE};
+    use air_tui::command::{AirCommandSet, CANCEL, COPY, CUT, OK, OPEN, PASTE, QUIT, SAVE};
     use air_tui::geometry::AirSize;
     use air_tui::input::event::{AirInputEvent, AirKey, AirKeyEvent};
-    use air_tui::model::{AirModel, AirTextAction};
+    use air_tui::model::{AirChangeSet, AirModel, AirTextAction};
     use air_tui::view::{
         AirContext, AirEvent, AirOutcome, AirView, dispatch_event, find, find_mut,
     };
@@ -819,5 +882,114 @@ mod tests {
             find::<AirEditorView>(editor.root(), super::identifier(4)).expect("la vue d'édition");
         assert_eq!(view.visible_rows(), 35);
         assert_eq!(view.visible_columns(), 97);
+    }
+
+    // -------------------------------------------- le presse-papiers interne
+
+    /// Saisit un texte, puis sélectionne tout.
+    fn with_everything_selected(editor: &mut Editor, text: &str, commands: &mut AirCommandSet) {
+        type_text(editor, text, commands);
+        editor.execute(super::SELECT_ALL);
+        turn(editor, commands);
+    }
+
+    #[test]
+    fn coller_sur_une_selection_la_remplace() {
+        // Copier ne désélectionne pas : coller juste après remplace donc ce qui vient
+        // d'être copié, et c'est bien ce qu'on attend d'un éditeur.
+        let mut editor = editor(40, 12);
+        let mut commands = AirCommandSet::new();
+        with_everything_selected(&mut editor, "abc", &mut commands);
+        editor.execute(COPY);
+        turn(&mut editor, &mut commands);
+        editor.execute(PASTE);
+        turn(&mut editor, &mut commands);
+        assert_eq!(editor.document.buffer().to_text(), "abc");
+    }
+
+    #[test]
+    fn copier_puis_coller_hors_selection_duplique() {
+        let mut editor = editor(40, 12);
+        let mut commands = AirCommandSet::new();
+        with_everything_selected(&mut editor, "abc", &mut commands);
+        editor.execute(COPY);
+        turn(&mut editor, &mut commands);
+
+        // La flèche droite abandonne la sélection et porte le curseur à la fin.
+        press(&mut editor, AirKey::Right);
+        turn(&mut editor, &mut commands);
+        assert!(!editor.document.buffer().has_selection());
+
+        editor.execute(PASTE);
+        turn(&mut editor, &mut commands);
+        assert_eq!(editor.document.buffer().to_text(), "abcabc");
+    }
+
+    #[test]
+    fn couper_retire_la_selection_et_la_garde() {
+        let mut editor = editor(40, 12);
+        let mut commands = AirCommandSet::new();
+        with_everything_selected(&mut editor, "abc", &mut commands);
+
+        editor.execute(CUT);
+        turn(&mut editor, &mut commands);
+        assert_eq!(editor.document.buffer().to_text(), "");
+
+        editor.execute(PASTE);
+        turn(&mut editor, &mut commands);
+        assert_eq!(editor.document.buffer().to_text(), "abc");
+    }
+
+    #[test]
+    fn coller_sans_rien_avoir_copie_ne_change_rien() {
+        let mut editor = editor(40, 12);
+        let mut commands = AirCommandSet::new();
+        type_text(&mut editor, "abc", &mut commands);
+        editor.execute(PASTE);
+        turn(&mut editor, &mut commands);
+        assert_eq!(editor.document.buffer().to_text(), "abc");
+    }
+
+    #[test]
+    fn copier_sans_selection_ne_detruit_pas_le_presse_papiers() {
+        // Le piège : un geste sans effet ne doit pas effacer une copie antérieure.
+        let mut editor = editor(40, 12);
+        let mut commands = AirCommandSet::new();
+        with_everything_selected(&mut editor, "abc", &mut commands);
+        editor.execute(COPY);
+        turn(&mut editor, &mut commands);
+
+        // Plus de sélection, puis une copie qui ne trouve rien.
+        editor.execute(super::SELECT_ALL);
+        editor
+            .document
+            .buffer_mut()
+            .apply(AirTextAction::ClearSelection, &mut AirChangeSet::new());
+        editor.execute(COPY);
+        turn(&mut editor, &mut commands);
+
+        editor.execute(PASTE);
+        turn(&mut editor, &mut commands);
+        assert_eq!(editor.document.buffer().to_text(), "abcabc");
+    }
+
+    #[test]
+    fn les_gestes_du_presse_papiers_sont_grises_quand_ils_n_ont_pas_de_sens() {
+        // Le *pull* de l'ADR-007 : l'état est lu à chaque tour, personne n'est notifié.
+        let mut editor = editor(40, 12);
+        let mut commands = AirCommandSet::new();
+        type_text(&mut editor, "abc", &mut commands);
+        assert!(!commands.is_enabled(COPY), "copier sans sélection");
+        assert!(!commands.is_enabled(CUT), "couper sans sélection");
+        assert!(!commands.is_enabled(PASTE), "coller sans presse-papiers");
+
+        editor.execute(super::SELECT_ALL);
+        turn(&mut editor, &mut commands);
+        assert!(commands.is_enabled(COPY), "copier avec une sélection");
+        assert!(commands.is_enabled(CUT), "couper avec une sélection");
+
+        editor.execute(COPY);
+        turn(&mut editor, &mut commands);
+        assert!(commands.is_enabled(PASTE), "coller avec un presse-papiers");
     }
 }

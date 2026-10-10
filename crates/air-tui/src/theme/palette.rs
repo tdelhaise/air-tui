@@ -131,6 +131,21 @@ pub enum AirRole {
     ListMarked,
     /// Un item marqué et sous le curseur.
     ListMarkedSelected,
+
+    /// Le texte sélectionné dans la vue d'édition.
+    ///
+    /// Turbo Vision ne lui donne pas de nom dans la palette de l'application : c'est
+    /// `cpEditor[2]`, soit `cpBlueWindow[7]`, soit `cpAppColor[14]` — que `tvdemo2.cpp`
+    /// nomme « Highlighted text » dans son groupe « Puzzle », une fenêtre bleue comme
+    /// celle de l'éditeur. Le texte **non** sélectionné n'a pas de rôle propre : c'est
+    /// [`AirRole::WindowText`], car `cpEditor[1]` vaut `cpAppColor[13]`, déjà transcrit au
+    /// jalon M5.
+    EditorSelected,
+
+    /// Le texte d'un champ de saisie.
+    InputLineText,
+    /// Le texte sélectionné dans un champ de saisie.
+    InputLineSelected,
 }
 
 /// Un couple de couleurs : caractère et fond.
@@ -220,6 +235,10 @@ pub(crate) struct AirPaletteParts {
     pub scroll_bar: [AirColorPair; 2],
     /// Les listes.
     pub list: [AirColorPair; 4],
+    /// La vue d'édition.
+    pub editor: [AirColorPair; 1],
+    /// Les champs de saisie.
+    pub input_line: [AirColorPair; 2],
 }
 
 /// La palette d'un thème.
@@ -241,6 +260,10 @@ pub struct AirPalette {
     scroll_bar: [AirColorPair; 2],
     /// Les listes : item ordinaire, item sous le curseur, item marqué, les deux.
     list: [AirColorPair; 4],
+    /// La vue d'édition : le texte sélectionné. Le texte ordinaire est `WindowText`.
+    editor: [AirColorPair; 1],
+    /// Les champs de saisie : texte, texte sélectionné.
+    input_line: [AirColorPair; 2],
 }
 
 impl AirPalette {
@@ -250,7 +273,7 @@ impl AirPalette {
     /// `cargo xtask import-mc-skin` vit dans `theme/skins/` et n'a pas accès aux champs
     /// privés. Il est `pub(crate)` pour que l'assemblage reste une affaire interne — un
     /// thème s'obtient par son nom, jamais en posant trente-deux couples à la main.
-    pub(crate) const fn from_parts(parts: AirPaletteParts) -> Self {
+    pub(crate) const fn from_parts(parts: &AirPaletteParts) -> Self {
         Self {
             desktop_background: parts.desktop_background,
             menu: parts.menu,
@@ -260,6 +283,8 @@ impl AirPalette {
             button: parts.button,
             scroll_bar: parts.scroll_bar,
             list: parts.list,
+            editor: parts.editor,
+            input_line: parts.input_line,
         }
     }
 
@@ -331,6 +356,16 @@ impl AirPalette {
                     pair_from_vga_attribute(0x2F).background,
                 ),
             ],
+            editor: [
+                // cpEditor[2] → cpBlueWindow[7] → cpAppColor[14], que `tvdemo2.cpp` nomme
+                // « Highlighted text ». Le texte ordinaire est `WindowText`, soit
+                // cpAppColor[13], déjà transcrit.
+                pair_from_vga_attribute(0x71),
+            ],
+            input_line: [
+                pair_from_vga_attribute(0x1F), // cpInputLine[2] → cpAppColor[50]
+                pair_from_vga_attribute(0x2F), // cpInputLine[3] → cpAppColor[51]
+            ],
         }
     }
 
@@ -392,6 +427,9 @@ impl AirPalette {
             AirRole::ListSelected => self.at(&self.list, 1),
             AirRole::ListMarked => self.at(&self.list, 2),
             AirRole::ListMarkedSelected => self.at(&self.list, 3),
+            AirRole::EditorSelected => self.at(&self.editor, 0),
+            AirRole::InputLineText => self.at(&self.input_line, 0),
+            AirRole::InputLineSelected => self.at(&self.input_line, 1),
         }
     }
 }
@@ -408,7 +446,7 @@ mod tests {
     use crate::cell::AirColor;
 
     /// Tous les rôles, pour les parcours exhaustifs.
-    const ALL_ROLES: [AirRole; 32] = [
+    const ALL_ROLES: [AirRole; 35] = [
         AirRole::DesktopBackground,
         AirRole::MenuBar,
         AirRole::MenuDisabled,
@@ -441,6 +479,9 @@ mod tests {
         AirRole::ListSelected,
         AirRole::ListMarked,
         AirRole::ListMarkedSelected,
+        AirRole::EditorSelected,
+        AirRole::InputLineText,
+        AirRole::InputLineSelected,
     ];
 
     #[test]

@@ -43,6 +43,23 @@
 //! verticaux lisent sans la changer et que tous les autres remettent à la colonne réelle.
 //! Sans elle, un aller-retour vertical à travers une ligne vide ramène le curseur en
 //! colonne zéro — ce que tout éditeur sérieux évite.
+//!
+//! # La sélection est une **ancre**, pas deux bornes
+//!
+//! Faite au jalon M7d. Le tampon garde l'ancre, et la sélection est l'intervalle entre
+//! elle et le curseur, *dans l'ordre où ils se trouvent*. Garder deux bornes déjà
+//! ordonnées ferait perdre le sens du geste : sélectionner trois caractères vers la droite
+//! puis remonter vers la gauche doit **réduire** la sélection, et non en commencer une
+//! autre.
+//!
+//! La sélection a sa propre génération, distincte de celle du curseur : l'abandonner ne
+//! déplace pas le curseur, et la vue doit pourtant repeindre. Les confondre laisserait une
+//! surbrillance orpheline à l'écran.
+//!
+//! Un déplacement porte son mode — [`AirTextAction::move_by`] efface la sélection,
+//! [`AirTextAction::select_by`] l'étend —, et les deux partagent le même
+//! [`AirTextMotion`]. Les décliner en deux familles de variantes aurait obligé à ajouter
+//! chaque déplacement futur à deux endroits.
 
 use crate::model::{AirChangeSet, AirGeneration, AirModel};
 use crate::unicode::{
@@ -67,64 +84,120 @@ impl AirTextPosition {
     }
 }
 
+/// Un déplacement du curseur, indépendamment de ce qu'il fait à la sélection.
+///
+/// Séparé de l'action pour que **le même déplacement serve aux deux modes** : avec
+/// `Maj`, il étend la sélection ; sans, il l'efface. Les décliner en deux familles de
+/// variantes — `MoveLeft` et `SelectLeft` — obligerait à ajouter chaque déplacement futur
+/// à deux endroits, et une règle écrite deux fois finit par ne plus l'être qu'une (leçon
+/// du jalon M7c).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AirTextMotion {
+    /// Recule d'une grappe, en passant à la ligne précédente s'il faut.
+    Left,
+    /// Avance d'une grappe, en passant à la ligne suivante s'il faut.
+    Right,
+    /// Monte d'une ligne, à la colonne désirée.
+    Up,
+    /// Descend d'une ligne, à la colonne désirée.
+    Down,
+    /// Va au début de la ligne.
+    LineStart,
+    /// Va à la fin de la ligne.
+    LineEnd,
+    /// Va au début du mot précédent.
+    PreviousWord,
+    /// Va au début du mot suivant.
+    NextWord,
+    /// Va au tout début du texte.
+    DocumentStart,
+    /// Va à la toute fin du texte.
+    DocumentEnd,
+    /// Monte d'autant de lignes.
+    UpByLines(usize),
+    /// Descend d'autant de lignes.
+    DownByLines(usize),
+    /// Va à une position donnée, bornée au texte.
+    To(AirTextPosition),
+    /// Va sur une ligne, à une colonne **d'affichage**.
+    ///
+    /// C'est ce qu'un clic produit : une souris donne une colonne, jamais un décalage en
+    /// octets. La résolution appartient au modèle, seul à connaître le texte de la ligne —
+    /// une vue qui la ferait aurait besoin de la ligne entière alors qu'elle n'en reflète
+    /// que la partie visible.
+    ToColumn {
+        /// L'indice de la ligne, borné au texte.
+        line: usize,
+        /// La colonne d'affichage, bornée à la fin de la ligne.
+        column: usize,
+    },
+}
+
 /// Ce qu'on peut demander au tampon de texte.
 ///
 /// Toute modification et tout déplacement passent par là : l'ensemble de ce qui peut
 /// arriver au texte se lit d'un coup d'œil sur cette énumération (ADR-007).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AirTextAction {
-    /// Insère un caractère au curseur.
+    /// Insère un caractère au curseur, en remplaçant la sélection s'il y en a une.
     InsertCharacter(char),
-    /// Coupe la ligne au curseur.
+    /// Insère un texte au curseur, en remplaçant la sélection s'il y en a une.
+    ///
+    /// C'est par là que passent le collage encadré du terminal et le presse-papiers
+    /// interne : un collage n'est pas une suite de frappes, et le traiter comme telle
+    /// ferait avancer la génération une fois par caractère.
+    InsertText(String),
+    /// Coupe la ligne au curseur, en remplaçant la sélection s'il y en a une.
     InsertLineBreak,
-    /// Supprime la grappe qui précède le curseur, ou recolle la ligne précédente.
+    /// Supprime la sélection, ou la grappe qui précède le curseur, ou recolle la ligne
+    /// précédente.
     DeleteBackward,
-    /// Supprime la grappe qui suit le curseur, ou recolle la ligne suivante.
+    /// Supprime la sélection, ou la grappe qui suit le curseur, ou recolle la ligne
+    /// suivante.
     DeleteForward,
     /// Supprime la ligne courante entière.
     DeleteLine,
-    /// Recule d'une grappe, en passant à la ligne précédente s'il faut.
-    MoveLeft,
-    /// Avance d'une grappe, en passant à la ligne suivante s'il faut.
-    MoveRight,
-    /// Monte d'une ligne, à la colonne désirée.
-    MoveUp,
-    /// Descend d'une ligne, à la colonne désirée.
-    MoveDown,
-    /// Va au début de la ligne.
-    MoveToLineStart,
-    /// Va à la fin de la ligne.
-    MoveToLineEnd,
-    /// Va au début du mot précédent.
-    MoveToPreviousWord,
-    /// Va au début du mot suivant.
-    MoveToNextWord,
-    /// Va au tout début du texte.
-    MoveToDocumentStart,
-    /// Va à la toute fin du texte.
-    MoveToDocumentEnd,
-    /// Monte d'autant de lignes.
-    MoveUpByLines(usize),
-    /// Descend d'autant de lignes.
-    MoveDownByLines(usize),
-    /// Place le curseur à une position donnée, bornée au texte.
-    MoveTo(AirTextPosition),
-    /// Place le curseur sur une ligne, à une colonne **d'affichage**.
+    /// Déplace le curseur, en étendant ou en effaçant la sélection.
     ///
-    /// C'est ce qu'un clic produit : une souris donne une colonne, jamais un décalage en
-    /// octets. La résolution appartient au modèle, seul à connaître le texte de la ligne —
-    /// une vue qui la ferait aurait besoin de la ligne entière alors qu'elle n'en reflète
-    /// que la partie visible.
-    MoveToColumn {
-        /// L'indice de la ligne, borné au texte.
-        line: usize,
-        /// La colonne d'affichage, bornée à la fin de la ligne.
-        column: usize,
+    /// Voir [`AirTextAction::move_by`] et [`AirTextAction::select_by`], qui nomment les
+    /// deux valeurs du drapeau — un booléen anonyme au site d'appel ne dirait pas laquelle
+    /// étend.
+    Move {
+        /// Le déplacement demandé.
+        motion: AirTextMotion,
+        /// Vrai pour étendre la sélection depuis son ancre, faux pour l'effacer.
+        extend: bool,
     },
+    /// Sélectionne tout le texte, et porte le curseur à la fin.
+    SelectAll,
+    /// Abandonne la sélection sans toucher au texte ni au curseur.
+    ClearSelection,
+    /// Supprime le texte sélectionné, s'il y en a.
+    DeleteSelection,
     /// Remplace tout le contenu — c'est l'ouverture d'un fichier.
     Load(Vec<String>),
     /// Déclare le contenu enregistré.
     MarkSaved,
+}
+
+impl AirTextAction {
+    /// Un déplacement qui **efface** la sélection : une flèche nue.
+    #[must_use]
+    pub const fn move_by(motion: AirTextMotion) -> Self {
+        Self::Move {
+            motion,
+            extend: false,
+        }
+    }
+
+    /// Un déplacement qui **étend** la sélection : `Maj` et une flèche.
+    #[must_use]
+    pub const fn select_by(motion: AirTextMotion) -> Self {
+        Self::Move {
+            motion,
+            extend: true,
+        }
+    }
 }
 
 /// Ce que le tampon rapporte avoir changé.
@@ -153,12 +226,25 @@ pub struct AirTextBuffer {
     lines: Vec<String>,
     /// La position du curseur.
     cursor: AirTextPosition,
+    /// L'autre borne de la sélection, posée au début de celle-ci.
+    ///
+    /// La sélection est l'intervalle entre l'ancre et le curseur, dans l'ordre où ils se
+    /// trouvent. Garder l'ancre plutôt que deux bornes ordonnées est ce qui permet de
+    /// **revenir en arrière** : sélectionner trois caractères à droite puis remonter à
+    /// gauche doit réduire la sélection, pas en commencer une autre.
+    anchor: Option<AirTextPosition>,
     /// La colonne d'affichage que les déplacements verticaux cherchent à retrouver.
     desired_column: usize,
     /// La génération du contenu.
     text_generation: AirGeneration,
     /// La génération de la position du curseur.
     cursor_generation: AirGeneration,
+    /// La génération de la sélection.
+    ///
+    /// Distincte de celle du curseur : abandonner une sélection ne déplace pas le curseur,
+    /// et la vue doit pourtant repeindre. Les confondre laisserait une surbrillance à
+    /// l'écran après son abandon.
+    selection_generation: AirGeneration,
     /// Vrai si le contenu a changé depuis le dernier enregistrement.
     modified: bool,
 }
@@ -176,9 +262,11 @@ impl AirTextBuffer {
         Self {
             lines: vec![String::new()],
             cursor: AirTextPosition::default(),
+            anchor: None,
             desired_column: 0,
             text_generation: AirGeneration::new(),
             cursor_generation: AirGeneration::new(),
+            selection_generation: AirGeneration::new(),
             modified: false,
         }
     }
@@ -259,6 +347,67 @@ impl AirTextBuffer {
         self.cursor_generation
     }
 
+    /// La génération de la sélection.
+    #[must_use]
+    pub const fn selection_generation(&self) -> AirGeneration {
+        self.selection_generation
+    }
+
+    /// Les bornes de la sélection, **ordonnées**, ou `None` s'il n'y en a pas.
+    ///
+    /// Une sélection vide — l'ancre posée exactement sur le curseur — rend `None` : il n'y
+    /// a rien à peindre et rien à supprimer, et la distinguer obligerait chaque lecteur à
+    /// traiter un cas sans effet.
+    #[must_use]
+    pub fn selection(&self) -> Option<(AirTextPosition, AirTextPosition)> {
+        let anchor = self.anchor?;
+        if anchor == self.cursor {
+            return None;
+        }
+        if anchor <= self.cursor {
+            Some((anchor, self.cursor))
+        } else {
+            Some((self.cursor, anchor))
+        }
+    }
+
+    /// Vrai s'il y a une sélection non vide.
+    #[must_use]
+    pub fn has_selection(&self) -> bool {
+        self.selection().is_some()
+    }
+
+    /// Le texte sélectionné, ou `None` s'il n'y a pas de sélection.
+    ///
+    /// Les lignes sont jointes par un saut de ligne, comme [`AirTextBuffer::to_text`] :
+    /// c'est ce qu'un presse-papiers doit recevoir pour que le coller rende le découpage.
+    #[must_use]
+    pub fn selected_text(&self) -> Option<String> {
+        let (start, end) = self.selection()?;
+        if start.line == end.line {
+            let line = self.line(start.line)?;
+            return line.get(start.offset..end.offset).map(str::to_owned);
+        }
+        let mut collected = String::new();
+        if let Some(first) = self
+            .line(start.line)
+            .and_then(|line| line.get(start.offset..))
+        {
+            collected.push_str(first);
+        }
+        for index in start.line.saturating_add(1)..end.line {
+            collected.push('\n');
+            if let Some(line) = self.line(index) {
+                collected.push_str(line);
+            }
+        }
+        collected.push('\n');
+        if let Some(last) = self.line(end.line).and_then(|line| line.get(..end.offset)) {
+            collected.push_str(last);
+        }
+        Some(collected)
+    }
+
     /// Le texte entier, lignes jointes par un saut de ligne.
     ///
     /// C'est ce que l'enregistrement écrit. Aucun saut final n'est ajouté : ce qui a été
@@ -303,10 +452,94 @@ impl AirTextBuffer {
             lines
         };
         self.cursor = AirTextPosition::default();
+        self.anchor = None;
         self.desired_column = 0;
         self.text_generation.advance();
         self.cursor_generation.advance();
+        self.selection_generation.advance();
         self.modified = true;
+    }
+
+    /// Pose l'ancre sur le curseur si elle n'y est pas déjà.
+    fn begin_selection(&mut self) {
+        if self.anchor.is_none() {
+            self.anchor = Some(self.cursor);
+            self.selection_generation.advance();
+        }
+    }
+
+    /// Abandonne la sélection, et dit si quelque chose a changé.
+    fn clear_selection(&mut self) -> bool {
+        if self.anchor.take().is_some() {
+            self.selection_generation.advance();
+            return true;
+        }
+        false
+    }
+
+    /// Supprime le texte sélectionné et place le curseur à son début.
+    ///
+    /// Rend vrai si quelque chose a été supprimé. C'est l'opération qu'une frappe, un
+    /// collage et un retour arrière partagent : taper sur une sélection la remplace, et
+    /// trois chemins qui l'écriraient chacun finiraient par diverger.
+    fn delete_selection(&mut self, changes: &mut AirChangeSet<AirTextChange>) -> bool {
+        let Some((start, end)) = self.selection() else {
+            // Pas de sélection : il reste à abandonner une ancre posée mais vide.
+            self.clear_selection();
+            return false;
+        };
+        let tail = self
+            .line(end.line)
+            .and_then(|line| line.get(end.offset..))
+            .unwrap_or_default()
+            .to_owned();
+        if let Some(line) = self.lines.get_mut(start.line) {
+            line.truncate(start.offset);
+            line.push_str(&tail);
+        }
+        if end.line > start.line {
+            let removed = start.line.saturating_add(1)..=end.line;
+            self.lines.drain(removed);
+            changes.record_once(AirTextChange::LineCountChanged);
+        }
+        self.cursor = start;
+        self.clear_selection();
+        self.edited(changes);
+        self.moved(false);
+        true
+    }
+
+    /// Insère un texte au curseur, sauts de ligne compris.
+    fn insert_text(&mut self, inserted: &str, changes: &mut AirChangeSet<AirTextChange>) {
+        self.delete_selection(changes);
+        let offset = self.cursor.offset;
+        let index = self.cursor.line;
+        let Some(line) = self.lines.get_mut(index) else {
+            return;
+        };
+        if offset > line.len() || !line.is_char_boundary(offset) {
+            // Inatteignable : l'invariant du curseur l'interdit. Insérer quand même
+            // corromprait l'UTF-8, donc on refuse plutôt que de paniquer.
+            return;
+        }
+        let tail = line.split_off(offset);
+        let mut pieces = inserted.split('\n');
+        if let Some(first) = pieces.next() {
+            line.push_str(first);
+        }
+        let mut at = index;
+        for piece in pieces {
+            at = at.saturating_add(1);
+            self.lines.insert(at, piece.to_owned());
+            changes.record_once(AirTextChange::LineCountChanged);
+        }
+        let reached = self.line_length(at);
+        if let Some(line) = self.lines.get_mut(at) {
+            line.push_str(&tail);
+        }
+        self.cursor = AirTextPosition::new(at, reached);
+        self.edited(changes);
+        self.moved(false);
     }
 
     /// Note un déplacement du curseur et met la colonne désirée à jour.
@@ -550,52 +783,44 @@ impl AirTextBuffer {
     }
 }
 
-impl AirModel for AirTextBuffer {
-    type Action = AirTextAction;
-    type Change = AirTextChange;
-
-    fn apply(&mut self, action: Self::Action, changes: &mut AirChangeSet<Self::Change>) {
-        match action {
-            AirTextAction::InsertCharacter(character) => self.insert_character(character, changes),
-            AirTextAction::InsertLineBreak => self.insert_line_break(changes),
-            AirTextAction::DeleteBackward => self.delete_backward(changes),
-            AirTextAction::DeleteForward => self.delete_forward(changes),
-            AirTextAction::DeleteLine => self.delete_line(changes),
-            AirTextAction::MoveLeft => self.move_left(),
-            AirTextAction::MoveRight => self.move_right(),
-            AirTextAction::MoveUp => {
-                self.move_to_line(self.cursor.line.saturating_sub(1));
-            }
-            AirTextAction::MoveDown => {
-                self.move_to_line(self.cursor.line.saturating_add(1));
-            }
-            AirTextAction::MoveToLineStart => {
+impl AirTextBuffer {
+    /// Applique un déplacement, sans rien décider de la sélection.
+    ///
+    /// Séparée d'`apply` pour que les deux modes — étendre et effacer — partagent le même
+    /// code de déplacement : c'est la raison d'être d'[`AirTextMotion`].
+    fn apply_motion(&mut self, motion: AirTextMotion) {
+        match motion {
+            AirTextMotion::Left => self.move_left(),
+            AirTextMotion::Right => self.move_right(),
+            AirTextMotion::Up => self.move_to_line(self.cursor.line.saturating_sub(1)),
+            AirTextMotion::Down => self.move_to_line(self.cursor.line.saturating_add(1)),
+            AirTextMotion::LineStart => {
                 self.cursor.offset = 0;
                 self.moved(false);
             }
-            AirTextAction::MoveToLineEnd => {
+            AirTextMotion::LineEnd => {
                 self.cursor.offset = self.line_length(self.cursor.line);
                 self.moved(false);
             }
-            AirTextAction::MoveToPreviousWord => self.move_to_previous_word(),
-            AirTextAction::MoveToNextWord => self.move_to_next_word(),
-            AirTextAction::MoveToDocumentStart => {
+            AirTextMotion::PreviousWord => self.move_to_previous_word(),
+            AirTextMotion::NextWord => self.move_to_next_word(),
+            AirTextMotion::DocumentStart => {
                 self.cursor = AirTextPosition::default();
                 self.moved(false);
             }
-            AirTextAction::MoveToDocumentEnd => {
+            AirTextMotion::DocumentEnd => {
                 let line = self.last_line();
                 self.cursor = AirTextPosition::new(line, self.line_length(line));
                 self.moved(false);
             }
-            AirTextAction::MoveUpByLines(count) => {
+            AirTextMotion::UpByLines(count) => {
                 self.move_to_line(self.cursor.line.saturating_sub(count));
             }
-            AirTextAction::MoveDownByLines(count) => {
+            AirTextMotion::DownByLines(count) => {
                 self.move_to_line(self.cursor.line.saturating_add(count));
             }
-            AirTextAction::MoveTo(position) => self.move_to(position),
-            AirTextAction::MoveToColumn { line, column } => {
+            AirTextMotion::To(position) => self.move_to(position),
+            AirTextMotion::ToColumn { line, column } => {
                 let line = line.min(self.last_line());
                 let offset = match self.line(line) {
                     Some(text) => Self::offset_for_column(text, column),
@@ -603,6 +828,63 @@ impl AirModel for AirTextBuffer {
                 };
                 self.cursor = AirTextPosition::new(line, offset);
                 self.moved(false);
+            }
+        }
+    }
+}
+
+impl AirModel for AirTextBuffer {
+    type Action = AirTextAction;
+    type Change = AirTextChange;
+
+    fn apply(&mut self, action: Self::Action, changes: &mut AirChangeSet<Self::Change>) {
+        match action {
+            AirTextAction::InsertCharacter(character) => {
+                self.delete_selection(changes);
+                self.insert_character(character, changes);
+            }
+            AirTextAction::InsertText(inserted) => self.insert_text(&inserted, changes),
+            AirTextAction::InsertLineBreak => {
+                self.delete_selection(changes);
+                self.insert_line_break(changes);
+            }
+            AirTextAction::DeleteBackward => {
+                // Sur une sélection, le retour arrière la supprime **et s'arrête** : y
+                // ajouter la grappe précédente mangerait un caractère de plus que ce que
+                // l'utilisateur voyait surligné.
+                if !self.delete_selection(changes) {
+                    self.delete_backward(changes);
+                }
+            }
+            AirTextAction::DeleteForward => {
+                if !self.delete_selection(changes) {
+                    self.delete_forward(changes);
+                }
+            }
+            AirTextAction::DeleteLine => {
+                self.clear_selection();
+                self.delete_line(changes);
+            }
+            AirTextAction::Move { motion, extend } => {
+                if extend {
+                    self.begin_selection();
+                } else {
+                    self.clear_selection();
+                }
+                self.apply_motion(motion);
+            }
+            AirTextAction::SelectAll => {
+                self.anchor = Some(AirTextPosition::default());
+                let line = self.last_line();
+                self.cursor = AirTextPosition::new(line, self.line_length(line));
+                self.selection_generation.advance();
+                self.moved(false);
+            }
+            AirTextAction::ClearSelection => {
+                self.clear_selection();
+            }
+            AirTextAction::DeleteSelection => {
+                self.delete_selection(changes);
             }
             AirTextAction::Load(lines) => {
                 self.replace_lines(lines);
@@ -623,7 +905,7 @@ impl AirModel for AirTextBuffer {
 
 #[cfg(test)]
 mod tests {
-    use super::{AirTextAction, AirTextBuffer, AirTextChange, AirTextPosition};
+    use super::{AirTextAction, AirTextBuffer, AirTextChange, AirTextMotion, AirTextPosition};
     use crate::model::{AirChangeSet, AirModel};
 
     /// Applique une suite d'actions et rend le journal.
@@ -710,7 +992,10 @@ mod tests {
         // se redessine pas parce que le curseur a bougé.
         let mut buffer = AirTextBuffer::from_text("abc");
         let text = buffer.text_generation();
-        apply_all(&mut buffer, vec![AirTextAction::MoveRight]);
+        apply_all(
+            &mut buffer,
+            vec![AirTextAction::move_by(AirTextMotion::Right)],
+        );
         assert_eq!(buffer.text_generation(), text);
         assert_eq!(buffer.cursor(), AirTextPosition::new(0, 1));
     }
@@ -721,7 +1006,10 @@ mod tests {
         let mut buffer = AirTextBuffer::from_text("cafe\u{301}");
         apply_all(
             &mut buffer,
-            vec![AirTextAction::MoveToLineEnd, AirTextAction::DeleteBackward],
+            vec![
+                AirTextAction::move_by(AirTextMotion::LineEnd),
+                AirTextAction::DeleteBackward,
+            ],
         );
         assert_eq!(buffer.line(0), Some("caf"));
     }
@@ -739,8 +1027,8 @@ mod tests {
         let changes = apply_all(
             &mut buffer,
             vec![
-                AirTextAction::MoveRight,
-                AirTextAction::MoveRight,
+                AirTextAction::move_by(AirTextMotion::Right),
+                AirTextAction::move_by(AirTextMotion::Right),
                 AirTextAction::InsertLineBreak,
             ],
         );
@@ -754,7 +1042,10 @@ mod tests {
         let mut buffer = AirTextBuffer::from_text("ab\ncd");
         let changes = apply_all(
             &mut buffer,
-            vec![AirTextAction::MoveDown, AirTextAction::DeleteBackward],
+            vec![
+                AirTextAction::move_by(AirTextMotion::Down),
+                AirTextAction::DeleteBackward,
+            ],
         );
         assert_eq!(buffer.lines(), ["abcd"]);
         // Le curseur est à la soudure, pas au début.
@@ -767,7 +1058,10 @@ mod tests {
         let mut buffer = AirTextBuffer::from_text("ab\ncd");
         apply_all(
             &mut buffer,
-            vec![AirTextAction::MoveToLineEnd, AirTextAction::DeleteForward],
+            vec![
+                AirTextAction::move_by(AirTextMotion::LineEnd),
+                AirTextAction::DeleteForward,
+            ],
         );
         assert_eq!(buffer.lines(), ["abcd"]);
         assert_eq!(buffer.cursor(), AirTextPosition::new(0, 2));
@@ -788,7 +1082,7 @@ mod tests {
         apply_all(
             &mut buffer,
             vec![
-                AirTextAction::MoveToDocumentEnd,
+                AirTextAction::move_by(AirTextMotion::DocumentEnd),
                 AirTextAction::DeleteForward,
             ],
         );
@@ -801,7 +1095,10 @@ mod tests {
         let mut buffer = AirTextBuffer::from_text("une\ndeux\ntrois");
         let changes = apply_all(
             &mut buffer,
-            vec![AirTextAction::MoveDown, AirTextAction::DeleteLine],
+            vec![
+                AirTextAction::move_by(AirTextMotion::Down),
+                AirTextAction::DeleteLine,
+            ],
         );
         assert_eq!(buffer.lines(), ["une", "trois"]);
         assert_eq!(buffer.cursor(), AirTextPosition::new(1, 0));
@@ -829,7 +1126,10 @@ mod tests {
         let mut buffer = AirTextBuffer::from_text("une\ndeux");
         apply_all(
             &mut buffer,
-            vec![AirTextAction::MoveToDocumentEnd, AirTextAction::DeleteLine],
+            vec![
+                AirTextAction::move_by(AirTextMotion::DocumentEnd),
+                AirTextAction::DeleteLine,
+            ],
         );
         assert_eq!(buffer.lines(), ["une"]);
         assert_eq!(buffer.cursor(), AirTextPosition::new(0, 0));
@@ -838,8 +1138,14 @@ mod tests {
     #[test]
     fn la_fleche_gauche_remonte_a_la_fin_de_la_ligne_precedente() {
         let mut buffer = AirTextBuffer::from_text("abc\nd");
-        apply_all(&mut buffer, vec![AirTextAction::MoveDown]);
-        apply_all(&mut buffer, vec![AirTextAction::MoveLeft]);
+        apply_all(
+            &mut buffer,
+            vec![AirTextAction::move_by(AirTextMotion::Down)],
+        );
+        apply_all(
+            &mut buffer,
+            vec![AirTextAction::move_by(AirTextMotion::Left)],
+        );
         assert_eq!(buffer.cursor(), AirTextPosition::new(0, 3));
     }
 
@@ -848,7 +1154,10 @@ mod tests {
         let mut buffer = AirTextBuffer::from_text("a\nb");
         apply_all(
             &mut buffer,
-            vec![AirTextAction::MoveToLineEnd, AirTextAction::MoveRight],
+            vec![
+                AirTextAction::move_by(AirTextMotion::LineEnd),
+                AirTextAction::move_by(AirTextMotion::Right),
+            ],
         );
         assert_eq!(buffer.cursor(), AirTextPosition::new(1, 0));
     }
@@ -856,11 +1165,17 @@ mod tests {
     #[test]
     fn les_fleches_aux_bords_du_texte_ne_font_rien() {
         let mut buffer = AirTextBuffer::from_text("a");
-        apply_all(&mut buffer, vec![AirTextAction::MoveLeft]);
+        apply_all(
+            &mut buffer,
+            vec![AirTextAction::move_by(AirTextMotion::Left)],
+        );
         assert_eq!(buffer.cursor(), AirTextPosition::new(0, 0));
         apply_all(
             &mut buffer,
-            vec![AirTextAction::MoveToDocumentEnd, AirTextAction::MoveRight],
+            vec![
+                AirTextAction::move_by(AirTextMotion::DocumentEnd),
+                AirTextAction::move_by(AirTextMotion::Right),
+            ],
         );
         assert_eq!(buffer.cursor(), AirTextPosition::new(0, 1));
     }
@@ -873,9 +1188,9 @@ mod tests {
         apply_all(
             &mut buffer,
             vec![
-                AirTextAction::MoveToLineEnd,
-                AirTextAction::MoveDown,
-                AirTextAction::MoveDown,
+                AirTextAction::move_by(AirTextMotion::LineEnd),
+                AirTextAction::move_by(AirTextMotion::Down),
+                AirTextAction::move_by(AirTextMotion::Down),
             ],
         );
         assert_eq!(buffer.cursor(), AirTextPosition::new(2, 6));
@@ -887,11 +1202,11 @@ mod tests {
         apply_all(
             &mut buffer,
             vec![
-                AirTextAction::MoveToLineEnd,
-                AirTextAction::MoveDown,
+                AirTextAction::move_by(AirTextMotion::LineEnd),
+                AirTextAction::move_by(AirTextMotion::Down),
                 // La ligne du bas est courte : le curseur s'arrête à sa fin.
-                AirTextAction::MoveLeft,
-                AirTextAction::MoveUp,
+                AirTextAction::move_by(AirTextMotion::Left),
+                AirTextAction::move_by(AirTextMotion::Up),
             ],
         );
         // La colonne désirée est devenue 1, pas 6.
@@ -904,7 +1219,10 @@ mod tests {
         let mut buffer = AirTextBuffer::from_text("\u{6F22}ab\nxyz");
         apply_all(
             &mut buffer,
-            vec![AirTextAction::MoveRight, AirTextAction::MoveDown],
+            vec![
+                AirTextAction::move_by(AirTextMotion::Right),
+                AirTextAction::move_by(AirTextMotion::Down),
+            ],
         );
         assert_eq!(buffer.cursor_column(), 2);
         assert_eq!(buffer.cursor(), AirTextPosition::new(1, 2));
@@ -913,20 +1231,35 @@ mod tests {
     #[test]
     fn les_deplacements_par_page_bornent_au_texte() {
         let mut buffer = AirTextBuffer::from_text("une\ndeux\ntrois");
-        apply_all(&mut buffer, vec![AirTextAction::MoveDownByLines(100)]);
+        apply_all(
+            &mut buffer,
+            vec![AirTextAction::move_by(AirTextMotion::DownByLines(100))],
+        );
         assert_eq!(buffer.cursor().line, 2);
-        apply_all(&mut buffer, vec![AirTextAction::MoveUpByLines(100)]);
+        apply_all(
+            &mut buffer,
+            vec![AirTextAction::move_by(AirTextMotion::UpByLines(100))],
+        );
         assert_eq!(buffer.cursor().line, 0);
     }
 
     #[test]
     fn le_deplacement_par_mot_suit_l_annexe_29() {
         let mut buffer = AirTextBuffer::from_text("le chat, noir");
-        apply_all(&mut buffer, vec![AirTextAction::MoveToNextWord]);
+        apply_all(
+            &mut buffer,
+            vec![AirTextAction::move_by(AirTextMotion::NextWord)],
+        );
         assert_eq!(buffer.cursor().offset, 3);
-        apply_all(&mut buffer, vec![AirTextAction::MoveToNextWord]);
+        apply_all(
+            &mut buffer,
+            vec![AirTextAction::move_by(AirTextMotion::NextWord)],
+        );
         assert_eq!(buffer.cursor().offset, 9);
-        apply_all(&mut buffer, vec![AirTextAction::MoveToPreviousWord]);
+        apply_all(
+            &mut buffer,
+            vec![AirTextAction::move_by(AirTextMotion::PreviousWord)],
+        );
         assert_eq!(buffer.cursor().offset, 3);
     }
 
@@ -935,7 +1268,10 @@ mod tests {
         let mut buffer = AirTextBuffer::from_text("un\ndeux");
         apply_all(
             &mut buffer,
-            vec![AirTextAction::MoveToLineEnd, AirTextAction::MoveToNextWord],
+            vec![
+                AirTextAction::move_by(AirTextMotion::LineEnd),
+                AirTextAction::move_by(AirTextMotion::NextWord),
+            ],
         );
         assert_eq!(buffer.cursor(), AirTextPosition::new(1, 0));
     }
@@ -945,7 +1281,10 @@ mod tests {
         let mut buffer = AirTextBuffer::from_text("un\ndeux");
         apply_all(
             &mut buffer,
-            vec![AirTextAction::MoveDown, AirTextAction::MoveToPreviousWord],
+            vec![
+                AirTextAction::move_by(AirTextMotion::Down),
+                AirTextAction::move_by(AirTextMotion::PreviousWord),
+            ],
         );
         assert_eq!(buffer.cursor(), AirTextPosition::new(0, 2));
     }
@@ -953,13 +1292,16 @@ mod tests {
     #[test]
     fn le_mot_aux_bords_du_texte_ne_bouge_pas() {
         let mut buffer = AirTextBuffer::from_text("un");
-        apply_all(&mut buffer, vec![AirTextAction::MoveToPreviousWord]);
+        apply_all(
+            &mut buffer,
+            vec![AirTextAction::move_by(AirTextMotion::PreviousWord)],
+        );
         assert_eq!(buffer.cursor(), AirTextPosition::new(0, 0));
         apply_all(
             &mut buffer,
             vec![
-                AirTextAction::MoveToDocumentEnd,
-                AirTextAction::MoveToNextWord,
+                AirTextAction::move_by(AirTextMotion::DocumentEnd),
+                AirTextAction::move_by(AirTextMotion::NextWord),
             ],
         );
         assert_eq!(buffer.cursor(), AirTextPosition::new(0, 2));
@@ -972,7 +1314,9 @@ mod tests {
         let mut buffer = AirTextBuffer::from_text("e\u{301}a");
         apply_all(
             &mut buffer,
-            vec![AirTextAction::MoveTo(AirTextPosition::new(0, 2))],
+            vec![AirTextAction::move_by(AirTextMotion::To(
+                AirTextPosition::new(0, 2),
+            ))],
         );
         assert_eq!(buffer.cursor(), AirTextPosition::new(0, 0));
     }
@@ -983,7 +1327,10 @@ mod tests {
         let mut buffer = AirTextBuffer::from_text("x\n\u{6F22}ab");
         apply_all(
             &mut buffer,
-            vec![AirTextAction::MoveToColumn { line: 1, column: 2 }],
+            vec![AirTextAction::move_by(AirTextMotion::ToColumn {
+                line: 1,
+                column: 2,
+            })],
         );
         assert_eq!(buffer.cursor(), AirTextPosition::new(1, 3));
     }
@@ -993,10 +1340,10 @@ mod tests {
         let mut buffer = AirTextBuffer::from_text("ab");
         apply_all(
             &mut buffer,
-            vec![AirTextAction::MoveToColumn {
+            vec![AirTextAction::move_by(AirTextMotion::ToColumn {
                 line: 99,
                 column: 99,
-            }],
+            })],
         );
         assert_eq!(buffer.cursor(), AirTextPosition::new(0, 2));
     }
@@ -1006,7 +1353,9 @@ mod tests {
         let mut buffer = AirTextBuffer::from_text("ab\ncd");
         apply_all(
             &mut buffer,
-            vec![AirTextAction::MoveTo(AirTextPosition::new(99, 99))],
+            vec![AirTextAction::move_by(AirTextMotion::To(
+                AirTextPosition::new(99, 99),
+            ))],
         );
         assert_eq!(buffer.cursor(), AirTextPosition::new(1, 2));
     }
@@ -1051,7 +1400,10 @@ mod tests {
     #[test]
     fn la_colonne_du_curseur_compte_les_colonnes_et_non_les_octets() {
         let mut buffer = AirTextBuffer::from_text("\u{6F22}a");
-        apply_all(&mut buffer, vec![AirTextAction::MoveToLineEnd]);
+        apply_all(
+            &mut buffer,
+            vec![AirTextAction::move_by(AirTextMotion::LineEnd)],
+        );
         // Trois octets pour l'idéogramme, deux colonnes, plus une pour le `a`.
         assert_eq!(buffer.cursor().offset, 4);
         assert_eq!(buffer.cursor_column(), 3);
@@ -1063,5 +1415,267 @@ mod tests {
         let copy = buffer.clone();
         type_text(&mut buffer, "c");
         assert_eq!(copy.line(0), Some("ab"));
+    }
+
+    // ------------------------------------------------------- la sélection
+
+    /// Sélectionne vers la droite d'autant de grappes, depuis la position courante.
+    fn select_right(buffer: &mut AirTextBuffer, count: usize) {
+        apply_all(
+            buffer,
+            (0..count)
+                .map(|_| AirTextAction::select_by(AirTextMotion::Right))
+                .collect(),
+        );
+    }
+
+    #[test]
+    fn une_fleche_nue_n_ouvre_pas_de_selection() {
+        let mut buffer = AirTextBuffer::from_text("abcd");
+        apply_all(
+            &mut buffer,
+            vec![AirTextAction::move_by(AirTextMotion::Right)],
+        );
+        assert_eq!(buffer.selection(), None);
+        assert!(!buffer.has_selection());
+        assert_eq!(buffer.selected_text(), None);
+    }
+
+    #[test]
+    fn maj_et_une_fleche_ouvrent_une_selection() {
+        let mut buffer = AirTextBuffer::from_text("abcd");
+        select_right(&mut buffer, 2);
+        assert_eq!(
+            buffer.selection(),
+            Some((AirTextPosition::new(0, 0), AirTextPosition::new(0, 2)))
+        );
+        assert_eq!(buffer.selected_text().as_deref(), Some("ab"));
+    }
+
+    #[test]
+    fn revenir_en_arriere_reduit_la_selection() {
+        // C'est la raison d'être de l'ancre : garder deux bornes déjà ordonnées ferait
+        // repartir une sélection au lieu de la réduire.
+        let mut buffer = AirTextBuffer::from_text("abcd");
+        select_right(&mut buffer, 3);
+        apply_all(
+            &mut buffer,
+            vec![AirTextAction::select_by(AirTextMotion::Left)],
+        );
+        assert_eq!(buffer.selected_text().as_deref(), Some("ab"));
+    }
+
+    #[test]
+    fn une_selection_vide_ne_compte_pas() {
+        // Aller à droite puis revenir ramène le curseur sur l'ancre : il n'y a rien à
+        // peindre, et l'exposer obligerait chaque lecteur à traiter un cas sans effet.
+        let mut buffer = AirTextBuffer::from_text("abcd");
+        select_right(&mut buffer, 1);
+        apply_all(
+            &mut buffer,
+            vec![AirTextAction::select_by(AirTextMotion::Left)],
+        );
+        assert_eq!(buffer.selection(), None);
+    }
+
+    #[test]
+    fn une_selection_vers_la_gauche_rend_des_bornes_ordonnees() {
+        let mut buffer = AirTextBuffer::from_text("abcd");
+        apply_all(
+            &mut buffer,
+            vec![
+                AirTextAction::move_by(AirTextMotion::LineEnd),
+                AirTextAction::select_by(AirTextMotion::Left),
+                AirTextAction::select_by(AirTextMotion::Left),
+            ],
+        );
+        assert_eq!(
+            buffer.selection(),
+            Some((AirTextPosition::new(0, 2), AirTextPosition::new(0, 4)))
+        );
+        assert_eq!(buffer.selected_text().as_deref(), Some("cd"));
+    }
+
+    #[test]
+    fn une_selection_sur_plusieurs_lignes_porte_les_sauts_de_ligne() {
+        let mut buffer = AirTextBuffer::from_text("une\ndeux\ntrois");
+        apply_all(
+            &mut buffer,
+            vec![
+                AirTextAction::move_by(AirTextMotion::Right),
+                AirTextAction::select_by(AirTextMotion::Down),
+                AirTextAction::select_by(AirTextMotion::Down),
+            ],
+        );
+        assert_eq!(buffer.selected_text().as_deref(), Some("ne\ndeux\nt"));
+    }
+
+    #[test]
+    fn un_deplacement_nu_efface_la_selection() {
+        let mut buffer = AirTextBuffer::from_text("abcd");
+        select_right(&mut buffer, 2);
+        apply_all(
+            &mut buffer,
+            vec![AirTextAction::move_by(AirTextMotion::Right)],
+        );
+        assert_eq!(buffer.selection(), None);
+    }
+
+    #[test]
+    fn taper_sur_une_selection_la_remplace() {
+        let mut buffer = AirTextBuffer::from_text("abcd");
+        select_right(&mut buffer, 2);
+        type_text(&mut buffer, "X");
+        assert_eq!(buffer.line(0), Some("Xcd"));
+        assert_eq!(buffer.cursor(), AirTextPosition::new(0, 1));
+        assert_eq!(buffer.selection(), None);
+    }
+
+    #[test]
+    fn le_retour_arriere_sur_une_selection_ne_mange_rien_de_plus() {
+        // Le piège : supprimer la sélection **puis** la grappe précédente retirerait un
+        // caractère que l'utilisateur ne voyait pas surligné.
+        let mut buffer = AirTextBuffer::from_text("abcd");
+        apply_all(
+            &mut buffer,
+            vec![
+                AirTextAction::move_by(AirTextMotion::Right),
+                AirTextAction::select_by(AirTextMotion::Right),
+                AirTextAction::DeleteBackward,
+            ],
+        );
+        assert_eq!(buffer.line(0), Some("acd"));
+        assert_eq!(buffer.cursor(), AirTextPosition::new(0, 1));
+    }
+
+    #[test]
+    fn la_touche_supprime_sur_une_selection_la_supprime() {
+        let mut buffer = AirTextBuffer::from_text("abcd");
+        select_right(&mut buffer, 2);
+        apply_all(&mut buffer, vec![AirTextAction::DeleteForward]);
+        assert_eq!(buffer.line(0), Some("cd"));
+    }
+
+    #[test]
+    fn supprimer_une_selection_de_plusieurs_lignes_recolle_les_bords() {
+        let mut buffer = AirTextBuffer::from_text("une\ndeux\ntrois");
+        apply_all(
+            &mut buffer,
+            vec![
+                AirTextAction::move_by(AirTextMotion::Right),
+                AirTextAction::select_by(AirTextMotion::Down),
+                AirTextAction::select_by(AirTextMotion::Down),
+            ],
+        );
+        let changes = apply_all(&mut buffer, vec![AirTextAction::DeleteSelection]);
+        assert_eq!(buffer.lines(), ["urois"]);
+        assert_eq!(buffer.line_count(), 1);
+        assert!(changes.contains(&AirTextChange::LineCountChanged));
+        assert_eq!(buffer.cursor(), AirTextPosition::new(0, 1));
+    }
+
+    #[test]
+    fn tout_selectionner_porte_le_curseur_a_la_fin() {
+        let mut buffer = AirTextBuffer::from_text("ab\ncd");
+        apply_all(&mut buffer, vec![AirTextAction::SelectAll]);
+        assert_eq!(buffer.selected_text().as_deref(), Some("ab\ncd"));
+        assert_eq!(buffer.cursor(), AirTextPosition::new(1, 2));
+    }
+
+    #[test]
+    fn abandonner_la_selection_ne_deplace_pas_le_curseur() {
+        let mut buffer = AirTextBuffer::from_text("abcd");
+        select_right(&mut buffer, 2);
+        let before = buffer.cursor();
+        let generation = buffer.selection_generation();
+        apply_all(&mut buffer, vec![AirTextAction::ClearSelection]);
+        assert_eq!(buffer.cursor(), before);
+        assert_eq!(buffer.selection(), None);
+        assert_ne!(
+            buffer.selection_generation().value(),
+            generation.value(),
+            "la vue ne saurait pas qu'il faut effacer la surbrillance"
+        );
+    }
+
+    #[test]
+    fn abandonner_une_selection_absente_ne_fait_rien_avancer() {
+        let mut buffer = AirTextBuffer::from_text("abcd");
+        let generation = buffer.selection_generation();
+        apply_all(&mut buffer, vec![AirTextAction::ClearSelection]);
+        assert_eq!(buffer.selection_generation().value(), generation.value());
+    }
+
+    #[test]
+    fn charger_un_contenu_abandonne_la_selection() {
+        let mut buffer = AirTextBuffer::from_text("abcd");
+        select_right(&mut buffer, 2);
+        apply_all(
+            &mut buffer,
+            vec![AirTextAction::Load(vec!["neuf".to_owned()])],
+        );
+        assert_eq!(buffer.selection(), None);
+    }
+
+    // ------------------------------------------------ l'insertion de texte
+
+    #[test]
+    fn un_texte_insere_porte_ses_sauts_de_ligne() {
+        let mut buffer = AirTextBuffer::from_text("ad");
+        apply_all(
+            &mut buffer,
+            vec![
+                AirTextAction::move_by(AirTextMotion::Right),
+                AirTextAction::InsertText("b\nc".to_owned()),
+            ],
+        );
+        assert_eq!(buffer.lines(), ["ab", "cd"]);
+        assert_eq!(buffer.cursor(), AirTextPosition::new(1, 1));
+    }
+
+    #[test]
+    fn un_texte_insere_sans_saut_reste_sur_la_ligne() {
+        let mut buffer = AirTextBuffer::from_text("ad");
+        apply_all(
+            &mut buffer,
+            vec![
+                AirTextAction::move_by(AirTextMotion::Right),
+                AirTextAction::InsertText("bc".to_owned()),
+            ],
+        );
+        assert_eq!(buffer.lines(), ["abcd"]);
+        assert_eq!(buffer.cursor(), AirTextPosition::new(0, 3));
+    }
+
+    #[test]
+    fn un_texte_insere_remplace_la_selection() {
+        let mut buffer = AirTextBuffer::from_text("abcd");
+        select_right(&mut buffer, 2);
+        apply_all(
+            &mut buffer,
+            vec![AirTextAction::InsertText("XY".to_owned())],
+        );
+        assert_eq!(buffer.lines(), ["XYcd"]);
+        assert_eq!(buffer.selection(), None);
+    }
+
+    #[test]
+    fn un_texte_insere_fait_avancer_la_generation_une_seule_fois() {
+        // Un collage n'est pas une suite de frappes : le traiter comme telle ferait
+        // repousser le reflet une fois par caractère.
+        let mut buffer = AirTextBuffer::new();
+        let before = buffer.text_generation().value();
+        apply_all(
+            &mut buffer,
+            vec![AirTextAction::InsertText("abcdef".to_owned())],
+        );
+        assert_eq!(buffer.text_generation().value(), before.saturating_add(1));
+    }
+
+    #[test]
+    fn un_texte_vide_insere_ne_change_rien_au_contenu() {
+        let mut buffer = AirTextBuffer::from_text("ab");
+        apply_all(&mut buffer, vec![AirTextAction::InsertText(String::new())]);
+        assert_eq!(buffer.lines(), ["ab"]);
     }
 }

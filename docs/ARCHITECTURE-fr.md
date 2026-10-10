@@ -359,7 +359,7 @@ le modèle consigne ce qui a changé et ne notifie personne. Conséquence direct
 | Mécanisme | Ce qu'il porte, dans `redit` |
 |---|---|
 | `AirChangeSet` | le fichier chargé, le nombre de lignes, le drapeau de modification |
-| `AirGeneration` | le texte et le curseur — deux compteurs, comparés en O(1) à chaque tour |
+| `AirGeneration` | le texte, le curseur et la sélection — trois compteurs, comparés en O(1) à chaque tour |
 | `AirCommandSet` au dessin | « Enregistrer » grisé sur un document intact, menu **et** barre de statut |
 | `AirViewId` | le contrôleur retrouve sa vue d'édition et ses deux ascenseurs (ADR-013) |
 
@@ -379,6 +379,25 @@ Deux conséquences qui valent le détour : le **défilement appartient à la vue
 vues du même tampon défilent séparément ; et ce que la vue reflète est borné par la
 dimension de la fenêtre, pas par la longueur des lignes — une ligne d'un mégaoctet ne coûte
 que ses colonnes visibles.
+
+### La sélection éprouve ce découpage — jalon M7d
+
+La sélection est **dans le tampon**, parce que le texte y est. Mais ce que la vue doit
+peindre, c'est un intervalle de **colonnes**, et les bornes sont des décalages en octets :
+les convertir demande le début de la ligne, que le reflet ne garde pas. La conversion se
+fait donc au moment du reflet, seul instant où la vue voit le tampon — exactement la place
+que l'ADR-007 lui réserve. Une vue qui aurait gardé une référence vers le tampon n'aurait
+pas eu à se poser la question, et aurait reconverti à chaque dessin.
+
+Le presse-papiers, lui, n'est **ni dans le modèle ni dans la vue** : il est partagé entre
+les deux widgets éditables, donc il appartient au contrôleur. Les vues le **demandent** par
+trois commandes — `COPY`, `CUT`, `PASTE` — sans jamais le toucher, comme un ascenseur
+demande une position sans rien défiler. Un widget qui copierait lui-même aurait besoin d'une
+référence mutable vers un état qu'il ne possède pas.
+
+Le champ de saisie fait exception, et c'est assumé : il tient sa sélection lui-même, parce
+qu'il tient déjà son texte. Lui donner un modèle pour une ligne serait payer l'ADR-007 sans
+rien en retirer.
 
 ### L'application n'en tient pas plus
 

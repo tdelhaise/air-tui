@@ -6,6 +6,88 @@ tête. On ajoute, on ne réécrit jamais une entrée passée.
 Une entrée par campagne, pas par commit. Répartition des rôles : `etat-avancement.md` est
 l'état vivant, ce journal est la trace figée, `INDEX.md` est la carte structurelle.
 
+## 2026-10-10 — Jalon M7d : la sélection de texte, et le presse-papiers
+
+- **Le plus gros chantier de la liste, et c'est l'ADR-007 qui en sort renforcé.** La
+  sélection posait trois questions de placement, et le découpage MVC les a tranchées sans
+  qu'il faille l'amender. Où vit la sélection ? Dans le modèle, parce que le texte y est.
+  Mais ce que la vue dessine est un intervalle de **colonnes**, quand les bornes sont des
+  décalages en octets : la conversion demande le début de la ligne, que le reflet ne garde
+  pas. Elle se fait donc à l'étape 3, au moment où le contrôleur pousse le reflet — seul
+  instant où la vue voit le modèle. **La contrainte a désigné la place ; il n'a pas fallu
+  la choisir.**
+- **Une ancre, et non deux bornes ordonnées.** C'est la décision qui porte tout le reste.
+  La sélection est l'intervalle entre l'ancre et le curseur, *dans l'ordre où ils se
+  trouvent*. Deux bornes déjà triées feraient perdre le sens du geste : sélectionner trois
+  caractères vers la droite puis remonter vers la gauche doit **réduire** la sélection, pas
+  en commencer une autre. Un essai le dit dans chacun des deux widgets.
+- **Les quatorze `Move*` sont devenues une seule variante**, `Move { motion, extend }`, avec
+  `AirTextMotion` pour le déplacement et deux constructeurs qui nomment les deux valeurs du
+  drapeau : `move_by` efface la sélection, `select_by` l'étend. Le raisonnement vient
+  directement de M7c : décliner `MoveLeft` et `SelectLeft` aurait obligé à ajouter chaque
+  déplacement futur à deux endroits, et une règle écrite deux fois finit par ne plus l'être
+  qu'une. C'est une rupture d'API, et elle est assumée en `y`.
+- **La transcription des couleurs a validé l'existant, ce qui ne s'était jamais produit.**
+  `cpEditor "\x06\x07"` donne `cpBlueWindow[6]` et `[7]`, soit `cpAppColor[13]` et `[14]` ;
+  `tvdemo2.cpp` nomme 13 « Normal text » et 14 « Highlighted text ». Or `cpAppColor[13]` est
+  déjà `AirRole::WindowText`, transcrit au jalon M5 : **le texte non sélectionné de
+  l'éditeur n'a pas besoin d'un rôle propre, et la vue peignait juste depuis le début** —
+  sans qu'on sache pourquoi. Deux rôles attendus, un seul nécessaire.
+- **Le presse-papiers n'est ni au modèle ni à la vue.** Il est partagé entre les deux
+  widgets éditables, donc il appartient au contrôleur. Les vues le **demandent** par trois
+  commandes — `COPY`, `CUT`, `PASTE` — sans jamais le toucher, exactement comme un
+  ascenseur demande une position sans rien défiler. C'est la deuxième fois que ce motif
+  s'impose de lui-même, et il n'a pas été cherché. `AirClipboard` refuse un texte vide :
+  couper une sélection vide ne doit pas détruire une copie que l'utilisateur croyait sûre.
+- **Le collage encadré était décodé depuis M1 et jeté depuis M1.** `AirInputEvent::Paste`
+  existait, aucun widget ne le lisait : la séquence était reconnue, puis perdue. C'est le
+  même genre de trou que M7c venait de trouver dans le type d'événement — une capacité
+  décodée dont personne n'avait écrit le consommateur, et que rien ne signalait. Les deux
+  widgets éditables le traitent désormais par la même action `InsertText` que le
+  presse-papiers interne, parce qu'un collage n'est pas une suite de frappes : le traiter
+  comme telle ferait avancer la génération une fois par caractère.
+- **Un troisième compteur de génération, et la raison vaut d'être retenue.** Abandonner une
+  sélection ne déplace pas le curseur, et la vue doit pourtant repeindre. Réutiliser la
+  génération du curseur aurait laissé une **surbrillance orpheline** à l'écran. Un compteur
+  par chose qui peut changer seule — la règle se vérifie en essayant de la violer, et
+  l'essai qui l'éprouve passe par l'abandon explicite de la sélection.
+- **Le piège de la vérification, repris de M7b et payant.** Le surlignage se vérifie sur les
+  **couleurs** de la surface rendue, jamais sur les caractères : un essai qui ne regarderait
+  que le texte passerait alors que rien n'est surligné. Les deux widgets ont donc une aide
+  d'essai qui rend les fonds de chaque colonne.
+- **Quatre attendus faux, le code juste à chaque fois.** Le surlignage après défilement
+  horizontal — la fenêtre montre les colonnes 5 à 8, donc le `gh` sélectionné tombe en
+  positions 1 et 2, pas 2 et 3. Coller juste après avoir copié : la sélection est encore là,
+  donc le collage la **remplace** au lieu de la dupliquer — comportement correct, et l'essai
+  a été scindé en deux, « coller sur une sélection la remplace » et « copier puis coller
+  hors sélection duplique », chacun disant ce qu'il vérifie. Et le premier essai en
+  pseudo-terminal rendait `aabbZ` là où j'attendais `ababZ` : après deux `Maj`+Gauche le
+  curseur est **à gauche** de la sélection, donc le collage tombe au milieu. Le scénario
+  était mal pensé ; refait avec `Fin`, il rend `abZab`. Un attendu écrit de mémoire se
+  trompe là où le code raisonne.
+- **Le champ de saisie fait exception, et c'est écrit comme tel.** Il tient sa sélection
+  lui-même, parce qu'il tient déjà son texte : lui donner un modèle pour une ligne serait
+  payer l'ADR-007 sans rien en retirer. La frontière n'est pas « tout widget a un modèle »,
+  elle est « ce qui est partagé ou persistant a un modèle ».
+- **Mesuré, pas supposé** : neuf skins importables sur les trente-neuf livrés avec `mc`, un
+  de moins qu'à M7b. Le perdu est `gotar.ini`, et pour une raison **nouvelle au décompte** —
+  non pas un attribut que la palette ne porte pas, mais une clef purement **absente**,
+  `[core] inputmark`. Les refus se répartissent désormais en vingt attributs, neuf couleurs
+  « default » et une clef manquante. L'amorçage de l'artefact à la main et sa régénération
+  par l'outil ont donné les mêmes valeurs, ce qui vérifie la table autant que l'artefact.
+- **Ce qui reste, et qui est maintenant le dernier geste manquant** : le double clic. Il
+  sélectionnerait un mot, `unicode` sait découper les mots depuis M6, et tout est là **sauf
+  l'horloge**. Le décodeur la refuse parce qu'il est pur ; la boucle d'application en a une.
+  C'est une décision de placement, pas un développement, et elle n'est pas prise.
+- **Vérifications** : `fmt`, `clippy -D warnings`, **1124 essais** (soixante de plus),
+  `deny check`, `check-naming`, `check-versions`, `check-codec-coverage` — 7 codecs à
+  100 % —, `import-mc-skin --check`. Essais en pseudo-terminal avec leur contrôle, dont un
+  nouveau qui sélectionne par `Maj`+Gauche, copie par `Ctrl`+`C` et colle par `Ctrl`+`V` :
+  le fichier enregistré porte `abZab`. Il vérifie au passage que **`Ctrl`+`C` n'interrompt
+  pas** l'application — le mode brut désactive `ISIG`, et rien ne l'avait éprouvé.
+- **Versions** : `air-tui` 0.9.0 (rupture d'API), `redit` 0.2.0, `rmc` 0.1.2, `xtask`
+  0.3.2.
+
 ## 2026-10-10 — Jalon M7c : le type d'événement de touche, décodé puis écarté
 
 - **Le défaut que M7b avait consigné était plus large que sa description, et deux

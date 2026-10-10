@@ -54,8 +54,13 @@ donne la coquille de `mc` aux couleurs de Turbo Vision, et ni l'un ni l'autre n'
 `rmc` parcourt, marque et relit ; il **n'exécute aucun programme et ne modifie aucun
 fichier**.
 
-Ce qui manque encore : la **sélection** de texte — donc le copier-coller interne —, les
-cases à cocher et les boutons radio, et l'étage d'entrée natif Linux.
+`redit` sélectionne au clavier comme à la souris (`Maj`+flèches, `Maj`+clic, glisser,
+`Ctrl`+`A`) et porte un **presse-papiers interne** : copier, couper, coller, dans
+l'application. L'échange avec le presse-papiers du système est un autre sujet, et il
+n'est pas traité.
+
+Ce qui manque encore : les cases à cocher et les boutons radio, le double clic — qui
+demande une horloge —, et l'étage d'entrée natif Linux.
 L'avancement réel, jalon par jalon, est tenu dans
 [`docs/etat-avancement.md`](docs/etat-avancement.md) — et ce README décrit l'intention du
 projet, qui va plus loin que ce qui est livré.

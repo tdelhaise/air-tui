@@ -54,7 +54,7 @@ refus à la compilation, jamais un comportement dégradé à l'exécution.
 - L'importeur de skins MC donne accès à des thèmes existants pour le coût d'un analyseur
   `.ini` — mais côté `xtask`, pas côté runtime.
 - Jalons : M5 pour le moteur et le thème Turbo Vision, M7a pour MC et l'importeur, M7b
-  pour les rôles de liste et la coquille `rmc`.
+  pour les rôles de liste et la coquille `rmc`, M7d pour les rôles du texte sélectionné.
 
 ## État au jalon M7
 
@@ -70,23 +70,31 @@ et quinze correspondances portent écrite la règle qui a demandé un choix. Une
 nommée se discute ; une dérivation silencieuse se découvre des mois plus tard devant un
 écran qui ne ressemble pas au skin.
 
-**Mesuré sur les trente-neuf skins livrés avec `mc` 4.8.33 : dix sont importables** au
-jalon M7b, contre douze à M7a. Les vingt-neuf autres sont **refusés**, et pour deux raisons
-qui sont des limites du modèle d'air-tui, non des défauts de l'analyseur :
+**Mesuré sur les trente-neuf skins livrés avec `mc` 4.8.33 : neuf sont importables** au
+jalon M7d — dix à M7b, douze à M7a. Les trente autres sont **refusés**, et pour trois
+raisons qui sont des limites du modèle d'air-tui ou des lacunes du skin, non des défauts de
+l'analyseur :
 
-- vingt posent un **attribut** (`bold`, `underline`…) sur un rôle employé, et
+- vingt posent un **attribut** (`bold`, `underline`, `italic`…) sur un rôle employé, et
   `AirColorPair` ne porte que deux couleurs. L'ignorer donnerait un thème qui ne ressemble
   pas au skin ;
 - neuf emploient la couleur `default`, le fond transparent de `mc`, qu'`AirColor` ne sait
-  pas exprimer.
+  pas exprimer ;
+- un — `gotar.ini`, perdu à M7d — **ne définit pas** la clef `[core] inputmark`. C'est une
+  troisième catégorie, apparue avec les rôles de sélection : la clef manque, et l'importeur
+  refuse plutôt que d'inventer un défaut. `mc` en applique un ; air-tui préférerait qu'on
+  décide lequel avant de le faire, et ce n'est pas décidé.
 
 Les deux skins perdus entre M7a et M7b — `gray-green-purple256` et `gray-orange-blue256` —
 posent `bold` sur `[core] marked`, une clef que la table n'employait pas avant les rôles de
 liste. Le compte baisse donc **parce que le modèle s'est enrichi** : un rôle de plus est
-une clef de plus à savoir exprimer. C'est le prix de l'exigence, et il est chiffré.
+une clef de plus à savoir exprimer. C'est le prix de l'exigence, et il est chiffré à chaque
+jalon plutôt que supposé.
 
-Lever ces deux limites — un attribut par rôle, une couleur « défaut du terminal » — rendrait
-les vingt-neuf importables. C'est chiffré, donc décidable ; ce n'est pas fait.
+Lever les deux premières limites — un attribut par rôle, une couleur « défaut du
+terminal » — rendrait vingt-neuf des trente refusés importables ; le trentième demande en
+plus de décider quoi faire d'une clef absente. C'est chiffré, donc décidable ; ce n'est pas
+fait.
 
 **Pas fait : la troisième assiette.** Cet ADR décrit un triplet, et `AirTheme` est un
 **couple** `palette` + `glyphs`. `AirDecorations` n'existe pas, et l'écart est assumé
@@ -119,6 +127,20 @@ second thème existe. C'est ce qui a éprouvé le moteur plutôt que de le décr
 rôle demande une valeur dans chacun des deux thèmes, et celle du thème compilé vient d'une
 clef du skin que la table désigne. `mc` nomme les quatre ; Turbo Vision n'en nomme que
 trois, et le quatrième est composé.
+
+**Fait au jalon M7d : trois rôles pour le texte sélectionné.** `EditorSelected`,
+`InputLineText` et `InputLineSelected` portent la palette à trente-cinq rôles. Les valeurs
+de Turbo Vision viennent de la chaîne de palettes, et chacune est confirmée par une source
+**indépendante du calcul** — la méthode de M7b, reprise parce qu'elle avait servi :
+`cpEditor "\x06\x07"` donne `cpBlueWindow[6]` et `[7]`, soit `cpAppColor[13]` et `[14]`,
+que `tvdemo2.cpp` nomme « Normal text » et « Highlighted text » dans son groupe « Puzzle »,
+une fenêtre bleue comme celle de l'éditeur ; `cpInputLine` donne `cpAppColor[50]` et `[51]`,
+que le même fichier nomme « Input normal » et « Input selected ».
+
+Un résultat de cette transcription mérite d'être écrit, parce qu'il valide l'existant :
+le texte **non** sélectionné de l'éditeur n'a pas besoin d'un rôle propre. `cpEditor[1]`
+vaut `cpAppColor[13]`, qui est déjà `AirRole::WindowText`, transcrit au jalon M5. La vue
+d'édition peignait donc juste depuis le début, et sans qu'on sache pourquoi.
 
 Le jeu de glyphes a gagné `scroll_thumb`, pour une raison que seule la coquille pouvait
 faire apparaître : le curseur d'ascenseur empruntait `close_box_mark`. Les deux glyphes

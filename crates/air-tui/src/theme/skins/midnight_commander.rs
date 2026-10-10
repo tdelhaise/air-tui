@@ -5,7 +5,7 @@
 //! Le thème Midnight Commander — **fichier généré, ne pas éditer**.
 //!
 //! Produit par `cargo xtask import-mc-skin` depuis « Standard skin », fichier
-//! `/usr/local/share/mc/skins/default.ini`. 29 rôles transcrits d'une clef, 3 composés de deux.
+//! `/usr/local/share/mc/skins/default.ini`. 32 rôles transcrits d'une clef, 3 composés de deux.
 //!
 //! Empreinte FNV-1a du skin d'origine : `0xefc735864405630c`. C'est un repère de
 //! dérive, pas une garantie cryptographique : `cargo xtask import-mc-skin --check`
@@ -66,7 +66,7 @@ const fn pair(foreground: u8, background: u8) -> AirColorPair {
 
 /// La palette, compilée depuis le skin.
 pub(crate) const fn palette() -> AirPalette {
-    AirPalette::from_parts(AirPaletteParts {
+    AirPalette::from_parts(&AirPaletteParts {
         desktop_background: pair(7, 4), // DesktopBackground ← [core] _default_
         menu: [
             pair(15, 6), // MenuBar ← [menu] _default_
@@ -112,6 +112,13 @@ pub(crate) const fn palette() -> AirPalette {
             pair(0, 6),  // ListSelected ← [core] selected
             pair(11, 4), // ListMarked ← [core] marked
             pair(11, 6), // ListMarkedSelected ← [core] markselect
+        ],
+        editor: [
+            pair(0, 6), // EditorSelected ← [editor] editmarked
+        ],
+        input_line: [
+            pair(0, 6), // InputLineText ← [core] input
+            pair(6, 0), // InputLineSelected ← [core] inputmark
         ],
     })
 }

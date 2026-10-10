@@ -162,6 +162,12 @@ tools/pty-drive.py ./target/debug/redit /tmp/redit-essai.txt -- 400 414243 400 1
 cat /tmp/redit-essai.txt     # doit contenir « ABCorigine »
 tools/pty-drive.py ./target/debug/redit /tmp/redit-essai.txt -- 600 1b66   # doit tenir
 
+# Maj+Gauche deux fois, Ctrl+C, Fin, Ctrl+V, F2, F10 : le fichier doit porter « abZab »
+printf 'Z\n' > /tmp/redit-selection.txt
+tools/pty-drive.py ./target/debug/redit /tmp/redit-selection.txt -- \
+    500 6162 300 1b5b313b3244 300 1b5b313b3244 300 03 300 1b5b46 300 16 400 1b5b31327e 600 1b5b32317e
+cat /tmp/redit-selection.txt     # doit contenir « abZab »
+
 cargo build -p rmc
 mkdir -p /tmp/rmc-essai/sous-repertoire && printf 'abcd' > /tmp/rmc-essai/quatre.txt
 tools/pty-drive.py ./target/debug/rmc /tmp/rmc-essai -- 700 1b5b32317e      # doit sortir
@@ -204,7 +210,7 @@ tools/pty-drive.py ./target/debug/rmc /tmp/rmc-essai -- \
 repeint, que le relâchement d'`Inser` a démarqué. Les deux étaient vrais avant M7c.
 
 Attention aux codes : `1b5b31327e` est `F2`, `1b5b31337e` est `F3`, `1b5b32317e` est
-`F10`. Se tromper de touche donne un faux négatif — `F3` ouvre un dialogue modal qui
+`F10`, `1b5b313b3244` est `Maj`+Gauche, `03` est `Ctrl`+`C` et `16` est `Ctrl`+`V`. Se tromper de touche donne un faux négatif — `F3` ouvre un dialogue modal qui
 consomme le `F10` qui suit, et le verdict devient `timeout` alors que tout fonctionne.
 
 Les **deux** essais comptent : sans l'essai de contrôle, un programme qui sort pour une

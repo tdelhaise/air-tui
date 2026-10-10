@@ -339,6 +339,30 @@ const ROLE_SOURCES: &[RoleSource] = &[
         },
         note: "",
     },
+    RoleSource {
+        role: "EditorSelected",
+        source: Source::Direct {
+            section: "editor",
+            key: "editmarked",
+        },
+        note: "",
+    },
+    RoleSource {
+        role: "InputLineText",
+        source: Source::Direct {
+            section: "core",
+            key: "input",
+        },
+        note: "",
+    },
+    RoleSource {
+        role: "InputLineSelected",
+        source: Source::Direct {
+            section: "core",
+            key: "inputmark",
+        },
+        note: "",
+    },
 ];
 
 /// Les bornes des sept groupes d'`AirPalette`, dans l'ordre de [`ROLE_SOURCES`].
@@ -353,6 +377,8 @@ const GROUPS: &[(&str, usize)] = &[
     ("button", 6),
     ("scroll_bar", 2),
     ("list", 4),
+    ("editor", 1),
+    ("input_line", 2),
 ];
 
 /// Les six clefs de la section `[Lines]` d'un cadre simple, dans l'ordre d'`AirFrameGlyphs`.
@@ -655,7 +681,7 @@ fn emit(emission: &Emission) -> String {
         );
     }
     output.push_str(
-        "/// La palette, compilée depuis le skin.\n         pub(crate) const fn palette() -> AirPalette {\n             AirPalette::from_parts(AirPaletteParts {\n",
+        "/// La palette, compilée depuis le skin.\n         pub(crate) const fn palette() -> AirPalette {\n             AirPalette::from_parts(&AirPaletteParts {\n",
     );
 
     let mut index = 0usize;
@@ -824,6 +850,8 @@ mod tests {
     selected = black;cyan
     marked = yellow;blue
     markselect = yellow;cyan
+    input = black;cyan
+    inputmark = cyan;black
     disabled = gray;lightgray
     shadow = gray;black
 [menu]
@@ -837,6 +865,7 @@ mod tests {
     button = black;cyan
 [editor]
     _default_ = lightgray;blue
+    editmarked = black;cyan
     editframeactive = white;
 [dialog]
     _default_ = black;lightgray
@@ -850,13 +879,13 @@ mod tests {
     }
 
     #[test]
-    fn la_table_couvre_les_trente_deux_roles_une_fois_chacun() {
+    fn la_table_couvre_les_trente_cinq_roles_une_fois_chacun() {
         let mut roles: Vec<&str> = ROLE_SOURCES.iter().map(|entry| entry.role).collect();
         let before = roles.len();
         roles.sort_unstable();
         roles.dedup();
         assert_eq!(roles.len(), before, "un rôle apparaît deux fois");
-        assert_eq!(before, 32, "AirPalette porte trente-deux rôles");
+        assert_eq!(before, 35, "AirPalette porte trente-cinq rôles");
     }
 
     #[test]
@@ -887,7 +916,7 @@ mod tests {
         let text = complete_skin("lightgray", "blue");
         let skin = parse(&text).expect("skin lisible");
         let compiled = compile(&skin, "essai.ini", 0x1234_5678_9abc_def0).expect("compilation");
-        assert_eq!(compiled.transcribed, 29);
+        assert_eq!(compiled.transcribed, 32);
         assert_eq!(compiled.composed, 3);
         assert_eq!(
             compiled.transcribed.saturating_add(compiled.composed),
