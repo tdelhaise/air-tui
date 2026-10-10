@@ -130,6 +130,42 @@ Le chemin du skin dépend de l'installation : `/usr/local/share/mc/skins/` sous 
 et non à l'œil : la barre de menu passe de `38;5;0;48;5;7` à `38;5;15;48;5;6`, et le
 bureau du `░` à l'espace.
 
+Depuis le jalon M7g, les **trente-neuf** skins livrés avec `mc` 4.8.33 sont importables, et
+deux d'entre eux servent à vérifier les capacités que ce jalon a ajoutées — un attribut par
+rôle et la couleur du terminal. Les deux demandent d'**importer, bâtir, mesurer, puis
+rétablir l'artefact** :
+
+```sh
+cargo run -p xtask -- import-mc-skin --skin /usr/local/share/mc/skins/modarcon16-defbg.ini
+cargo build --example frame
+tools/pty-drive.py ./target/debug/examples/frame mc -- 800 1b5b32317e \
+    | grep -oE ';49m' | wc -l
+# doit donner 20 : le fond du terminal, qui traverse palette, quantificateur et encodeur.
+# `grep -c` donnerait 1 : la sortie d'un pty est une seule ligne, donc on compte les
+# occurrences et non les lignes — c'est exactement le piège qui fait croire à un défaut.
+
+cargo run -p xtask -- import-mc-skin --skin /usr/local/share/mc/skins/seasons-autumn16M.ini
+cargo build --example frame
+COLORTERM=truecolor tools/pty-drive.py ./target/debug/examples/frame mc -- 800 1b5b32317e \
+    | grep -oE $'\033\\[0;4;38;2;[0-9;]*m' | head -1
+# doit donner un souligné sur une vraie couleur : la lettre d'accès rapide d'un menu
+
+git checkout crates/air-tui/src/theme/skins/midnight_commander.rs
+cargo xtask import-mc-skin --skin /usr/local/share/mc/skins/default.ini --check
+```
+
+Ne pas oublier le `git checkout` : l'importeur écrit **toujours** dans
+`crates/air-tui/src/theme/skins/midnight_commander.rs`, et un artefact d'essai committé par
+distraction changerait le thème du dépôt sans qu'un contrôle le dise — `--check` ne le
+verrait pas, puisqu'il est cohérent avec son propre skin.
+
+Pour compter les skins importables, `--check` suffit et distingue les deux cas : un message
+qui parle d'« empreinte » ou de « ne correspond plus » veut dire que le skin **a compilé**
+mais n'est pas celui de l'artefact ; toute autre erreur est un refus de compilation.
+Attention, la commande doit passer par `cargo run` et non par le binaire : `repository_root`
+lit `CARGO_MANIFEST_DIR`, et sans elle les trente-neuf skins paraissent tous refusés pour
+une raison qui n'a rien à voir avec eux.
+
 Et, quand la modification touche `unicode/` ou les tables générées :
 
 ```sh

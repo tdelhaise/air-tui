@@ -430,8 +430,32 @@ atteindre ses propres vues.
 
 ## Les thèmes
 
-Écrit au jalon M5. Un thème est un **triplet** — palette, glyphes, décorations — parce que
-ce qui fait reconnaître un look tient autant aux caractères qu'aux couleurs.
+Écrit au jalon M5. L'ADR-008 décrit un **triplet** — palette, glyphes, décorations — parce
+que ce qui fait reconnaître un look tient autant aux caractères qu'aux couleurs. `AirTheme`
+est aujourd'hui un **couple** : `AirDecorations` n'existe pas, et l'écart est assumé plutôt
+que comblé par une structure vide. Le style de trait vit déjà dans les glyphes, et l'ombre
+portée ne peut pas être dessinée tant qu'une vue ne peut pas peindre hors de ses limites.
+
+### Un rôle décrit une présentation, pas un couple de couleurs
+
+Depuis le jalon M7g, `AirColorPair` porte des **attributs** — graisse, italique, souligné,
+clignotant, inverse, barré — en plus de ses deux couleurs. Le thème Turbo Vision n'en pose
+aucun : les seize couleurs du VGA portent déjà la distinction vive/sombre dans l'index
+lui-même. Les skins de `mc`, eux, en posent, et c'était le premier motif de refus de
+l'importeur.
+
+Deux chemins mènent un attribut à la grille, et aucun autre :
+`AirColorPair::cell(character)` et `AirPainter::draw_text_with_colors`. Un widget qui
+construirait sa cellule à partir des deux champs de couleur perdrait l'attribut **en
+silence** — et comme aucun des deux thèmes livrés n'en pose, rien ne le montrerait. Un test
+peint donc les douze widgets avec une palette dont les trente-huit rôles sont gras, et
+refuse la moindre cellule qui ne l'est pas.
+
+`AirColor` compte une troisième forme, `TerminalDefault` : non pas une couleur, mais
+l'absence de choix — « laisser au terminal celle qu'il emploie déjà ». Elle s'émet par les
+paramètres SGR `39` et `49`, qui *annulent* une couleur au lieu d'en poser une, et c'est la
+seule que le quantificateur laisse passer inchangée : une couleur qu'on ne connaît pas n'a
+pas de plus proche voisine.
 
 ### La palette est transcrite, pas approchée
 
@@ -477,5 +501,14 @@ la composition du chrome relève de l'`AirScreen` que l'application choisit. D'o
 applications `redit` et `rmc`, et non une application à deux thèmes.
 
 Les thèmes sont **compilés, pas analysés au runtime** : l'importeur de skins Midnight
-Commander sera un `xtask` qui compile un `.ini` en artefact Rust committé (Principe 11
-d'Air).
+Commander est un `xtask` qui compile un `.ini` en artefact Rust committé (Principe 11
+d'Air), écrit au jalon M7a.
+
+Les **trente-neuf** skins livrés avec `mc` 4.8.33 sont importables depuis M7g. Ils étaient
+neuf, et le chemin pour y arriver est la leçon du jalon : l'ADR-008 chiffrait les refus par
+cause, mais l'importeur s'arrête à la **première** cause qu'il rencontre — le décompte
+comptait donc une cause par skin là où la plupart en avaient deux. Lever les deux limites
+du modèle n'a fait passer le compte qu'à seize ; les vingt-trois autres étaient refusés
+pour une clef absente, que `mc` fait simplement **hériter** du `_default_` de sa section
+puis de celui de `[core]`. Ce n'était pas une limite du modèle d'air-tui, c'était un défaut
+de l'analyseur, rangé du mauvais côté pendant six jalons.

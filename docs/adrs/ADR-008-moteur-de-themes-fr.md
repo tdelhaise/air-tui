@@ -55,7 +55,8 @@ refus à la compilation, jamais un comportement dégradé à l'exécution.
   `.ini` — mais côté `xtask`, pas côté runtime.
 - Jalons : M5 pour le moteur et le thème Turbo Vision, M7a pour MC et l'importeur, M7b
   pour les rôles de liste et la coquille `rmc`, M7d pour les rôles du texte sélectionné,
-  M7f pour ceux des cases à cocher et des boutons radio.
+  M7f pour ceux des cases à cocher et des boutons radio, M7g pour les attributs par rôle
+  et la couleur du terminal.
 
 ## État au jalon M7
 
@@ -65,43 +66,92 @@ le thème. `air-tui` n'embarque aucun analyseur de `.ini` et n'ouvre aucun fichi
 afficher un thème : la décision « compilés, pas analysés au runtime » est tenue par la
 structure, pas par une consigne.
 
-La table de correspondance est explicite et annotée : vingt-neuf rôles sont transcrits
+La table de correspondance est explicite et annotée : trente-cinq rôles sont transcrits
 d'une seule clef du skin, trois sont composés de deux clefs faute d'être nommés par `mc`,
-et quinze correspondances portent écrite la règle qui a demandé un choix. Une dérivation
+et seize correspondances portent écrite la règle qui a demandé un choix. Une dérivation
 nommée se discute ; une dérivation silencieuse se découvre des mois plus tard devant un
 écran qui ne ressemble pas au skin.
 
-**Mesuré sur les trente-neuf skins livrés avec `mc` 4.8.33 : neuf sont importables** aux
-jalons M7d et M7f — dix à M7b, douze à M7a. Les trente autres sont **refusés**, et pour trois
-raisons qui sont des limites du modèle d'air-tui ou des lacunes du skin, non des défauts de
-l'analyseur :
+**Mesuré sur les trente-neuf skins livrés avec `mc` 4.8.33 : les trente-neuf sont
+importables** depuis le jalon M7g. Ils étaient neuf à M7d et M7f, dix à M7b, douze à M7a.
 
-- vingt posent un **attribut** (`bold`, `underline`, `italic`…) sur un rôle employé, et
-  `AirColorPair` ne porte que deux couleurs. L'ignorer donnerait un thème qui ne ressemble
-  pas au skin ;
-- neuf emploient la couleur `default`, le fond transparent de `mc`, qu'`AirColor` ne sait
-  pas exprimer ;
-- un — `gotar.ini`, perdu à M7d — **ne définit pas** la clef `[core] inputmark`. C'est une
-  troisième catégorie, apparue avec les rôles de sélection : la clef manque, et l'importeur
-  refuse plutôt que d'inventer un défaut. `mc` en applique un ; air-tui préférerait qu'on
-  décide lequel avant de le faire, et ce n'est pas décidé.
+### Ce que la mesure a démenti
+
+Ce paragraphe portait, de M7a à M7f, un décompte par **cause de refus** : vingt skins pour
+un attribut sur un rôle employé, neuf pour la couleur `default`, un — `gotar.ini` — pour
+une clef absente. Il en concluait que « lever les deux premières limites rendrait
+vingt-neuf des trente refusés importables ».
+
+C'était **faux**, et le jalon M7g l'a montré en levant les deux limites : le compte est
+passé de neuf à **seize**, pas à trente-huit. Le raisonnement avait un défaut qui ne se
+voit qu'à la mesure : l'importeur s'arrête à la **première** cause qu'il rencontre, donc le
+décompte comptait une cause par skin, alors que la plupart en avaient deux. Vingt-trois
+skins restaient refusés, et pour une raison que l'ADR chiffrait à **un seul** skin :
+
+- dix-huit n'écrivent pas `[editor] editframeactive` ;
+- quatre n'ont pas de `[editor] _default_` ;
+- `gotar.ini` n'a pas de `[core] inputmark`.
+
+Une mesure qui compte des causes exclusives là où elles se cumulent ne se corrige pas en
+raffinant le décompte : elle se corrige en levant une limite et en recomptant.
+
+### La troisième cause n'était pas une limite du modèle
+
+Et c'est le second démenti, plus coûteux que le premier : l'ADR rangeait la clef absente
+parmi « les limites du modèle d'air-tui ou les lacunes du skin », et écrivait que « `mc` en
+applique un [défaut] ; air-tui préférerait qu'on décide lequel ». Il n'y avait rien à
+décider. Le manuel de `mc` décrit la cascade en deux endroits :
+
+- `[core] _default_` — « Default color pair. Used in all other sections if they not contain
+  color definitions » ;
+- le `_default_` de chaque section — « Default color for this section. Used
+  [core]._default_ if not specified ».
+
+Une clef absente hérite donc du `_default_` de sa section, puis de celui de `[core]`.
+Aucun des vingt-trois skins n'est mal formé, et `mc` les affiche tous. C'était un **défaut
+de l'analyseur**, qui traitait l'absence comme une erreur là où le format la traite comme
+une valeur vide — et une valeur vide, il savait déjà l'hériter depuis M7a.
+
+La leçon est celle du jalon : **une limite attribuée au modèle est une hypothèse** tant
+qu'elle n'a pas été levée. Les deux premières l'étaient vraiment ; la troisième était une
+lacune qu'on avait rangée du mauvais côté, et il a suffi de lire le manuel pour s'en
+apercevoir. Vingt-trois skins refusés depuis M7a par une ligne de code, et non par une
+décision de conception.
+
+### Ce qui reste vrai
+
+**Ce qui fait baisser le compte est une clef nouvelle, pas un rôle nouveau.** Le jalon M7f
+l'avait montré en démentant une formulation antérieure : il ajoute trois rôles, et le
+compte n'avait pas bougé, parce que les trois se branchent sur `[dialog] _default_`,
+`dfocus` et `dhotnormal`, déjà lues. Cette observation tient toujours — mais elle a perdu
+son mordant depuis que la cascade garantit qu'une clef nouvelle est au pire héritée.
 
 Les deux skins perdus entre M7a et M7b — `gray-green-purple256` et `gray-orange-blue256` —
-posent `bold` sur `[core] marked`, une clef que la table n'employait pas avant les rôles de
-liste.
+posaient `bold` sur `[core] marked`, une clef que la table n'employait pas avant les rôles
+de liste. Ils sont importables depuis M7g.
 
-**Ce qui fait baisser le compte est une clef nouvelle, pas un rôle nouveau**, et le jalon
-M7f l'a montré en démentant la formulation précédente de ce paragraphe. Il ajoute trois
-rôles — ceux des cases à cocher et des boutons radio — et le compte **ne bouge pas** : les
-trois viennent de `[dialog] _default_`, `dfocus` et `dhotnormal`, que la table employait
-déjà. Un rôle de plus n'exige donc rien de plus du skin tant qu'il se branche sur une clef
-déjà lue. C'est le prix de l'exigence, et il est chiffré à chaque jalon plutôt que supposé —
-y compris quand il est nul.
+**Fait au jalon M7g : les deux limites du thème, et une troisième qui n'en était pas
+une.** `AirColorPair` porte des attributs en plus de ses deux couleurs, et `AirColor`
+compte une variante `TerminalDefault` que l'encodeur SGR émet par `39` et `49` — les deux
+paramètres qui *annulent* une couleur au lieu d'en poser une. Elle traverse les trois
+profondeurs du quantificateur inchangée, et c'est la seule dans ce cas : la quantification
+choisit la plus proche voisine d'une couleur connue, et celle-ci est celle que
+l'utilisateur a réglée dans son terminal.
 
-Lever les deux premières limites — un attribut par rôle, une couleur « défaut du
-terminal » — rendrait vingt-neuf des trente refusés importables ; le trentième demande en
-plus de décider quoi faire d'une clef absente. C'est chiffré, donc décidable ; ce n'est pas
-fait.
+`AirAttributes` a gagné `blink`, cinquième et dernier attribut que `mc` sait écrire.
+**Aucun** des trente-neuf skins ne l'emploie — mesuré —, et il est là pour que la
+correspondance soit totale : un test confronte les cinq noms de l'analyseur aux cinq champs
+de la structure, de sorte que le refus « cet attribut n'a pas d'expression » soit
+démontrablement inatteignable au lieu d'être supposé tel.
+
+Le défaut que ce jalon rend possible est **silencieux** : un widget qui construit sa
+cellule à partir des deux champs de couleur du couple laisse l'attribut au bord du chemin,
+et ni l'un ni l'autre des deux thèmes livrés n'en pose, donc rien ne le montrerait. Deux
+chemins le portent désormais — `AirColorPair::cell(character)` et
+`AirPainter::draw_text_with_colors` —, et un test peint les douze widgets avec une palette
+dont les trente-huit rôles sont gras en refusant la moindre cellule qui ne l'est pas. Le
+test a été vérifié par son contrôle : rétabli sur un seul site, il échoue en nommant le
+widget, la cellule et sa position.
 
 **Pas fait : la troisième assiette.** Cet ADR décrit un triplet, et `AirTheme` est un
 **couple** `palette` + `glyphs`. `AirDecorations` n'existe pas, et l'écart est assumé
