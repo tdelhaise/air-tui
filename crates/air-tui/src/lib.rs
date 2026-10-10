@@ -35,6 +35,7 @@
 pub mod cell;
 pub mod codec;
 pub mod geometry;
+pub mod input;
 pub mod surface;
 pub mod terminal;
 pub mod theme;
@@ -43,6 +44,10 @@ pub use air_tui_platform::{InputReadiness, PlatformError, PlatformErrorKind, Ter
 pub use cell::{AirAttributes, AirCell, AirColor};
 pub use codec::{AirCellPresentation, AirSgrEncoder};
 pub use geometry::{AirColumn, AirPoint, AirRectangle, AirRow, AirSize};
+pub use input::{
+    AirAnsiDecoder, AirDecodeError, AirInputEvent, AirKey, AirKeyEvent, AirKeyState, AirModifiers,
+    AirMouseButton, AirMouseEvent, AirMouseEventKind, AirScanCode,
+};
 pub use surface::AirSurface;
 pub use terminal::AirTerminal;
 pub use theme::AirTheme;

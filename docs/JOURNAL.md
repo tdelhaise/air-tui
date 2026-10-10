@@ -6,6 +6,25 @@ tête. On ajoute, on ne réécrit jamais une entrée passée.
 Une entrée par campagne, pas par commit. Répartition des rôles : `etat-avancement.md` est
 l'état vivant, ce journal est la trace figée, `INDEX.md` est la carte structurelle.
 
+## 2026-10-10 — M1, le décodeur ANSI d'entrée
+
+- `air-tui/src/input/` : modèle d'événements conforme à l'ADR-003 et décodeur de séquences
+  ANSI. Caractères UTF-8, commandes C0, touche alternative, CSI et SS3 avec modificateurs,
+  souris SGR 1006, collages encadrés, focus. `air-tui` passe en 0.2.1 (ajout d'API pure).
+- **100 % de couverture** sur les trois modules d'entrée, comme l'ADR-012 l'exige d'un
+  codec. La contrainte a de nouveau dicté la forme du code : deux branches « entrée vide »
+  ont été supprimées en passant à l'appelé l'octet de tête que l'appelant connaissait déjà,
+  et les trois fermetures `|_| {}` des tests d'erreur ont été fondues en une seule, qu'un
+  nouveau test exerce.
+- Cible `cargo-fuzz` `ansi_decoder`, dans un espace de travail séparé puisque le fuzzing
+  exige nightly et que le dépôt est pinné sur stable. **494 565 exécutions, aucun
+  plantage.** Au-delà de l'absence de panique, l'invariant qui compte est vérifié :
+  découper l'entrée en deux lectures produit la même suite d'événements qu'un morceau
+  unique.
+- Limite consignée plutôt que découverte plus tard : sur un pty sans protocole Kitty,
+  `Ctrl+Shift+S` reste indiscernable de `Ctrl+S`. C'est le codage historique qui ne sait
+  pas l'exprimer, et c'est l'objet du jalon M2.
+
 ## 2026-10-10 — publication et protection de `main`
 
 - Dépôt publié : <https://github.com/tdelhaise/air-tui>, public, MPL-2.0.

@@ -35,10 +35,11 @@ L'**avancement** vit dans [`etat-avancement.md`](etat-avancement.md), l'**histor
 | `crates/air-tui-platform-posix` | implémentation POSIX — le seul `unsafe`, le seul C | socle M0 |
 | `crates/air-tui` | le cœur, dépend uniquement du contrat | socle M0 |
 | `crates/air-tui-platform-air` | implémentation `linux-air` | **à écrire** |
+| `fuzz/` | cibles `cargo-fuzz`, espace de travail séparé (nightly) | `ansi_decoder` |
 
 ## Ce qui reste à produire
 
-Les modules annoncés dans l'architecture et **non encore écrits** : `input/` (décodeur
-ANSI, Kitty, evdev, VT), `unicode/` (tables UCD générées), `view/` (arbre, trois phases,
+Les modules annoncés dans l'architecture et **non encore écrits** : `input/kitty` (M2),
+`input/evdev` et `input/vt` (M8), `unicode/` (tables UCD générées), `view/` (arbre, trois phases,
 focus, découpage, bordures), `widgets/`, `theme/` au-delà du minimum de M0, `mvc/`, les
 applications d'exemple `redit` et `rmc`, la crate `air-tui-platform-air`, et `xtask/`.

@@ -86,6 +86,16 @@ cargo test --workspace
 cargo deny check
 ```
 
+Et, quand la modification touche un codec (ADR-012) :
+
+```sh
+cargo llvm-cov --summary-only            # 100 % attendu sur codec/ et input/
+cd fuzz && cargo +nightly fuzz run ansi_decoder -- -max_total_time=60
+```
+
+Le fuzzing exige nightly ; `fuzz/` est un espace de travail séparé pour cette raison, et
+le dépôt reste pinné sur stable.
+
 `cargo llvm-cov` est l'objectif de couverture (100 % sur `air-tui-sys` et le cœur
 d'`air-tui`, cf. `docs/CONVENTIONS-fr.md`) ; le seuil n'est pas encore atteint et ne doit
 pas être annoncé comme tel.

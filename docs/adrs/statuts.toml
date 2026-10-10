@@ -26,8 +26,8 @@ note   = "découpage précisé par ADR-011 : trois crates au lieu de deux"
 
 ["003"]
 objet  = "Entrée clavier à deux étages : terminal en tier-1, natif en complément local"
-statut = "a-faire"
-note   = "aucun étage écrit ; le protocole Kitty est au jalon M2"
+statut = "en-cours"
+note   = "étage terminal écrit et fuzzé (M1) ; Kitty en M2, étage natif en M8"
 
 ["004"]
 objet  = "Conventions de nommage : aucune abréviation, préfixe Air sur le modèle d'objets"
@@ -72,4 +72,4 @@ note   = "le contrat et l'implémentation POSIX existent ; air-tui-platform-air 
 ["012"]
 objet  = "Toute conversion de flux passe par un codec, tenu à 100 % de couverture"
 statut = "en-cours"
-note   = "les deux codecs existants sont à 100 % ; gate check-codec-coverage à écrire"
+note   = "les trois codecs sont à 100 % et le décodeur est fuzzé ; gate check-codec-coverage à écrire"
