@@ -290,6 +290,12 @@ fn main() -> Result<(), PlatformError> {
         match terminal.wait_for_input(Some(Duration::from_millis(250))) {
             Ok(InputReadiness::Ready) => {
                 let read = terminal.read_available(&mut input)?;
+                if read == 0 {
+                    // Prêt mais zéro octet : l'autre bout a fermé. Selon la plateforme,
+                    // `poll` signale cette fin par `POLLHUP` ou par un `POLLIN` qui ne
+                    // rend rien — sans ce test, le second cas boucle indéfiniment.
+                    break 'session;
+                }
                 let Some(received) = input.get(..read) else {
                     continue;
                 };
