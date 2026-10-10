@@ -98,6 +98,20 @@ cd fuzz && cargo +nightly fuzz run ansi_decoder -- -max_total_time=60
 Le fuzzing exige nightly ; `fuzz/` est un espace de travail séparé pour cette raison, et
 le dépôt reste pinné sur stable.
 
+Et, quand la modification touche la couche 0 ou la boucle d'événements, **vérifier dans un
+vrai pseudo-terminal** — compiler ne prouve rien pour une application qui a besoin d'un
+terminal :
+
+```sh
+cargo build --example frame
+tools/pty-drive.py ./target/debug/examples/frame 800 1b66 500 1b5b32317e   # doit sortir
+tools/pty-drive.py ./target/debug/examples/frame 600 1b66                  # doit tenir
+```
+
+Les **deux** essais comptent : sans l'essai de contrôle, un programme qui sort pour une
+toute autre raison donne le même verdict que celui qui obéit à la touche. C'est ainsi que
+le `POLLNVAL` de `/dev/tty` sur macOS est resté caché jusqu'au jalon M5b.
+
 Sur la couverture, deux exigences de portée différente, à ne pas confondre :
 
 - **100 % sur les codecs**, régions comprises — c'est ADR-012, et c'est tenu aujourd'hui
