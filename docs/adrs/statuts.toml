@@ -41,18 +41,18 @@ note   = "les six déclarations existent dans air-tui-platform-posix"
 
 ["006"]
 objet  = "Unicode : tables UCD générées et committées"
-statut = "en-cours"
-note   = "largeur et graphèmes faits (M3, Unicode 18.0.0) ; segmentation en mots reportée à M6"
+statut = "fait"
+note   = "largeur, graphèmes et segmentation en mots faits (M3, M6, Unicode 18.0.0) ; les deux segmentations passent les fichiers d'essais officiels sans écart, par cargo xtask check-segmentation"
 
 ["007"]
 objet  = "MVC par journal de changements, sans Observer ni Rc/RefCell"
-statut = "en-cours"
-note   = "mécanisme 3 fait et complété (AirDrawContext porte le jeu de commandes au dessin, M5b) ; le journal de changements attend M6"
+statut = "fait"
+note   = "les quatre mécanismes existent et redit les emploie tous (M6) : journal AirChangeSet, compteurs AirGeneration, jeu de commandes interrogé au dessin, abonnement par AirViewId via find_mut. AirBinding, la part MVVM bornée aux dialogues, n'est pas écrite : AirPromptDialog possède ses contrôles directement, ce que l'ADR prévoit"
 
 ["008"]
 objet  = "Moteur de thèmes : palette par rôles, glyphes, décorations ; thèmes compilés"
 statut = "en-cours"
-note   = "palette transcrite de Borland, quantificateur et huit widgets colorés par rôles faits (M5, M5b) ; thème MC et importeur de skins en M7"
+note   = "palette transcrite de Borland, quantificateur et onze widgets colorés par rôles faits (M5, M5b, M6) ; thème MC et importeur de skins en M7"
 
 ["009"]
 objet  = "Versionnement semver, par crate, incrémenté à chaque PR qui touche la crate"
@@ -62,7 +62,7 @@ note   = "gate check-versions à écrire ; règle tenue à la main en attendant"
 ["010"]
 objet  = "Bordure par défaut sur les vues, retirable par border = false"
 statut = "fait"
-note   = "arbre de vues écrit (M4) ; content_bounds en place, et cinq petits contrôles retirent la bordure dans leur constructeur (M5b)"
+note   = "arbre de vues écrit (M4) ; content_bounds en place, et sept vues retirent la bordure dans leur constructeur — les petits contrôles, la vue d'édition, le bureau et l'écran (M5b, M6)"
 
 ["011"]
 objet  = "Couture de plateforme par traits, une crate d'implémentation par plateforme"
@@ -73,3 +73,8 @@ note   = "le contrat et l'implémentation POSIX existent ; air-tui-platform-air 
 objet  = "Toute conversion de flux passe par un codec, tenu à 100 % de couverture"
 statut = "en-cours"
 note   = "les trois codecs sont à 100 % et le décodeur est fuzzé ; gate check-codec-coverage à écrire"
+
+["013"]
+objet  = "Accès typé dans l'arbre de vues : AirView hérite de Any"
+statut = "fait"
+note   = "find et find_mut rendent une vue avec son type (M6) ; c'est ce qui permet au contrôleur de redit de synchroniser sa vue d'édition sans référence arrière"

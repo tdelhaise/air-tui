@@ -11,6 +11,52 @@
 use crate::view::painter::AirPainter;
 use crate::view::{AirDrawContext, AirView, AirViewId, AirViewState};
 
+/// La place d'une vue d'identifiant donné dans une liste d'enfants.
+///
+/// Exposée dans la crate parce que trois conteneurs la cherchent — le groupe, le bureau et
+/// l'écran — et que recopier la recherche dans chacun garantirait qu'ils divergent.
+pub(crate) fn position_of(children: &[Box<dyn AirView>], identifier: AirViewId) -> Option<usize> {
+    children
+        .iter()
+        .position(|child| child.state().identifier() == identifier)
+}
+
+/// Amène une vue au premier plan, et rend `false` quand l'identifiant est inconnu.
+pub(crate) fn bring_child_to_front(
+    children: &mut Vec<Box<dyn AirView>>,
+    identifier: AirViewId,
+) -> bool {
+    let Some(position) = position_of(children, identifier) else {
+        return false;
+    };
+    let child = children.remove(position);
+    children.push(child);
+    true
+}
+
+/// Donne le focus à une vue et le retire à ses sœurs.
+///
+/// Rend `false` quand l'identifiant est inconnu. Le focus est **exclusif entre sœurs** :
+/// le tenir ailleurs qu'à un seul endroit par conteneur est la façon la plus sûre de le
+/// voir se dédoubler.
+pub(crate) fn focus_child(children: &mut [Box<dyn AirView>], identifier: AirViewId) -> bool {
+    let mut found = false;
+    for child in children {
+        let is_target = child.state().identifier() == identifier;
+        child.state_mut().set_focused(is_target);
+        found |= is_target;
+    }
+    found
+}
+
+/// L'identifiant de la vue qui a le focus, s'il y en a une.
+pub(crate) fn focused_child(children: &[Box<dyn AirView>]) -> Option<AirViewId> {
+    children
+        .iter()
+        .find(|child| child.state().is_focused())
+        .map(|child| child.state().identifier())
+}
+
 /// Une vue qui contient d'autres vues.
 ///
 /// Les enfants sont rangés de **l'arrière vers l'avant** : le dernier est au premier plan.
@@ -42,10 +88,7 @@ impl AirGroup {
 
     /// Retire la vue d'identifiant donné, si elle est là.
     pub fn remove(&mut self, identifier: AirViewId) -> Option<Box<dyn AirView>> {
-        let position = self
-            .children
-            .iter()
-            .position(|child| child.state().identifier() == identifier)?;
+        let position = position_of(&self.children, identifier)?;
         Some(self.children.remove(position))
     }
 
@@ -66,16 +109,7 @@ impl AirGroup {
     /// Rend `false` quand l'identifiant est inconnu. C'est ce qui fait qu'un clic sur une
     /// fenêtre en arrière-plan la fait passer devant.
     pub fn bring_to_front(&mut self, identifier: AirViewId) -> bool {
-        let Some(position) = self
-            .children
-            .iter()
-            .position(|child| child.state().identifier() == identifier)
-        else {
-            return false;
-        };
-        let child = self.children.remove(position);
-        self.children.push(child);
-        true
+        bring_child_to_front(&mut self.children, identifier)
     }
 
     /// Donne le focus à une vue et le retire à ses sœurs.
@@ -84,39 +118,26 @@ impl AirGroup {
     /// sœurs** : le tenir ailleurs qu'à un seul endroit par groupe est la façon la plus
     /// sûre de le voir se dédoubler.
     pub fn focus(&mut self, identifier: AirViewId) -> bool {
-        let mut found = false;
-        for child in &mut self.children {
-            let is_target = child.state().identifier() == identifier;
-            child.state_mut().set_focused(is_target);
-            found |= is_target;
-        }
-        found
+        focus_child(&mut self.children, identifier)
     }
 
     /// L'identifiant de la vue qui a le focus, s'il y en a une.
     #[must_use]
     pub fn focused(&self) -> Option<AirViewId> {
-        self.children
-            .iter()
-            .find(|child| child.state().is_focused())
-            .map(|child| child.state().identifier())
+        focused_child(&self.children)
     }
 
     /// La vue d'identifiant donné, si elle est là.
     #[must_use]
     pub fn child(&self, identifier: AirViewId) -> Option<&dyn AirView> {
-        self.children
-            .iter()
-            .find(|child| child.state().identifier() == identifier)
-            .map(Box::as_ref)
+        let position = position_of(&self.children, identifier)?;
+        self.children.get(position).map(Box::as_ref)
     }
 
     /// La vue d'identifiant donné, en écriture.
     pub fn child_mut(&mut self, identifier: AirViewId) -> Option<&mut (dyn AirView + 'static)> {
-        self.children
-            .iter_mut()
-            .find(|child| child.state().identifier() == identifier)
-            .map(Box::as_mut)
+        let position = position_of(&self.children, identifier)?;
+        self.children.get_mut(position).map(Box::as_mut)
     }
 }
 

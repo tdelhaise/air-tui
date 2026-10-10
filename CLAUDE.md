@@ -75,9 +75,11 @@ ses préconditions.
 
 ## Ce qui n'existe pas encore
 
-Aucun gate `cargo xtask` n'est écrit à ce jour. Les contrôles listés dans
-`docs/CONVENTIONS-fr.md` sous « à outiller » sont à exécuter **à la main**. Ne pas écrire
-qu'ils tournent avant qu'ils tournent (NO GO n° 1).
+`cargo xtask` porte **deux** commandes de vérification — `generate-unicode-tables --check`
+et `check-segmentation` —, et aucune des trois de `docs/CONVENTIONS-fr.md` :
+`check-naming` (ADR-004), `check-versions` (ADR-009) et `check-codec-coverage` (ADR-012)
+sont à exécuter **à la main**. Ne pas écrire qu'elles tournent avant qu'elles tournent
+(NO GO n° 1).
 
 ## Contrôles à passer en local avant de pousser
 
@@ -95,6 +97,19 @@ cargo llvm-cov --summary-only            # 100 % attendu sur codec/ et input/
 cd fuzz && cargo +nightly fuzz run ansi_decoder -- -max_total_time=60
 ```
 
+Et, quand la modification touche `unicode/` ou les tables générées :
+
+```sh
+cargo xtask download-ucd --version 18.0.0 --output-directory /tmp/ucd
+cargo xtask generate-unicode-tables --ucd-directory /tmp/ucd --check
+cargo xtask check-segmentation --ucd-directory /tmp/ucd   # 853 + 1944 cas, aucun écart
+```
+
+Les fichiers d'essais du Consortium ne sont pas committés : ce sont des données du
+référentiel. La vérification est donc une **commande** et non un `#[test]`, pour qu'elle ne
+puisse pas passer en silence faute de données. C'est elle qui a trouvé que `GB9c` avait
+changé en Unicode 18.0.0 alors que le dépôt portait encore la formulation antérieure.
+
 Le fuzzing exige nightly ; `fuzz/` est un espace de travail séparé pour cette raison, et
 le dépôt reste pinné sur stable.
 
@@ -106,7 +121,18 @@ terminal :
 cargo build --example frame
 tools/pty-drive.py ./target/debug/examples/frame 800 1b66 500 1b5b32317e   # doit sortir
 tools/pty-drive.py ./target/debug/examples/frame 600 1b66                  # doit tenir
+
+cargo build -p redit
+printf 'origine\n' > /tmp/redit-essai.txt
+# taper « ABC », F2 pour enregistrer, F10 pour sortir
+tools/pty-drive.py ./target/debug/redit /tmp/redit-essai.txt -- 400 414243 400 1b5b31327e 600 1b5b32317e
+cat /tmp/redit-essai.txt     # doit contenir « ABCorigine »
+tools/pty-drive.py ./target/debug/redit /tmp/redit-essai.txt -- 600 1b66   # doit tenir
 ```
+
+Attention aux codes : `1b5b31327e` est `F2`, `1b5b31337e` est `F3`, `1b5b32317e` est
+`F10`. Se tromper de touche donne un faux négatif — `F3` ouvre un dialogue modal qui
+consomme le `F10` qui suit, et le verdict devient `timeout` alors que tout fonctionne.
 
 Les **deux** essais comptent : sans l'essai de contrôle, un programme qui sort pour une
 toute autre raison donne le même verdict que celui qui obéit à la touche. C'est ainsi que

@@ -22,7 +22,8 @@ terminal veut bien les donner.
   `AirScreen` (surfaces plein écran commutables), chacune organise un `AirDesktop` de
   `AirWindow`, composés d'`AirView`.
 - **MVC.** Le modèle ne connaît aucune vue et n'appelle personne : il consigne ce qui a
-  changé et rend la main. Les vues n'émettent que des intentions.
+  changé et rend la main. Les vues n'émettent que des intentions. Pas un `Rc`, pas un
+  `RefCell` : la réentrance est impossible par construction.
 - **Zéro dépendance.** La couche 0 (`air-tui-platform-posix`) isole les appels système
   derrière un contrat en traits ; tout le reste est du Rust sûr, en
   `#![forbid(unsafe_code)]`, et le cœur n'a aucune dépendance vers une implémentation de
@@ -30,13 +31,19 @@ terminal veut bien les donner.
 
 ## État
 
-**En construction, et déjà exécutable.** `cargo run --example frame` ouvre une interface
-en style Turbo Vision qui répond : des menus déroulants, un champ de saisie qui édite par
-grappes de graphème, une barre de statut à raccourcis, et le curseur du terminal à la
-bonne colonne.
+**En construction, et déjà utilisable.** `cargo run -p redit -- fichier.txt` ouvre
+l'éditeur : menus déroulants, cadre à case de fermeture, ascenseurs, barre de statut à
+raccourcis grisables, édition par grappes de graphème et déplacement par mot au sens de
+l'annexe 29 d'Unicode.
 
-Ce qui manque encore : les applications `redit` et `rmc`, le thème Midnight Commander,
-l'éditeur de texte et les listes. L'avancement réel, jalon par jalon, est tenu dans
+```sh
+cargo run --example frame             # la démonstration des widgets
+cargo run -p redit -- fichier.txt     # l'éditeur
+```
+
+Ce qui manque encore : la **sélection** de texte — donc le copier-coller interne —, les
+listes, le thème Midnight Commander et la coquille `rmc`, et l'étage d'entrée natif Linux.
+L'avancement réel, jalon par jalon, est tenu dans
 [`docs/etat-avancement.md`](docs/etat-avancement.md) — et ce README décrit l'intention du
 projet, qui va plus loin que ce qui est livré.
 

@@ -68,16 +68,18 @@ paramètres et les variables locales.
 ## Frontière `unsafe`
 
 `unsafe` et les appels C vivent dans **`air-tui-platform-posix`**, et nulle part ailleurs.
-`air-tui-platform` porte le contrat en traits et `air-tui` le cœur : les deux sont en
-`#![forbid(unsafe_code)]`, et le cœur n'a même pas de dépendance vers une implémentation
-de plateforme (ADR-011). Tout bloc `unsafe` porte un commentaire `// SAFETY:` qui justifie
-ses préconditions.
+`air-tui-platform` porte le contrat en traits, `air-tui` le cœur et `redit` l'application :
+les trois sont en `#![forbid(unsafe_code)]`, et le cœur n'a même pas de dépendance vers une
+implémentation de plateforme (ADR-011) — c'est `redit` qui en choisit une et l'injecte.
+Tout bloc `unsafe` porte un commentaire `// SAFETY:` qui justifie ses préconditions.
 
 ## Ce qui n'existe pas encore
 
-Aucun gate `cargo xtask` n'est écrit à ce jour. Les contrôles listés dans
-`docs/CONVENTIONS-fr.md` sous « à outiller » sont à exécuter **à la main**. Ne pas écrire
-qu'ils tournent avant qu'ils tournent (NO GO n° 1).
+`cargo xtask` porte **deux** commandes de vérification — `generate-unicode-tables --check`
+et `check-segmentation` —, et aucune des trois de `docs/CONVENTIONS-fr.md` :
+`check-naming` (ADR-004), `check-versions` (ADR-009) et `check-codec-coverage` (ADR-012)
+sont à exécuter **à la main**. Ne pas écrire qu'elles tournent avant qu'elles tournent
+(NO GO n° 1).
 
 ## Contrôles à passer en local avant de pousser
 

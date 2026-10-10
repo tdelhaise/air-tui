@@ -11,11 +11,19 @@
 //! cargo xtask download-ucd --version 18.0.0 --output-directory /tmp/ucd
 //! cargo xtask generate-unicode-tables --ucd-directory /tmp/ucd
 //! cargo xtask generate-unicode-tables --ucd-directory /tmp/ucd --check
+//! cargo xtask check-segmentation --ucd-directory /tmp/ucd
 //! ```
 
+// `expect` et `unwrap` sont interdits en production (lints de l'espace de travail) et
+// légitimes dans un test, où une précondition non tenue doit faire échouer le test
+// bruyamment. Même choix que dans `air-tui`.
+#![cfg_attr(test, allow(clippy::expect_used, clippy::unwrap_used))]
+
+mod segmentation_conformance;
 mod ucd;
 mod unicode_tables;
 
+use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -27,6 +35,9 @@ const UCD_FILES: &[&str] = &[
     "EastAsianWidth.txt",
     "DerivedCoreProperties.txt",
     "auxiliary/GraphemeBreakProperty.txt",
+    "auxiliary/WordBreakProperty.txt",
+    "auxiliary/GraphemeBreakTest.txt",
+    "auxiliary/WordBreakTest.txt",
     "emoji/emoji-data.txt",
 ];
 
@@ -36,6 +47,7 @@ fn main() -> ExitCode {
     let outcome = match command {
         Some("download-ucd") => download_ucd(&arguments),
         Some("generate-unicode-tables") => generate_unicode_tables(&arguments),
+        Some("check-segmentation") => check_segmentation(&arguments),
         Some(other) => Err(format!("commande inconnue : {other}\n\n{}", usage())),
         None => Err(usage()),
     };
@@ -55,7 +67,8 @@ fn main() -> ExitCode {
 fn usage() -> String {
     "usage :\n  \
      cargo xtask download-ucd --version <version> --output-directory <répertoire>\n  \
-     cargo xtask generate-unicode-tables --ucd-directory <répertoire> [--check]"
+     cargo xtask generate-unicode-tables --ucd-directory <répertoire> [--check]\n  \
+     cargo xtask check-segmentation --ucd-directory <répertoire>"
         .to_owned()
 }
 
@@ -154,6 +167,51 @@ fn generate_unicode_tables(arguments: &[String]) -> Result<String, String> {
     Ok(format!("{TABLES_PATH} écrit ({} octets)", written.len()))
 }
 
+/// Confronte les deux segmentations de l'annexe 29 aux essais officiels.
+///
+/// Les fichiers d'essais ne sont pas committés : ce sont des données du référentiel. La
+/// vérification est donc une commande et non un test, pour qu'elle ne puisse pas passer en
+/// silence faute de données.
+fn check_segmentation(arguments: &[String]) -> Result<String, String> {
+    let directory = option_value(arguments, "--ucd-directory")
+        .ok_or_else(|| format!("--ucd-directory est obligatoire\n\n{}", usage()))?;
+    let reports = segmentation_conformance::check(Path::new(&directory))
+        .map_err(|cause| format!("vérification impossible : {cause}"))?;
+
+    let mut summary = String::new();
+    let mut failed = false;
+    for report in &reports {
+        let detailed: Vec<&String> = report
+            .failures
+            .iter()
+            .filter(|failure| !failure.is_empty())
+            .collect();
+        if report.failures.is_empty() {
+            let _ = writeln!(
+                summary,
+                "{} : {} cas, aucun écart",
+                report.file, report.examined
+            );
+            continue;
+        }
+        failed = true;
+        let _ = writeln!(
+            summary,
+            "{} : {} cas, {} écart(s)",
+            report.file,
+            report.examined,
+            report.failures.len()
+        );
+        for failure in detailed {
+            let _ = writeln!(summary, "  {failure}");
+        }
+    }
+    if failed {
+        return Err(summary);
+    }
+    Ok(summary.trim_end().to_owned())
+}
+
 /// Passe un fichier au formateur de la toolchain pinnée.
 fn run_rustfmt(path: &Path) -> Result<(), String> {
     let status = std::process::Command::new("rustfmt")
@@ -231,9 +289,10 @@ mod tests {
     }
 
     #[test]
-    fn le_mode_d_emploi_cite_les_deux_commandes() {
+    fn le_mode_d_emploi_cite_les_trois_commandes() {
         let text = usage();
         assert!(text.contains("download-ucd"));
         assert!(text.contains("generate-unicode-tables"));
+        assert!(text.contains("check-segmentation"));
     }
 }

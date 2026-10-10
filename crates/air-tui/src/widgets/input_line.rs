@@ -35,7 +35,9 @@ use crate::cell::{AirAttributes, AirCell};
 use crate::geometry::{AirColumn, AirPoint, AirRectangle, AirRow};
 use crate::input::event::{AirInputEvent, AirKey, AirMouseButton, AirMouseEventKind};
 use crate::theme::AirRole;
-use crate::unicode::{grapheme_width, graphemes};
+use crate::unicode::{
+    grapheme_width, graphemes, next_grapheme_boundary, previous_grapheme_boundary, width_between,
+};
 use crate::view::painter::AirPainter;
 use crate::view::{AirContext, AirDrawContext, AirEvent, AirOutcome, AirView, AirViewState};
 
@@ -82,9 +84,18 @@ impl AirInputLine {
     /// Le même champ, avec une longueur maximale en grappes.
     #[must_use]
     pub fn with_maximum_length(mut self, maximum_length: usize) -> Self {
-        self.maximum_length = Some(maximum_length);
-        self.truncate_to_maximum();
+        self.set_maximum_length(Some(maximum_length));
         self
+    }
+
+    /// Change la longueur maximale, et coupe le texte s'il la dépasse.
+    ///
+    /// `None` retire la limite. La coupure se fait sur une frontière de grappe : réduire
+    /// la limite ne peut pas laisser un accent orphelin.
+    pub fn set_maximum_length(&mut self, maximum_length: Option<usize>) {
+        self.maximum_length = maximum_length;
+        self.truncate_to_maximum();
+        self.scroll_into_view();
     }
 
     /// Le texte saisi.
@@ -144,39 +155,21 @@ impl AirInputLine {
     }
 
     /// Le décalage de la frontière de grappe qui précède `offset`.
+    ///
+    /// Délégué à [`crate::unicode`] : l'éditeur du jalon M6 a besoin du même pas, et deux
+    /// implémentations de la même règle garantissent qu'elles divergent.
     fn previous_boundary(&self, offset: usize) -> usize {
-        let mut boundary: usize = 0;
-        let mut walked: usize = 0;
-        for cluster in graphemes(&self.text) {
-            let next = walked.saturating_add(cluster.len());
-            if next >= offset {
-                return walked;
-            }
-            boundary = next;
-            walked = next;
-        }
-        boundary
+        previous_grapheme_boundary(&self.text, offset)
     }
 
     /// Le décalage de la frontière de grappe qui suit `offset`.
     fn next_boundary(&self, offset: usize) -> usize {
-        let mut walked: usize = 0;
-        for cluster in graphemes(&self.text) {
-            let next = walked.saturating_add(cluster.len());
-            if next > offset {
-                return next;
-            }
-            walked = next;
-        }
-        self.text.len()
+        next_grapheme_boundary(&self.text, offset)
     }
 
     /// La largeur affichée de la tranche de texte comprise entre deux décalages.
     fn width_between(&self, first: usize, last: usize) -> usize {
-        let Some(slice) = self.text.get(first..last) else {
-            return 0;
-        };
-        graphemes(slice).map(grapheme_width).sum()
+        width_between(&self.text, first, last)
     }
 
     /// La colonne du curseur dans la zone de contenu, défilement compris.
@@ -669,6 +662,18 @@ mod tests {
         let input_line = field(20).with_text("ae\u{0301}bc").with_maximum_length(2);
         assert_eq!(input_line.text(), "ae\u{0301}");
         assert_eq!(input_line.length(), 2);
+    }
+
+    #[test]
+    fn changer_la_longueur_maximale_coupe_ou_libere() {
+        let mut input_line = field(20).with_text("abcdef");
+        input_line.set_maximum_length(Some(3));
+        assert_eq!(input_line.text(), "abc");
+        assert_eq!(input_line.cursor_offset(), 3);
+        input_line.set_maximum_length(None);
+        assert_eq!(input_line.maximum_length(), None);
+        type_text(&mut input_line, "xyz");
+        assert_eq!(input_line.text(), "abcxyz");
     }
 
     #[test]

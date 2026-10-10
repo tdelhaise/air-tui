@@ -6,6 +6,66 @@ tête. On ajoute, on ne réécrit jamais une entrée passée.
 Une entrée par campagne, pas par commit. Répartition des rôles : `etat-avancement.md` est
 l'état vivant, ce journal est la trace figée, `INDEX.md` est la carte structurelle.
 
+## 2026-10-10 — Jalon M6 : `redit`, la couche MVC, et la hiérarchie complète
+
+- **L'ADR-007 a cessé d'être une intention.** La couche modèle existe : `AirModel` à une
+  seule méthode, `AirChangeSet` pour les faits structurels, `AirGeneration` pour l'état
+  continu, `AirTextBuffer` comme modèle de l'éditeur. Le partage entre le journal et les
+  compteurs n'est pas cosmétique — un journal de ce qui est fréquent devient une liste
+  que personne ne relit, et un compteur sur ce qui est structurel ne dit pas **quoi** a
+  changé. Une frappe ne consigne donc rien ; elle fait avancer deux entiers.
+- **La vue d'édition ne tient pas son modèle**, et c'est là que l'ADR se vérifie ou
+  s'effondre. `AirEditorView` n'a ni `&`, ni `Rc`, ni pointeur vers le tampon : elle garde
+  un reflet que le contrôleur lui pousse, et accumule des intentions qu'il relève. Une
+  frappe ne peut pas muter le modèle depuis la vue, et il n'y a jamais deux emprunts
+  mutables vivants.
+- **Une erreur de conception, trouvée par `redit` avant sa première ligne.** J'avais écrit
+  `AirApplication` en lui faisant **posséder** l'arbre, et une pile d'écrans par-dessus.
+  C'est intenable : `children` rend des `Box<dyn AirView>`, donc une fois la vue d'édition
+  confiée à l'application, plus personne ne pouvait lui demander de se synchroniser. La
+  racine est désormais passée en paramètre à `draw` et à `pump`, et la pile appartient à
+  l'appelant. C'est exactement l'argument que le module invoquait déjà pour ne pas prendre
+  la boucle — appliqué une fois de plus.
+- **`AirView` hérite de `Any` (ADR-013).** `find` et `find_mut` rendent une vue avec son
+  type, par identifiant. Les deux alternatives coûtent plus cher : un paramètre de type
+  sur les conteneurs remonte jusqu'à l'application et interdit de mêler deux types de
+  fenêtres dans un bureau ; une méthode par type de vue ferait du cœur le catalogue de ses
+  widgets.
+- **`AirScreen` existe pour rendre une erreur impossible.** Au jalon M5b, la barre de menu
+  devait être insérée en dernier, et la contrainte ne tenait que par la documentation.
+  L'écran range ses quatre pièces lui-même — bureau, statut, menu, modal —, dans le seul
+  ordre qui marche, quel que soit l'ordre des appels. La **modalité** est son quatrième
+  emplacement : un clic hors du modal est consommé plutôt que laissé à ce qui est derrière.
+- **Le contrôle de conformité Unicode a payé au premier lancement.** `cargo xtask
+  check-segmentation` confronte les deux segmentations aux fichiers d'essais du Consortium.
+  La segmentation en **mots**, écrite pour ce jalon, passait ses 1944 cas sans écart. Celle
+  en **grappes**, livrée au jalon M3 et annoncée comme faite, en échouait **dix** : la
+  révision 49 de l'annexe 29, livrée avec Unicode 18.0.0, a réécrit `GB9c` en
+  `\p{InCB=Linker} \p{InCB=Extend}* × \p{InCB=Consonant}` et retiré l'exigence d'une
+  consonne **avant** le lieur. Les tables du dépôt venaient déjà de 18.0.0, les règles non
+  — elles n'étaient pas de la même édition. Corrigé, et les deux cas d'essai
+  correspondants sont dans la suite de tests.
+
+  La leçon est la même qu'au jalon M5b avec le pseudo-terminal : une règle écrite d'après
+  une spécification, sans jeu d'essais officiel pour la contredire, est une règle dont
+  personne ne sait si elle est juste.
+- **Deux de mes attentes étaient fausses, pas le code.** J'avais écrit que `l'enfant` se
+  découpait en trois segments et qu'une marque combinante après un saut de ligne se
+  rattachait à la lettre suivante. L'annexe dit le contraire dans les deux cas, et le code
+  l'appliquait correctement. J'ai corrigé les tests **et** la documentation du module, qui
+  portait le mauvais exemple.
+- **Un essai en pseudo-terminal m'a donné un faux négatif**, et il faut le dire : j'avais
+  envoyé `1b5b31337e` en croyant envoyer `F2`. C'est `F3`, qui ouvre un dialogue modal, et
+  le modal a consommé le `F10` suivant — verdict `timeout`, alors que tout fonctionnait.
+  Le comportement était correct ; l'essai était faux. La liste de contrôles de `CLAUDE.md`
+  porte désormais les trois codes et cet avertissement.
+- **Vérifié dans un pseudo-terminal, essais de contrôle compris** : `redit fichier` dessine
+  le menu, le cadre à case `[■]`, le titre `essai.txt  1:1`, le texte, les deux ascenseurs
+  et la barre de statut avec `F2` **en gris** — le grisage de l'ADR-007 à l'œil nu, sur un
+  document intact. Taper `ABC`, `F2`, `F10` : le fichier sur le disque contient
+  `ABCorigine`. `F3`, `Entrée` sur un nom vide : « aucun nom de fichier », le dialogue se
+  referme. Sans `F10`, le programme tient.
+
 ## 2026-10-10 — Le défaut qui rendait air-tui inutilisable sur macOS
 
 - **`poll` sur `/dev/tty` rend `POLLNVAL` sur macOS.** `PosixTerminal::open` ouvrait

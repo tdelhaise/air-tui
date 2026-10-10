@@ -8,12 +8,14 @@
 //!
 //! **Utilisable, incomplet.** Ce qui existe : la géométrie, la cellule, la surface
 //! différentielle, le terminal en RAII, le décodeur d'entrée et le protocole clavier
-//! Kitty, les tables Unicode, l'arbre de vues à découpage réel, le moteur de thèmes et
-//! huit widgets. L'exemple `frame` en fait une application qui répond.
+//! Kitty, les tables Unicode — largeur, graphèmes et **mots** —, l'arbre de vues à
+//! découpage réel, le moteur de thèmes, onze widgets, la **couche modèle** de l'ADR-007
+//! et la hiérarchie `AirApplication` / `AirScreen` / `AirDesktop`. L'application `redit`
+//! édite des fichiers avec.
 //!
-//! Ce qui n'existe **pas** encore : `AirApplication`, `AirScreen` et `AirDesktop` —
-//! l'application monte sa boucle et son arbre à la main —, le journal de changements de
-//! la couche MVC, l'éditeur de texte, et les listes. Voir `docs/etat-avancement.md`.
+//! Ce qui n'existe **pas** encore : la sélection de texte, les listes, les cases à cocher
+//! et les boutons radio, le thème Midnight Commander et `rmc`, et l'étage natif Linux.
+//! Voir `docs/etat-avancement.md`.
 //!
 //! # Architecture
 //!
@@ -36,11 +38,13 @@
 // bruyamment.
 #![cfg_attr(test, allow(clippy::expect_used, clippy::unwrap_used))]
 
+pub mod application;
 pub mod cell;
 pub mod codec;
 pub mod command;
 pub mod geometry;
 pub mod input;
+pub mod model;
 pub mod surface;
 pub mod terminal;
 pub mod theme;
@@ -51,6 +55,7 @@ pub mod widgets;
 pub use air_tui_platform::{
     Decoder, Encoder, InputReadiness, PlatformError, PlatformErrorKind, TerminalDevice,
 };
+pub use application::{AirApplication, AirDesktop, AirPumpOutcome, AirScreen};
 pub use cell::{AirAttributes, AirCell, AirColor};
 pub use codec::{AirCellPresentation, AirSgrEncoder};
 pub use command::{AirCommand, AirCommandSet};
@@ -59,19 +64,25 @@ pub use input::{
     AirAnsiDecoder, AirDecodeError, AirInputEvent, AirKey, AirKeyEvent, AirKeyState, AirModifiers,
     AirMouseButton, AirMouseEvent, AirMouseEventKind, AirScanCode,
 };
+pub use model::{
+    AirChangeSet, AirGeneration, AirModel, AirTextAction, AirTextBuffer, AirTextChange,
+    AirTextPosition,
+};
 pub use surface::AirSurface;
 pub use terminal::AirTerminal;
 pub use theme::AirTheme;
 pub use unicode::{
-    AirGraphemeBreak, AirGraphemes, AirIndicConjunctBreak, UNICODE_VERSION, display_width,
-    grapheme_break, grapheme_width, graphemes, indic_conjunct_break, is_extended_pictographic,
-    text_width,
+    AirGraphemeBreak, AirGraphemes, AirIndicConjunctBreak, AirWordBreak, AirWords, UNICODE_VERSION,
+    display_width, grapheme_break, grapheme_width, graphemes, indic_conjunct_break,
+    is_extended_pictographic, is_word, next_word_start, previous_word_start, text_width,
+    word_break, words,
 };
 pub use view::{
-    AirBorderStyle, AirContext, AirEvent, AirGroup, AirOutcome, AirPainter, AirPhase, AirView,
-    AirViewId, AirViewState, dispatch_event, draw_view,
+    AirBorderStyle, AirContext, AirDrawContext, AirEvent, AirGroup, AirOutcome, AirPainter,
+    AirPhase, AirView, AirViewId, AirViewState, dispatch_event, draw_view, find, find_mut,
 };
 pub use widgets::{
-    AirButton, AirInputLine, AirMenu, AirMenuBar, AirMenuItem, AirPanel, AirStaticText,
-    AirStatusItem, AirStatusLine, AirWindow,
+    AirButton, AirEditorView, AirInputLine, AirMenu, AirMenuBar, AirMenuItem, AirOrientation,
+    AirPanel, AirPromptDialog, AirScrollBar, AirStaticText, AirStatusItem, AirStatusLine,
+    AirWindow,
 };
