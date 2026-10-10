@@ -64,6 +64,12 @@ l'état vivant, ce journal est la trace figée, `INDEX.md` est la carte structur
 - **Le README corrigé d'une demi-ligne** : il écrivait au présent qu'« un second thème
   reproduit celui de Midnight Commander ». La section *État* démentait trois paragraphes
   plus bas, mais l'affirmation restait écrite au présent. Elle est passée au futur.
+- **`main` exige désormais les trois contrôles**, `enforce_admins` compris : la règle vaut
+  pour l'auteur du dépôt comme pour un contributeur. Une CI qui informe sans rien empêcher
+  n'aurait fait que déplacer le problème. `strict` reste à `false` : une branche n'a pas à
+  être rebasée sur `main` pour être fusionnée, seulement à voir ses contrôles passer — et
+  l'exiger rendrait une chaîne de PR empilées impraticable, ce qu'elle a déjà été au jalon
+  M6.
 - Versions : `xtask` 0.2.0 → **0.2.1** (ajout de commandes, donc `z` — en `0.y.z`, seule
   une rupture avance `y`). 894 essais au vert, dont 49 nouveaux.
 
