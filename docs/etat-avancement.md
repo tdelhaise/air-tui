@@ -3,8 +3,9 @@
 Document de suivi **vivant** : où en est-on, quelle est la prochaine tâche. Il se met à
 jour à chaque session. L'historique figé est dans [`JOURNAL.md`](JOURNAL.md).
 
-**Dernière mise à jour : 2026-10-10** (jalon M6 — `redit`, la couche MVC, la hiérarchie
-d'objets, et la segmentation en mots).
+**Dernière mise à jour : 2026-10-10** (jalon M6b — les trois contrôles de conventions et
+l'intégration continue ; jalon M6 — `redit`, la couche MVC, la hiérarchie d'objets, et la
+segmentation en mots).
 
 ## Dépôt
 
@@ -12,12 +13,17 @@ d'objets, et la segmentation en mots).
 modification passe par une pull request, y compris pour les administrateurs. Les commits
 sont signés par la clef `5C6F8A2E20E58061` (`thierry.delhaise@air-desktop.org`).
 
-**Aucune CI n'existe à ce jour**, donc aucun contrôle n'est requis à la fusion : les
-vérifications de `CLAUDE.md` sont à exécuter en local avant d'ouvrir une PR.
+Une **intégration continue** existe depuis M6b (`.github/workflows/ci.yml`) : sur chaque
+PR, `fmt`, `clippy -D warnings`, les essais, `build --locked`, `check-naming`,
+`check-versions` sur Linux `x86_64` et macOS `aarch64`, plus `deny check`,
+`check-codec-coverage`, les tables Unicode à l'octet et la conformité des segmentations.
+
+Elle ne remplace pas la liste locale de `CLAUDE.md` : un coureur n'a pas de terminal de
+contrôle, donc **aucun essai en pseudo-terminal** n'y tourne, et le fuzzing exige nightly.
 
 ## Où en est-on
 
-Jalons **M0 à M6 terminés**. Le dépôt porte ses conventions, ses ADR fondateurs, le socle
+Jalons **M0 à M6b terminés**. Le dépôt porte ses conventions, ses ADR fondateurs, le socle
 de rendu, le décodeur d'entrée, l'arbre de vues, onze widgets, la **couche MVC** de
 l'ADR-007, la hiérarchie d'objets complète, et une **application** : `redit` ouvre un
 fichier, l'édite et l'enregistre.
@@ -28,6 +34,29 @@ la coquille `rmc` (M7), et l'étage d'entrée natif Linux (M8).
 
 ### Fait
 
+- **M6b — les trois contrôles de conventions, et l'intégration continue qui les exige** :
+  - **`cargo xtask check-naming`** (ADR-004) : un balayage lexical qui écarte
+    commentaires, chaînes et littéraux, relève les **sites de déclaration** et refuse le
+    glossaire des abréviations. Les quatre exceptions sont tenues : les noms imposés par
+    `std`, et les corps de bloc `extern "C"` exemptés entiers. 6866 noms inspectés dans 64
+    fichiers, **aucune abréviation** — la règle tenue à la main l'était bien.
+  - **`cargo xtask check-versions`** (ADR-009) : les crates touchées sur la plage, l'arbre
+    de travail joint à la plage, et la **cohérence des dépendances par chemin**. Ce dernier
+    contrôle attrape ce que cargo laisse passer : une version déclarée qui a dérivé sans
+    devenir incompatible.
+  - **`cargo xtask check-codec-coverage`** (ADR-012) : les six codecs à 100 % de régions,
+    de fonctions **et** de lignes. Un codec absent du relevé est un manquement, pas un
+    succès — sans quoi un fichier renommé sortirait de la règle en silence.
+  - Les trois sont **éprouvés sur un refus**, pas seulement sur un succès : un gate qui dit
+    toujours oui est pire qu'un gate absent. 49 essais nouveaux, dont ceux des deux pièges
+    de la lecture par sous-chaîne (`rust-version` qui répondrait pour `version`,
+    `notcovered` qui répondrait pour `covered`).
+  - **Ce que la mesure a tranché, et qui est écrit dans le gate** : deux modules nommés
+    `codec` ne sont **pas** soumis à la règle. `codec/mod.rs` est une façade sans une ligne
+    exécutable, que `llvm-cov` ne relève pas du tout. `air-tui-platform/src/codec.rs` porte
+    le contrat — deux traits sans méthode par défaut — et ses six régions manquantes sur 90
+    sont les fermetures de deux essais où le décodeur ne doit **rien** produire, donc où la
+    fermeture ne peut pas être appelée.
 - Conventions reprises d'Air et consignées (`docs/CONVENTIONS-fr.md`), dont la règle de
   nommage sans abréviation et son glossaire.
 - ADR-001 à ADR-012 rédigés (français seulement, traduction anglaise à venir).
@@ -251,14 +280,17 @@ la coquille `rmc` (M7), et l'étage d'entrée natif Linux (M8).
   validés la demanderait.
 - Couverture de tests : **100 % tenu sur les codecs** (ADR-012) et élevé sur `air-tui`,
   mais `air-tui-platform-posix` demande un vrai terminal et reste bas.
-- Les gates `check-naming` (ADR-004), `check-versions` (ADR-009) et
-  `check-codec-coverage` (ADR-012). `cargo xtask` porte désormais **deux** commandes — la
-  génération des tables Unicode et la conformité des segmentations — mais pas ces trois
-  contrôles, qui restent manuels.
+- Les gates `check-licence-headers`, `check-safety-comments` et `check-dco` de
+  `docs/CONVENTIONS-fr.md` : les trois autres sont écrits (M6b), ces trois-là restent
+  manuels.
 - La couverture de `xtask` : 34 % à 81 % selon le module. C'est de l'outillage hors
   exécution du framework, qu'ADR-012 ne couvre pas — mais ce n'est pas une raison de le
   laisser là.
-- Toute CI. `main` n'exige donc aucun contrôle à la fusion, faute d'en avoir un à exiger.
+- Un coureur `aarch64` **Linux** : GitHub n'en offre pas gratuitement, donc cette
+  architecture reste vérifiée à la main sur `neon`. C'est elle qui a prouvé la déclaration
+  variadique d'`ioctl` au jalon M0.
+- Les essais en **pseudo-terminal** en CI : un coureur n'a pas de terminal de contrôle.
+  Ils restent dans la liste locale, où ils ont déjà trouvé le `POLLNVAL` de macOS.
 - `air-tui-platform-air`, l'implémentation pour la cible `linux-air`.
 - Les cibles `cargo-fuzz` des décodeurs à venir (Kitty, graphèmes Unicode).
 - *(plus rien ici : la dette de vérification Linux est soldée, voir ci-dessous)*
@@ -273,6 +305,11 @@ commutable, ce que `redit` n'exerce pas.
 
 Il demandera probablement les **listes**, qu'un panneau de fichiers ne peut pas éviter, et
 avec elles les ascenseurs qu'elles pilotent.
+
+Un point tranché d'avance par M6b : l'importeur de skins lit un format de fichier, donc
+c'est une **conversion de flux**, donc un codec au sens de l'ADR-012 — à 100 % de
+couverture, et `check-codec-coverage` l'exigera dès que son fichier entrera dans la liste
+du gate. C'est la raison pour laquelle l'outillage a été écrit avant M7 et non après.
 
 Une dette restante : remonter la couverture de `air-tui-platform-posix` par des tests sous
 pty. Et deux vérifications encore absentes : la **console Linux native**, inaccessible par
@@ -293,5 +330,6 @@ touches fonctionnelles.
 | M5 | moteur de thèmes, quantificateur, fenêtre et bouton | **fait** |
 | M5b | barre de menu à menus déroulants, barre de statut, champ de saisie, curseur | **fait** |
 | M6 | `redit` — équivalent de `tvedit`, couche MVC, hiérarchie d'objets | **fait** |
+| M6b | les trois contrôles de conventions, et l'intégration continue | **fait** |
 | M7 | thème et coquille Midnight Commander, importeur de skins | à faire |
 | M8 | étage natif Linux : evdev, `TIOCLINUX`, gpm | à faire |

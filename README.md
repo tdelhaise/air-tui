@@ -16,8 +16,8 @@ terminal veut bien les donner.
 ## Ce qui le distingue
 
 - **Thèmes graphiques.** Le look and feel est une donnée, pas du code. Le thème par
-  défaut reproduit celui de Turbo Vision ; un second thème reproduit celui de Midnight
-  Commander. Un thème est un triplet palette + glyphes + décorations.
+  défaut reproduit celui de Turbo Vision ; un second thème, prévu, reproduira celui de
+  Midnight Commander. Un thème est un triplet palette + glyphes + décorations.
 - **Screens, Windows, Views.** Une hiérarchie explicite : l'application empile des
   `AirScreen` (surfaces plein écran commutables), chacune organise un `AirDesktop` de
   `AirWindow`, composés d'`AirView`.

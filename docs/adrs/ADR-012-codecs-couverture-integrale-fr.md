@@ -61,22 +61,47 @@ types du framework, n'en a pas besoin.
 
 ## État mesuré au 2026-10-10
 
-| Codec | Régions | Fonctions | Lignes |
-|---|---|---|---|
-| `air-tui/src/codec/sgr.rs` | 100 % | 100 % | 100 % |
-| `air-tui/src/codec/decimal.rs` | 100 % | 100 % | 100 % |
+Six fichiers sont soumis à la règle, et le gate les exige tous à 100 % des trois mesures :
 
-Aucun décodeur n'existe encore, donc aucune cible `cargo-fuzz` n'est écrite. Le premier
-sera le décodeur de séquences ANSI d'entrée, au jalon M1.
+| Codec | Rôle |
+|---|---|
+| `air-tui/src/codec/decimal.rs` | encodeur décimal |
+| `air-tui/src/codec/sgr.rs` | encodeur des séquences SGR — `impl Encoder` |
+| `air-tui/src/input/ansi.rs` | décodeur des séquences ANSI — `impl Decoder` |
+| `air-tui/src/input/scanning.rs` | le balayage des paramètres, étape du décodage |
+| `air-tui/src/input/kitty.rs` | le décodage du protocole clavier Kitty |
+| `air-tui/src/input/event.rs` | le modèle d'événements que le décodeur produit |
+
+Le décodeur ANSI porte sa cible `cargo-fuzz` (`fuzz/fuzz_targets/ansi_decoder.rs`), comme
+cet ADR l'exige de tout décodeur.
+
+**Deux modules nommés `codec` ne sont pas dans cette liste**, et le dire vaut mieux que de
+laisser croire qu'ils y sont :
+
+- `air-tui/src/codec/mod.rs` est une façade — deux `pub mod`, un `pub use`, aucune ligne
+  exécutable. `llvm-cov` ne le relève pas du tout, et l'exiger reviendrait à exiger une
+  mesure qui ne peut pas exister ;
+- `air-tui-platform/src/codec.rs` porte le **contrat** : deux traits sans méthode par
+  défaut, donc sans une ligne exécutable hors `#[cfg(test)]`. Mesuré à 84/90 régions, et
+  les six régions manquantes sont les fermetures `|item| collected.push(item)` de deux
+  essais où le décodeur ne doit **rien** produire, donc où la fermeture ne peut pas être
+  appelée. Exiger 100 % là mesurerait le double d'essai, pas un codec.
 
 ## Conséquences
 
 - Le reste du projet n'est **pas** à 100 % et ne le prétend pas : 91,2 % de régions sur
   l'ensemble à cette date. La règle des codecs est une exigence locale et vérifiable, pas
   une annonce globale.
-- Un gate `check-codec-coverage` est **à écrire** : mesurer par fichier et refuser qu'un
-  module de `codec/` descende sous 100 %. Tant qu'il n'existe pas, la vérification est
-  manuelle, par `cargo llvm-cov --summary-only`.
+- Le gate `check-codec-coverage` **existe** depuis le jalon M6b : `cargo xtask
+  check-codec-coverage` mesure par fichier et refuse qu'un codec descende sous 100 % de
+  régions, de fonctions **ou** de lignes — les trois mesures de ce tableau, et pas les
+  branches, que cet ADR ne nomme pas. Il sait aussi lire un relevé déjà produit, ce dont
+  l'intégration continue se sert pour ne mesurer qu'une fois.
+- La liste des fichiers soumis est **close et explicite** dans le gate, chacun avec son
+  rôle, plutôt que déduite d'un motif de chemin : `input/` contient le décodeur et le
+  modèle d'événements qu'il produit, et un motif les confondrait avec le reste du cœur. Un
+  fichier **absent** du relevé est un manquement, pas un succès — sans quoi un fichier
+  renommé sortirait de la règle en silence.
 
 ## Alternatives écartées
 

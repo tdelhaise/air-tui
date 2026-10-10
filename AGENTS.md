@@ -75,11 +75,16 @@ Tout bloc `unsafe` porte un commentaire `// SAFETY:` qui justifie ses précondit
 
 ## Ce qui n'existe pas encore
 
-`cargo xtask` porte **deux** commandes de vérification — `generate-unicode-tables --check`
-et `check-segmentation` —, et aucune des trois de `docs/CONVENTIONS-fr.md` :
-`check-naming` (ADR-004), `check-versions` (ADR-009) et `check-codec-coverage` (ADR-012)
-sont à exécuter **à la main**. Ne pas écrire qu'elles tournent avant qu'elles tournent
-(NO GO n° 1).
+`cargo xtask` porte **cinq** commandes de vérification — `generate-unicode-tables --check`,
+`check-segmentation`, `check-naming` (ADR-004), `check-versions` (ADR-009) et
+`check-codec-coverage` (ADR-012) —, exécutées par l'intégration continue sur chaque PR.
+
+Trois contrôles de `docs/CONVENTIONS-fr.md` restent **à écrire**, donc à tenir à la main :
+`check-licence-headers`, `check-safety-comments` et `check-dco`. Ne pas écrire qu'ils
+tournent avant qu'ils tournent (NO GO n° 1).
+
+`check-naming` inspecte les **sites de déclaration** et non les emplois ; son angle mort
+est la liaison d'un bras de `match`.
 
 ## Contrôles à passer en local avant de pousser
 

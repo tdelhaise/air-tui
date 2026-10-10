@@ -17,6 +17,7 @@ L'**avancement** vit dans [`etat-avancement.md`](etat-avancement.md), l'**histor
 | `LICENSE` | MPL-2.0 |
 | `NOTICE` | attribution des données Unicode incorporées |
 | `.cargo/config.toml` | l'alias `cargo xtask` |
+| `.github/workflows/ci.yml` | l'intégration continue : les contrôles exigés sur chaque PR |
 
 ## Documentation
 
@@ -39,7 +40,7 @@ L'**avancement** vit dans [`etat-avancement.md`](etat-avancement.md), l'**histor
 | `crates/redit` | l'éditeur de texte — le seul endroit qui choisit une plateforme | 0.1.0 |
 | `crates/air-tui-platform-air` | implémentation `linux-air` | **à écrire** |
 | `fuzz/` | cibles `cargo-fuzz`, espace de travail séparé (nightly) | `ansi_decoder` |
-| `xtask/` | outillage du dépôt, en Rust | 0.2.0 — tables Unicode, conformité des segmentations |
+| `xtask/` | outillage du dépôt, en Rust | 0.2.1 — tables Unicode, conformité des segmentations, et les trois contrôles de conventions |
 | `tools/` | outillage qui ne peut pas être en Rust sans un appel C de plus | `pty-drive.py` |
 
 ## Les modules d'`air-tui`
@@ -59,6 +60,18 @@ L'**avancement** vit dans [`etat-avancement.md`](etat-avancement.md), l'**histor
 | `widgets` | panneau, étiquette, fenêtre, bouton, barre de menu, barre de statut, champ de saisie, ascenseur, vue d'édition, dialogue de saisie | M5, M5b, M6 |
 | `model` | `AirModel`, `AirChangeSet`, `AirGeneration`, `AirTextBuffer` — la couche MVC | M6 |
 | `application` | `AirApplication`, `AirScreen`, `AirDesktop` — la boucle et le chrome | M6 |
+
+## Les modules de `xtask`
+
+| Module | Rôle |
+|---|---|
+| `main` | la ligne de commande : six sous-commandes |
+| `ucd` | la lecture des fichiers du référentiel Unicode |
+| `unicode_tables` | la génération du fichier de tables, et sa vérification à l'octet |
+| `segmentation_conformance` | la confrontation aux fichiers d'essais de l'annexe 29 |
+| `naming` | `check-naming` — le balayage lexical des sites de déclaration (ADR-004) |
+| `versions` | `check-versions` — l'incrément par crate et la dérive des dépendances (ADR-009) |
+| `codec_coverage` | `check-codec-coverage` — les 100 % exigés des codecs (ADR-012) |
 
 ## Les modules de `redit`
 
