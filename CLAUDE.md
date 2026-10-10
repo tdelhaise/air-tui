@@ -75,17 +75,20 @@ ses préconditions.
 
 ## Ce qui n'existe pas encore
 
-`cargo xtask` porte **sept** commandes de vérification — `generate-unicode-tables
+`cargo xtask` porte **neuf** commandes de vérification — `generate-unicode-tables
 --check`, `check-segmentation`, `check-naming` (ADR-004), `check-versions` (ADR-009),
-`check-codec-coverage` (ADR-012), `check-dco` et `import-mc-skin --check` (ADR-008).
-L'intégration continue en exécute **six** : celle de l'importeur de skins demande le même
-fichier de skin que celui qui a produit l'artefact, donc le même `mc` installé, et un
-coureur n'en a pas. Elle reste locale, et l'empreinte que l'artefact porte en en-tête la
-rend vérifiable : elle dit « ce n'est pas le même skin » plutôt que « l'artefact a dérivé ».
+`check-codec-coverage` (ADR-012), `check-dco`, `check-licence-headers`,
+`check-safety-comments` (ADR-011) et `import-mc-skin --check` (ADR-008). L'intégration
+continue en exécute **huit** : celle de l'importeur de skins demande le même fichier de
+skin que celui qui a produit l'artefact, donc le même `mc` installé, et un coureur n'en a
+pas. Elle reste locale, et l'empreinte que l'artefact porte en en-tête la rend vérifiable :
+elle dit « ce n'est pas le même skin » plutôt que « l'artefact a dérivé ».
 
-**Deux** contrôles de `docs/CONVENTIONS-fr.md` restent **à écrire**, donc à tenir à la
-main : `check-licence-headers` et `check-safety-comments`. Ne pas écrire qu'ils tournent
-avant qu'ils tournent (NO GO n° 1).
+**Plus aucun contrôle de `docs/CONVENTIONS-fr.md` ne reste à tenir à la main.** Les deux
+derniers ont été écrits après M7h, et chiffrés avant de l'être : zéro manquement. Ce sont
+des gates de prévention, pas des réparations — et `check-safety-comments` porte en plus la
+frontière de l'ADR-011, que rien n'outillait et que seules les deux crates du cœur
+tenaient, par leur `#![forbid(unsafe_code)]`.
 
 Portée de `check-dco`, parce qu'elle n'est pas intuitive : sans `--all`, il garde les
 commits de la branche, et c'est ce que la CI exécute sur une pull request. Avec `--all`, il
@@ -117,6 +120,8 @@ cargo xtask check-naming
 cargo xtask check-versions          # compare à origin/main, arbre de travail compris
 cargo xtask check-codec-coverage    # prend la mesure lui-même, ~1 min
 cargo xtask check-dco               # les commits de la branche ; --all pour l'historique
+cargo xtask check-licence-headers
+cargo xtask check-safety-comments   # et la frontière unsafe de l'ADR-011
 ```
 
 Ces contrôles tournent aussi en intégration continue sur chaque PR

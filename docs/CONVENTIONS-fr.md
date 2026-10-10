@@ -226,6 +226,8 @@ chaque PR (`.github/workflows/ci.yml`) :
 | `check-versions` | une crate touchée dont la version n'avance pas (ADR-009) |
 | `check-codec-coverage` | un codec sous 100 % de régions, de fonctions ou de lignes (ADR-012) |
 | `check-dco` | un commit sans `Signed-off-by`, ou un trailer qui fait d'un agent un auteur |
+| `check-licence-headers` | un `.rs` dont les trois premières lignes ne sont pas l'avis MPL |
+| `check-safety-comments` | un bloc `unsafe` sans `// SAFETY:`, ou un `unsafe` hors de la crate POSIX (ADR-011) |
 | `import-mc-skin --check` | un artefact de thème qui a dérivé de son skin, ou un skin qui n'est pas le sien (ADR-008) |
 
 Deux précisions sur `check-naming`, parce qu'un contrôle dont on ignore la portée donne
@@ -262,11 +264,34 @@ commit de fusion que **GitHub fabrique** pour éprouver le résultat, et que per
 signer. Une fusion **squash** n'en est pas une : elle n'a qu'un parent, et reste donc
 examinée.
 
-# À outiller
+Deux précisions sur `check-safety-comments`, parce que « un bloc `unsafe` » n'a pas une
+seule réponse syntaxique :
 
-Les deux contrôles ci-dessous ne sont **pas** écrits. Ils sont à exécuter à la main, et
-**ne doivent pas être annoncés comme automatisés** avant de l'être (NO GO n° 1).
+- seul `unsafe { … }` exige un `// SAFETY:`, et dans les **trois** lignes au-dessus. C'est
+  la seule forme qui affirme au compilateur quelque chose qu'il ne vérifie pas.
+  `unsafe extern`, `unsafe fn`, `unsafe impl` et `unsafe trait` sont **comptées et
+  annoncées** à chaque exécution : la première est une déclaration de symboles que
+  l'édition 2024 oblige à marquer, les trois autres reportent l'engagement sur l'appelant,
+  qui le documente par une section rustdoc `# Safety` — ce que `clippy::missing_safety_doc`
+  exige déjà ;
+- il tient aussi la **frontière** de l'ADR-011 — « `unsafe` vit dans
+  `air-tui-platform-posix`, et nulle part ailleurs ». Rien ne l'outillait : les deux crates
+  du cœur la tiennent par leur `#![forbid(unsafe_code)]`, mais `redit`, `rmc`, `xtask` et
+  les cibles de fuzzing ne le portent pas. C'est le seul apport réel du contrôle, la
+  première règle ne trouvant rien aujourd'hui.
 
-- `check-licence-headers` — en-tête MPL présent sur chaque `.rs`.
-- `check-safety-comments` — un `// SAFETY:` par bloc `unsafe` dans
-  `air-tui-platform-posix`.
+Le mot-clé est cherché par **balayage lexical**, celui de `check-naming`, et non par
+`grep` : `xtask/src/naming.rs` porte deux fois le mot `unsafe` dans des chaînes de
+caractères, et un `grep` déclarerait `xtask` en infraction.
+
+# Tous outillés
+
+Les six contrôles de ce document sont **écrits et exécutés en intégration continue**.
+Aucun ne reste à tenir à la main.
+
+Les deux derniers — `check-licence-headers` et `check-safety-comments` — ont été chiffrés
+avant d'être écrits : **zéro manquement**, sur soixante-dix-neuf fichiers tous pourvus de
+l'avis et onze blocs `unsafe` tous justifiés. Ce sont donc des gates de **prévention**, et
+il faut le dire plutôt que de laisser croire qu'ils ont réparé quelque chose. Leur intérêt
+est qu'un fichier **nouveau** est exactement le moment où une de ces deux règles s'oublie,
+et c'est aussi le moment où personne ne relit les soixante-dix-huit autres.

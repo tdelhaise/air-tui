@@ -79,6 +79,16 @@ jobs:
       - name: nommage sans abréviation (ADR-004)
         run: cargo xtask check-naming
 
+      # Les deux derniers contrôles de `docs/CONVENTIONS-fr.md` à avoir été outillés. Ils
+      # ne trouvent rien aujourd'hui — mesuré avant de les écrire —, et c'est le cas d'un
+      # gate de prévention : il garde une règle au moment où elle s'oublie, c'est-à-dire
+      # sur un fichier nouveau, quand personne ne relit les soixante-dix-huit autres.
+      - name: avis MPL en tête de chaque source
+        run: cargo xtask check-licence-headers
+
+      - name: justification de chaque bloc unsafe, et frontière (ADR-011)
+        run: cargo xtask check-safety-comments
+
       # Sur une poussée vers `main`, la base de comparaison **est** HEAD : le contrôle
       # n'aurait rien à comparer et passerait à vide. Il n'a de sens que sur une PR.
       - name: versionnement par crate (ADR-009)

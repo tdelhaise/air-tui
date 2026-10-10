@@ -17,6 +17,8 @@
 //! cargo xtask check-codec-coverage
 //! cargo xtask check-dco
 //! cargo xtask check-dco --all
+//! cargo xtask check-licence-headers
+//! cargo xtask check-safety-comments
 //! cargo xtask import-mc-skin --skin /usr/share/mc/skins/default.ini
 //! ```
 
@@ -27,9 +29,11 @@
 
 mod codec_coverage;
 mod dco;
+mod licence;
 mod mc_skin;
 mod mc_theme;
 mod naming;
+mod safety;
 mod segmentation_conformance;
 mod ucd;
 mod unicode_tables;
@@ -70,6 +74,8 @@ fn main() -> ExitCode {
         Some("check-versions") => check_versions(&arguments),
         Some("check-codec-coverage") => check_codec_coverage(&arguments),
         Some("check-dco") => check_dco(&arguments),
+        Some("check-licence-headers") => check_licence_headers(),
+        Some("check-safety-comments") => check_safety_comments(),
         Some("import-mc-skin") => import_mc_skin(&arguments),
         Some(other) => Err(format!("commande inconnue : {other}\n\n{}", usage())),
         None => Err(usage()),
@@ -96,6 +102,8 @@ fn usage() -> String {
      cargo xtask check-versions [--base <référence>]\n  \
      cargo xtask check-codec-coverage [--report <relevé.json>]\n  \
      cargo xtask check-dco [--base <référence>] [--all]\n  \
+     cargo xtask check-licence-headers\n  \
+     cargo xtask check-safety-comments\n  \
      cargo xtask import-mc-skin --skin <fichier.ini> [--check]"
         .to_owned()
 }
@@ -325,6 +333,55 @@ fn check_codec_coverage(arguments: &[String]) -> Result<String, String> {
     );
     for violation in &report.violations {
         let _ = writeln!(summary, "  {} — {}", violation.file, violation.detail);
+    }
+    Err(summary)
+}
+
+/// Refuse un `.rs` sans l'avis MPL en tête.
+fn check_licence_headers() -> Result<String, String> {
+    let report = licence::check(&repository_root()?)?;
+    if report.violations.is_empty() {
+        return Ok(format!(
+            "{} fichiers portent l'avis MPL en tête, à l'octet",
+            report.examined
+        ));
+    }
+    let mut summary = format!(
+        "{} fichier(s) sans l'avis MPL, sur {} :\n",
+        report.violations.len(),
+        report.examined
+    );
+    for violation in &report.violations {
+        let _ = writeln!(summary, "  {} — {}", violation.subject, violation.detail);
+    }
+    Err(summary)
+}
+
+/// Refuse un bloc `unsafe` sans `// SAFETY:`, et tout `unsafe` hors de la crate POSIX.
+fn check_safety_comments() -> Result<String, String> {
+    let report = safety::check(&repository_root()?)?;
+    // Les autres formes du mot-clé sont annoncées plutôt qu'exemptées en silence : un
+    // contrôle qui taît ce qu'il ne regarde pas donne la même assurance qu'un contrôle
+    // absent.
+    let mut others = String::new();
+    for (label, found) in &report.other_forms {
+        let _ = write!(others, "\n  non soumis : {found} × « {label} »");
+    }
+    if report.violations.is_empty() {
+        return Ok(format!(
+            "{} fichiers examinés, {} bloc(s) unsafe, tous justifiés par un // SAFETY:, \
+             et aucun unsafe hors de la crate POSIX{others}",
+            report.examined, report.blocks
+        ));
+    }
+    let mut summary = format!(
+        "{} manquement(s) sur {} bloc(s) unsafe dans {} fichiers :\n",
+        report.violations.len(),
+        report.blocks,
+        report.examined
+    );
+    for violation in &report.violations {
+        let _ = writeln!(summary, "  {} — {}", violation.subject, violation.detail);
     }
     Err(summary)
 }
