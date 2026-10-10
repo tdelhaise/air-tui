@@ -6,6 +6,53 @@ tête. On ajoute, on ne réécrit jamais une entrée passée.
 Une entrée par campagne, pas par commit. Répartition des rôles : `etat-avancement.md` est
 l'état vivant, ce journal est la trace figée, `INDEX.md` est la carte structurelle.
 
+## 2026-10-10 — Les deux derniers gates de conventions, et la frontière que personne ne tenait
+
+- **Les six contrôles de `docs/CONVENTIONS-fr.md` sont écrits.** La section « À outiller »
+  du document a disparu, et avec elle la dernière règle que ce dépôt tenait à la main en le
+  sachant.
+- **Je les ai chiffrés avant de les écrire, et le chiffre était zéro.** Soixante-dix-neuf
+  fichiers portent tous l'avis MPL ; onze blocs `unsafe` portent tous leur `// SAFETY:`,
+  la concordance tenant fichier par fichier. Ce sont donc des gates de **prévention**, pas
+  des réparations — et le dire est la moitié de leur valeur. `check-dco` avait trouvé un
+  trou réel dès son premier passage ; ces deux-là ne trouvent rien, et annoncer le contraire
+  serait exactement le défaut que le NO GO n° 2 nomme.
+- **Leur intérêt est ailleurs, et il est précis** : un fichier **nouveau** est le moment où
+  l'une de ces deux règles s'oublie, et c'est aussi le moment où personne ne relit les trois
+  premières lignes des soixante-dix-huit autres.
+- **Le seul apport réel est une règle que personne ne m'avait demandé d'outiller.**
+  `CLAUDE.md` écrit que « `unsafe` et les appels C vivent dans `air-tui-platform-posix`, et
+  nulle part ailleurs », et c'est l'ADR-011. Rien ne le vérifiait. Les deux crates du cœur
+  le tiennent par leur `#![forbid(unsafe_code)]` — mais `redit`, `rmc`, `xtask` et les
+  cibles de fuzzing ne le portent pas, donc un `unsafe` y aurait compilé sans un mot.
+  `check-safety-comments` porte désormais la frontière, et c'est la seule des deux règles de
+  ce jalon qui garde quelque chose qui n'était pas gardé.
+- **« Un bloc `unsafe` » n'a pas une seule réponse syntaxique, et c'était la vraie question
+  de conception** — celle que j'avais annoncée en proposant le jalon. Cinq formes portent le
+  mot-clé. Seule `unsafe { }` exige une justification, parce que seule elle **affirme** au
+  compilateur quelque chose qu'il ne vérifie pas. `unsafe extern` est une déclaration de
+  symboles que l'édition 2024 oblige à marquer : elle n'affirme rien sur un appel, et
+  l'engagement se prend à l'appel. `unsafe fn`, `unsafe impl` et `unsafe trait` reportent
+  l'engagement sur l'appelant, qui le documente par une section rustdoc `# Safety` — ce que
+  `clippy::missing_safety_doc` exige déjà. Les quatre sont **comptées et annoncées** à
+  chaque exécution plutôt qu'exemptées en silence, comme les pardons de `check-dco`.
+- **Et j'ai pu montrer pourquoi un `grep` ne suffisait pas, au lieu de l'affirmer.**
+  `xtask/src/naming.rs` porte deux fois le mot `unsafe` dans des **chaînes de
+  caractères** : sa liste de mots-clés, et un source d'essai. Un contrôle de frontière
+  fondé sur `grep` déclarerait donc `xtask` en infraction dès le premier passage — et on
+  apprendrait à l'ignorer, ce qui est la façon dont un gate meurt. Le mot-clé est cherché
+  par le balayage lexical de `check-naming`, **partagé** plutôt que réécrit : deux scanners
+  donneraient deux comportements dont un seul serait éprouvé, et celui-là l'est sur près de
+  dix mille noms.
+- **Trois contrôles négatifs avant d'y croire** : un avis retiré d'un fichier, un
+  `// SAFETY:` retiré d'un bloc, un `unsafe { }` ajouté dans `redit`. Les trois sont
+  attrapés et nommés avec leur fichier et leur ligne. Un essai confronte aussi `licence.rs`
+  à lui-même — le contrôle porte l'avis qu'il exige.
+- Le marqueur est cherché sur **trois** lignes au-dessus du bloc, et non une : une
+  justification tient rarement sur une ligne, et les blocs du dépôt le montrent. La borne
+  existe pour qu'un marqueur d'un autre bloc ne couvre pas celui-ci, et les deux bords
+  portent leur essai.
+
 ## 2026-10-10 — Jalon M7h : l'annulation, et la mutation unique qu'elle a imposée
 
 - **La décision à trancher était entre deux choses qui portent le même nom.** Un

@@ -82,7 +82,7 @@ const FORBIDDEN_WORDS: &[(&str, &str)] = &[
 const IMPOSED_NAMES: &[&str] = &["len", "fmt"];
 
 /// Les racines parcourues, relatives à la racine du dépôt.
-const ROOTS: &[&str] = &["crates", "xtask/src", "fuzz/fuzz_targets"];
+pub(crate) const ROOTS: &[&str] = &["crates", "xtask/src", "fuzz/fuzz_targets"];
 
 /// Les mots-clés du langage, qu'un nom déclaré ne peut pas être.
 const KEYWORDS: &[&str] = &[
@@ -165,7 +165,7 @@ pub fn check(repository: &Path) -> Result<Report, String> {
 }
 
 /// Ajoute récursivement les fichiers `.rs` d'un répertoire.
-fn collect_rust_files(directory: &Path, found: &mut Vec<PathBuf>) -> Result<(), String> {
+pub(crate) fn collect_rust_files(directory: &Path, found: &mut Vec<PathBuf>) -> Result<(), String> {
     let entries = std::fs::read_dir(directory)
         .map_err(|cause| format!("{} illisible : {cause}", directory.display()))?;
     for entry in entries {
@@ -239,8 +239,14 @@ fn words_of(name: &str) -> Vec<String> {
 }
 
 /// Un lexème retenu par le balayage.
+///
+/// Le balayage est **partagé** : `check-naming` y cherche des sites de déclaration,
+/// `check-safety-comments` des mots-clés `unsafe`. Les deux ont le même besoin — du code
+/// débarrassé de ses commentaires, de ses chaînes et de ses littéraux —, et l'écrire deux
+/// fois donnerait deux scanners dont un seul serait éprouvé. Celui-ci l'est sur près de
+/// dix mille noms.
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum Lexeme {
+pub(crate) enum Lexeme {
     /// Un identifiant, mots-clés compris.
     Identifier(String),
     /// Un signe, éventuellement composé — `::`.
@@ -249,11 +255,11 @@ enum Lexeme {
 
 /// Un lexème et la ligne où il commence.
 #[derive(Debug, Clone)]
-struct Token {
+pub(crate) struct Token {
     /// Le lexème.
-    lexeme: Lexeme,
+    pub lexeme: Lexeme,
     /// La ligne, à partir de 1.
-    line: usize,
+    pub line: usize,
 }
 
 /// Un nom déclaré et sa ligne.
@@ -516,7 +522,7 @@ impl Scanner {
 }
 
 /// Balaye un source Rust et rend ses lexèmes significatifs.
-fn tokenize(source: &str) -> Vec<Token> {
+pub(crate) fn tokenize(source: &str) -> Vec<Token> {
     Scanner {
         characters: source.chars().collect(),
         index: 0,

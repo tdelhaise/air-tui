@@ -3,8 +3,8 @@
 Document de suivi **vivant** : où en est-on, quelle est la prochaine tâche. Il se met à
 jour à chaque session. L'historique figé est dans [`JOURNAL.md`](JOURNAL.md).
 
-**Dernière mise à jour : 2026-10-10** (jalon M7h — l'annulation dans `redit` ; le gate
-`check-dco` ; jalon M7g — les deux limites du thème).
+**Dernière mise à jour : 2026-10-10** (les deux derniers gates de conventions ; jalon M7h
+— l'annulation dans `redit` ; le gate `check-dco`).
 
 ## Dépôt
 
@@ -616,6 +616,42 @@ affirmations de M7b se sont révélées fausses. Elles sont corrigées ici plut�
   annonçait le quantificateur « prévu au jalon M5 et **n'est pas écrit** », celui
   d'`AirCell` les tables UCD de même. Les deux existent depuis M5 et M3.
 
+### Fait après M7h — les deux derniers gates de conventions
+
+- **Les six contrôles de `docs/CONVENTIONS-fr.md` sont écrits et exécutés en CI.** Plus
+  aucun ne reste à tenir à la main, et la section « À outiller » du document a disparu.
+- **Chiffrés avant d'être écrits, et le chiffre est zéro** : soixante-dix-neuf fichiers
+  portent tous l'avis MPL, onze blocs `unsafe` portent tous leur `// SAFETY:`. Ce sont des
+  gates de **prévention**, pas des réparations, et le dire est la moitié de leur valeur :
+  leur intérêt est qu'un fichier **nouveau** est le moment où une de ces deux règles
+  s'oublie, et c'est aussi le moment où personne ne relit les soixante-dix-huit autres.
+- **`check-safety-comments` porte un apport que personne n'avait demandé, et c'est le seul
+  réel** : la **frontière** de l'ADR-011 — « `unsafe` vit dans `air-tui-platform-posix`, et
+  nulle part ailleurs ». Rien ne l'outillait. Les deux crates du cœur la tiennent par leur
+  `#![forbid(unsafe_code)]`, mais `redit`, `rmc`, `xtask` et les cibles de fuzzing ne le
+  portent pas : un `unsafe` y aurait compilé sans un mot.
+- **« Un bloc `unsafe` » n'a pas une seule réponse syntaxique**, et c'était la vraie
+  question de conception. Cinq formes portent le mot-clé ; seule `unsafe { }` exige un
+  `// SAFETY:`, parce que seule elle affirme au compilateur quelque chose qu'il ne vérifie
+  pas. `unsafe extern` est une **déclaration** que l'édition 2024 oblige à marquer, et
+  `unsafe fn`, `unsafe impl`, `unsafe trait` reportent l'engagement sur l'appelant, qui le
+  documente par une section rustdoc. Les quatre sont **comptées et annoncées** à chaque
+  exécution plutôt qu'exemptées en silence.
+- **Le mot-clé est cherché par balayage lexical, et on peut montrer pourquoi** :
+  `xtask/src/naming.rs` porte deux fois le mot `unsafe` dans des **chaînes de
+  caractères** — sa liste de mots-clés, et un source d'essai. Un contrôle fondé sur `grep`
+  déclarerait donc `xtask` en infraction, et on apprendrait à l'ignorer. Le balayage est
+  celui de `check-naming`, partagé plutôt que réécrit : deux scanners donneraient deux
+  comportements dont un seul serait éprouvé.
+- **Le marqueur est cherché sur trois lignes au-dessus du bloc**, et non une : une
+  justification tient rarement sur une ligne. La borne existe pour qu'un marqueur d'un
+  autre bloc ne couvre pas celui-ci, et les deux bords portent leur essai.
+- **Vérifié par trois contrôles négatifs** : un avis retiré d'un fichier, un `// SAFETY:`
+  retiré d'un bloc, et un `unsafe { }` ajouté dans `redit`. Les trois sont attrapés et
+  nommés avec leur fichier et leur ligne, puis rétablis.
+- Vingt-et-un essais, dont un qui confronte `licence.rs` à lui-même : le contrôle porte
+  l'avis qu'il exige.
+
 ### Fait au jalon M7h — l'annulation, et la mutation unique qu'elle a imposée
 
 - **Un journal de remplacements, pas des instantanés** (ADR-014). Un instantané du tampon
@@ -672,8 +708,9 @@ affirmations de M7b se sont révélées fausses. Elles sont corrigées ici plut�
 
 - **Le troisième des trois contrôles « à outiller » est écrit.** `cargo xtask check-dco`
   refuse un commit sans `Signed-off-by`, et tout trailer qui ferait d'un agent un auteur :
-  `Co-Authored-By` nommant `claude` ou `anthropic`, et `Claude-Session`. Il en reste deux à
-  écrire, `check-licence-headers` et `check-safety-comments`.
+  `Co-Authored-By` nommant `claude` ou `anthropic`, et `Claude-Session`. Il en restait deux
+  à écrire à ce moment-là, `check-licence-headers` et `check-safety-comments` : les deux
+  l'ont été depuis.
 - **Deux portées, et la distinction est le cœur du contrôle.** Sans `--all`, il garde les
   commits de la branche, ce qu'une pull request vérifie avant la fusion. Avec `--all`, il
   parcourt tout l'historique — et c'est le seul moment où le commit de **fusion squash**
@@ -761,9 +798,6 @@ affirmations de M7b se sont révélées fausses. Elles sont corrigées ici plut�
   validés la demanderait.
 - Couverture de tests : **100 % tenu sur les codecs** (ADR-012) et élevé sur `air-tui`,
   mais `air-tui-platform-posix` demande un vrai terminal et reste bas.
-- Les gates `check-licence-headers` et `check-safety-comments` de
-  `docs/CONVENTIONS-fr.md` : les autres sont écrits — les trois premiers à M6b, `check-dco`
-  après M7g —, ces deux-là restent manuels.
 - La couverture de `xtask` : 34 % à 81 % selon le module. C'est de l'outillage hors
   exécution du framework, qu'ADR-012 ne couvre pas — mais ce n'est pas une raison de le
   laisser là.
@@ -783,27 +817,18 @@ affirmations de M7b se sont révélées fausses. Elles sont corrigées ici plut�
 demandent une console physique, inaccessible par SSH. Écrire du code qu'on ne peut pas
 vérifier est exactement ce que ce dépôt refuse. Les candidats, du plus petit au plus gros :
 
-1. **Les deux gates restants** — `check-licence-headers` et `check-safety-comments`.
-   Chiffrés avant d'être proposés : **zéro manquement** aujourd'hui, sur 76 fichiers `.rs`
-   tous pourvus de l'en-tête MPL, et 11 blocs `unsafe {` pour 11 commentaires `// SAFETY:`,
-   la concordance tenant fichier par fichier. Le motif est frais — `dco.rs` vient d'être
-   écrit —, mais la mesure dit que ce sont de la **prévention pure**, là où `check-dco` a
-   trouvé un trou réel dès son premier passage. La seule vraie question de conception est
-   celle du second : « un bloc `unsafe` » n'est pas une seule forme syntaxique, et le dépôt
-   porte aussi un `unsafe extern`.
-2. **Choisir le skin ailleurs qu'à la compilation.** L'ADR-008 interdit d'analyser un thème
+1. **Choisir le skin ailleurs qu'à la compilation.** L'ADR-008 interdit d'analyser un thème
    à l'exécution, et le dépôt porte **un** artefact à la fois : les trente-neuf skins sont
    importables, mais pas simultanément. Compiler plusieurs artefacts nommés — le choix se
    faisant alors par une ligne de commande et non par un fichier lu au démarrage — tiendrait
    l'ADR tout en rendant la capacité utilisable. À chiffrer : le poids d'un artefact et le
    temps de compilation.
-3. **La peinture hors des limites d'une vue**, décision d'architecture dont dépendent
+2. **La peinture hors des limites d'une vue**, décision d'architecture dont dépendent
    `AirDecorations` et l'ombre portée. À trancher avant d'écrire la troisième assiette du
    triplet de l'ADR-008, pas après.
 
 Dettes plus anciennes : remonter la couverture de `air-tui-platform-posix` par des tests
-sous pty ; les deux gates `check-licence-headers` et `check-safety-comments`, le troisième
-étant écrit ; la **console Linux native**, dont dépend tout M8 ; et le protocole Kitty
+sous pty ; la **console Linux native**, dont dépend tout M8 ; et le protocole Kitty
 **contre un vrai terminal** — il est décodé et négocié d'après la spécification, et les
 tests le pilotent avec un périphérique en mémoire, ce qui prouve le code mais pas la table
 des numéros de touches fonctionnelles.
