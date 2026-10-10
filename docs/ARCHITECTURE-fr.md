@@ -1,22 +1,42 @@
 # Architecture d'air-tui
 
-## Les deux crates, et pourquoi la frontière est là
+## Les trois crates, et pourquoi la frontière est là
 
 ```
-air-tui-sys  ── couche 0 ── le SEUL `unsafe`, le SEUL appel C. Six symboles de la libc.
-     ▲
-air-tui      ── couche 1 ── #![forbid(unsafe_code)]. Tout le reste.
+             air-tui                  ← le cœur : ne connaît que le contrat
+                │
+       air-tui-platform               ← le contrat : des traits, zéro unsafe, zéro C
+                ▲
+      ┌─────────┴──────────┐
+air-tui-platform-posix     air-tui-platform-air     ← à écrire
+(Linux glibc, macOS)       (Rust intégral, linux-air)
 ```
 
 La règle vient d'Air : « au-dessus de la couche 0, Rust pur et idiomatique — pas
-d'assembleur, pas d'appel à du C, pas d'`unsafe` ». La frontière n'est pas une discipline,
-c'est une crate : `air-tui` ne *peut pas* appeler de C, son attribut le lui interdit à la
-compilation.
+d'assembleur, pas d'appel à du C, pas d'`unsafe` ». Mais la raison du découpage en trois
+plutôt qu'en deux est le **portage à venir sur `linux-air`** (ADR-011), cible intégralement
+en Rust dont la couche 0 n'est pas appelable par un framework. Sur cette cible, air-tui
+sera en couche 2 ou 3.
+
+D'où la conséquence qui structure tout : **`air-tui` n'a aucune dépendance vers une
+implémentation de plateforme.** Elle ne peut pas atteindre le système, même par accident —
+ce n'est pas une discipline, c'est le graphe de dépendances. C'est le binaire final qui
+choisit une implémentation et l'injecte :
+
+```rust
+let device = air_tui_platform_posix::PosixTerminal::open()?;
+let terminal = AirTerminal::new(Box::new(device))?;
+```
+
+Bénéfice immédiat, qui n'était pas la motivation : le rendu se teste **sans terminal**. Un
+périphérique en mémoire implémente le contrat en trente lignes, et la couverture du module
+`terminal.rs` du cœur est passée de 0 % à 93,8 % le jour où la couture a été posée.
 
 ### La surface C, exhaustive
 
-Six symboles, tous présents dans la bibliothèque C que `std` lie déjà — glibc sur
-`*-linux-gnu`, libSystem sur `*-apple-darwin`. Aucune entrée dans `Cargo.toml`.
+Six symboles, tous dans la bibliothèque C que `std` lie déjà — glibc sur `*-linux-gnu`,
+libSystem sur `*-apple-darwin`. Aucune entrée dans `Cargo.toml`. Ils vivent uniquement
+dans `air-tui-platform-posix`.
 
 | Symbole | Emploi |
 |---|---|
@@ -32,20 +52,32 @@ l'ouverture de `/dev/tty` (`std::fs::File`), la lecture et l'écriture
 (`std::io::Read`/`Write`), et la récupération d'`errno`
 (`std::io::Error::last_os_error()`).
 
-### Deux pièges d'ABI, traités explicitement
+### Trois pièges de plateforme, traités explicitement
 
 **`ioctl` est variadique.** Sur l'ABI arm64 d'Apple, les arguments variadiques passent par
 la pile, là où les arguments fixes passent par registre. Déclarer `ioctl` en non-variadique
-« marche » sur x86_64 et casse silencieusement sur Apple Silicon. La déclaration est donc
-`fn ioctl(fd: i32, request: c_ulong, ...) -> i32`, et chaque opération reçoit son
-enveloppe dédiée typée (ADR-021 §3).
+« marche » sur `x86_64` et casse silencieusement sur Apple Silicon. La déclaration est donc
+variadique, et chaque opération reçoit son enveloppe dédiée typée (ADR-021 §3 d'Air).
 
-**`struct termios` n'a pas la même forme sur Linux et macOS** : `tcflag_t` est 32 bits et
-`NCCS` vaut 32 sur Linux ; 64 bits et 20 sur macOS. Plutôt que de recopier deux
-définitions de champs — et deux jeux de constantes de drapeaux — depuis la mémoire,
-`TerminalMode` est un **tampon opaque sur-dimensionné** que seul le noyau remplit. Le code
-ne lit aucun champ : il enchaîne `tcgetattr` → `cfmakeraw` → `tcsetattr`, et conserve une
-copie intacte pour la restauration. Aucune constante de drapeau n'apparaît dans le projet.
+**`struct termios` n'a pas la même forme sur les deux plateformes** : `tcflag_t` est 32 bits
+et `NCCS` vaut 32 sur Linux ; 64 bits et 20 sur macOS. Plutôt que de recopier deux
+définitions de champs — et deux jeux de constantes de drapeaux — depuis une mémoire
+faillible, le type est un **tampon opaque sur-dimensionné** que seul le noyau remplit. Le
+code ne lit aucun champ : il enchaîne `tcgetattr` → `cfmakeraw` → `tcsetattr`, et garde une
+copie intacte pour la restauration. Aucune constante de drapeau n'apparaît dans le projet,
+donc aucune ne peut être fausse.
+
+**`nfds_t` diffère** : `unsigned long` dans la glibc, `unsigned int` chez Apple. Et
+`TIOCGWINSZ` n'a pas la même valeur, Linux employant un numéro plat là où les BSD encodent
+la direction et la taille. C'est exactement ce que la crate d'implémentation existe pour
+absorber.
+
+### Les codecs
+
+Toute conversion d'un flux passe par un codec — `Decoder`, `Encoder`, ou les deux — et tout
+codec est tenu à **100 % de couverture** (ADR-012). Deux existent : l'encodeur SGR, et
+l'écriture décimale qu'il emploie. Les décodeurs à venir — séquences ANSI d'entrée,
+protocole Kitty, graphèmes Unicode — porteront chacun une cible `cargo-fuzz`.
 
 ## La hiérarchie d'objets
 
@@ -71,7 +103,7 @@ Et la couche basse, nommée pour ne pas entrer en collision avec `AirScreen` :
 d'application figé. En faire un objet empilable et commutable donne ce que Turbo Vision ne
 savait pas faire : un écran d'accueil, un assistant multi-étapes, et surtout la
 cohabitation de deux chromes radicalement différents — `redit` en style Turbo Vision,
-`airmc` en style Midnight Commander — sur le même moteur.
+`rmc` en style Midnight Commander — sur le même moteur.
 
 ## La bordure des vues
 

@@ -9,6 +9,8 @@
 
 use std::os::fd::{AsRawFd, BorrowedFd};
 
+use air_tui_platform::PlatformError;
+
 use crate::errno::Errno;
 use crate::ffi::{self, TermiosBuffer};
 
@@ -47,14 +49,14 @@ pub fn is_terminal(file_descriptor: BorrowedFd<'_>) -> bool {
 ///
 /// Rend l'`errno` posé par `tcgetattr` — `ENOTTY` si le descripteur n'est pas un
 /// terminal, `EBADF` s'il n'est pas ouvert.
-pub fn current_mode(file_descriptor: BorrowedFd<'_>) -> Result<TerminalMode, Errno> {
+pub fn current_mode(file_descriptor: BorrowedFd<'_>) -> Result<TerminalMode, PlatformError> {
     let mut buffer = TermiosBuffer::zeroed();
     // SAFETY: `buffer` est une allocation locale vivante pour la durée de l'appel, d'au
     // moins `sizeof(struct termios)` octets sur les deux plateformes (voir
     // `TERMIOS_BUFFER_SIZE`), et correctement alignée. `tcgetattr` n'écrit pas au-delà.
     let outcome = unsafe { ffi::tcgetattr(file_descriptor.as_raw_fd(), buffer.as_mut_pointer()) };
     if outcome == -1 {
-        return Err(Errno::last());
+        return Err(Errno::last().into());
     }
     Ok(TerminalMode { saved: buffer })
 }
@@ -70,9 +72,9 @@ pub fn current_mode(file_descriptor: BorrowedFd<'_>) -> Result<TerminalMode, Err
 /// `ENOTTY` si le descripteur n'est pas un terminal — le contrôle est fait ici plutôt que
 /// laissé à `tcsetattr`, pour que l'erreur désigne la cause. Sinon, l'`errno` posé par
 /// `tcgetattr` ou `tcsetattr`.
-pub fn enter_raw_mode(file_descriptor: BorrowedFd<'_>) -> Result<TerminalMode, Errno> {
+pub fn enter_raw_mode(file_descriptor: BorrowedFd<'_>) -> Result<TerminalMode, PlatformError> {
     if !is_terminal(file_descriptor) {
-        return Err(Errno::NOT_A_TERMINAL);
+        return Err(Errno::NOT_A_TERMINAL.into());
     }
 
     let previous = current_mode(file_descriptor)?;
@@ -88,7 +90,7 @@ pub fn enter_raw_mode(file_descriptor: BorrowedFd<'_>) -> Result<TerminalMode, E
     let outcome =
         unsafe { ffi::tcsetattr(file_descriptor.as_raw_fd(), ffi::TCSANOW, raw.as_pointer()) };
     if outcome == -1 {
-        return Err(Errno::last());
+        return Err(Errno::last().into());
     }
     Ok(previous)
 }
@@ -98,7 +100,10 @@ pub fn enter_raw_mode(file_descriptor: BorrowedFd<'_>) -> Result<TerminalMode, E
 /// # Errors
 ///
 /// Rend l'`errno` posé par `tcsetattr`.
-pub fn restore_mode(file_descriptor: BorrowedFd<'_>, mode: &TerminalMode) -> Result<(), Errno> {
+pub fn restore_mode(
+    file_descriptor: BorrowedFd<'_>,
+    mode: &TerminalMode,
+) -> Result<(), PlatformError> {
     // SAFETY: `mode.saved` provient d'un `tcgetattr` réussi, donc contient une
     // `struct termios` valide, et vit pour la durée de l'appel. `tcsetattr` ne fait que
     // la lire.
@@ -110,7 +115,7 @@ pub fn restore_mode(file_descriptor: BorrowedFd<'_>, mode: &TerminalMode) -> Res
         )
     };
     if outcome == -1 {
-        return Err(Errno::last());
+        return Err(Errno::last().into());
     }
     Ok(())
 }
@@ -119,8 +124,9 @@ pub fn restore_mode(file_descriptor: BorrowedFd<'_>, mode: &TerminalMode) -> Res
 mod tests {
     use std::os::fd::AsFd;
 
+    use air_tui_platform::PlatformErrorKind;
+
     use super::{current_mode, enter_raw_mode, is_terminal};
-    use crate::errno::Errno;
 
     #[test]
     fn un_fichier_ordinaire_n_est_pas_un_terminal() {
@@ -140,8 +146,10 @@ mod tests {
         // `TerminalMode` est opaque et n'implémente pas `PartialEq` : on compare
         // l'erreur, qui est la seule chose qui nous intéresse ici.
         assert_eq!(
-            enter_raw_mode(file.as_fd()).err(),
-            Some(Errno::NOT_A_TERMINAL)
+            enter_raw_mode(file.as_fd())
+                .err()
+                .map(air_tui_platform::PlatformError::kind),
+            Some(PlatformErrorKind::NotATerminal)
         );
     }
 }

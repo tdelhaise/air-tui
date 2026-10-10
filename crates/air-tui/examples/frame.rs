@@ -16,17 +16,21 @@
 //! cargo run --example frame
 //! ```
 
-use std::io;
 use std::time::Duration;
 
 use air_tui::cell::{AirAttributes, AirCell};
 use air_tui::geometry::{AirColumn, AirPoint, AirRectangle, AirRow};
 use air_tui::surface::AirSurface;
-use air_tui::terminal::{AirTerminal, InputReadiness};
+use air_tui::terminal::AirTerminal;
 use air_tui::theme::{AirColorPair, AirFrameGlyphs, AirRole, AirTheme};
+use air_tui::{InputReadiness, PlatformError, PlatformErrorKind};
+use air_tui_platform_posix::PosixTerminal;
 
-fn main() -> io::Result<()> {
-    let mut terminal = AirTerminal::open()?;
+fn main() -> Result<(), PlatformError> {
+    // C'est ici, et nulle part ailleurs, que le choix de la plateforme est fait : le cœur
+    // du framework ne connaît que le contrat (ADR-011).
+    let device = PosixTerminal::open()?;
+    let mut terminal = AirTerminal::new(Box::new(device))?;
     let theme = AirTheme::turbo_vision();
     let size = terminal.size()?;
     let mut surface = AirSurface::new(size);
@@ -66,11 +70,11 @@ fn main() -> io::Result<()> {
             Ok(InputReadiness::TimedOut) => {}
             // Une interruption par signal n'est pas une raison d'abandonner : on reprend
             // l'attente, explicitement, comme l'exige la convention de la couche 0.
-            Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
-            // `EBADF` signifie ici que le pty a été révoqué sous nos pieds — constaté en
-            // lançant cet exemple sous `script(1)`, qui démonte le pty dès que son entrée
-            // se tarit. Ce n'est pas une panne de l'application : elle s'arrête.
-            Err(error) if error.raw_os_error() == Some(9) => break,
+            Err(error) if error.is_interrupted() => {}
+            // Un périphérique devenu invalide signifie ici que le pty a été révoqué sous
+            // nos pieds — constaté en lançant cet exemple sous `script(1)`, qui démonte le
+            // pty dès que son entrée se tarit. Ce n'est pas une panne : on s'arrête.
+            Err(error) if error.kind() == PlatformErrorKind::InvalidDevice => break,
             Err(error) => return Err(error),
         }
     }

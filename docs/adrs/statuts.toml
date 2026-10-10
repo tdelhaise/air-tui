@@ -20,9 +20,9 @@ statut = "permanent"
 note   = "remplace la clause Linux-only d'ADR-004 d'Air, qui n'est pas reprise"
 
 ["002"]
-objet  = "Architecture en couches et frontière unsafe entre air-tui-sys et air-tui"
+objet  = "Architecture en couches et frontière unsafe portée par le découpage en crates"
 statut = "en-cours"
-note   = "les deux crates existent ; la couche 0 porte six symboles C"
+note   = "découpage précisé par ADR-011 : trois crates au lieu de deux"
 
 ["003"]
 objet  = "Entrée clavier à deux étages : terminal en tier-1, natif en complément local"
@@ -63,3 +63,13 @@ note   = "gate check-versions à écrire ; règle tenue à la main en attendant"
 objet  = "Bordure par défaut sur les vues, retirable par border = false"
 statut = "a-faire"
 note   = "l'arbre de vues du jalon M4 n'est pas écrit"
+
+["011"]
+objet  = "Couture de plateforme par traits, une crate d'implémentation par plateforme"
+statut = "en-cours"
+note   = "le contrat et l'implémentation POSIX existent ; air-tui-platform-air reste à écrire"
+
+["012"]
+objet  = "Toute conversion de flux passe par un codec, tenu à 100 % de couverture"
+statut = "en-cours"
+note   = "les deux codecs existants sont à 100 % ; gate check-codec-coverage à écrire"

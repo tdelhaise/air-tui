@@ -7,6 +7,8 @@
 use core::fmt;
 use core::num::NonZeroI32;
 
+use air_tui_platform::{PlatformError, PlatformErrorKind};
+
 /// Un numéro d'erreur du système, garanti non nul.
 ///
 /// La non-nullité est structurelle : `errno` vaut zéro quand il n'y a pas d'erreur, donc
@@ -54,6 +56,13 @@ impl Errno {
         self.0
     }
 
+    /// Construit un `Errno` depuis un code non nul obtenu ailleurs — typiquement le
+    /// `raw_os_error` d'une `std::io::Error`.
+    #[must_use]
+    pub const fn from_code_value(code: NonZeroI32) -> Self {
+        Self(code)
+    }
+
     /// Lit l'`errno` courant du fil d'exécution.
     ///
     /// À n'appeler qu'immédiatement après un appel système ayant échoué. Si `errno` est
@@ -81,6 +90,24 @@ impl fmt::Display for Errno {
 
 impl core::error::Error for Errno {}
 
+impl From<Errno> for PlatformError {
+    /// Traduit un code du système en nature portable.
+    ///
+    /// Seuls les codes sur lesquels le cœur du framework **agit différemment** reçoivent
+    /// une nature propre ; les autres tombent dans `Other`. Donner une variante à un code
+    /// qu'on traite comme tous les autres ne ferait que déplacer le `match`.
+    fn from(errno: Errno) -> Self {
+        let kind = match errno.0.get() {
+            4 => PlatformErrorKind::Interrupted,
+            5 => PlatformErrorKind::InputOutput,
+            9 => PlatformErrorKind::InvalidDevice,
+            25 => PlatformErrorKind::NotATerminal,
+            _ => PlatformErrorKind::Other,
+        };
+        Self::with_native_code(kind, errno.0)
+    }
+}
+
 impl From<Errno> for std::io::Error {
     fn from(errno: Errno) -> Self {
         Self::from_raw_os_error(errno.0.get())
@@ -89,6 +116,8 @@ impl From<Errno> for std::io::Error {
 
 #[cfg(test)]
 mod tests {
+    use core::num::NonZeroI32;
+
     use super::Errno;
 
     #[test]
@@ -105,6 +134,30 @@ mod tests {
     fn affichage_contient_le_code_numerique() {
         let rendered = Errno::INTERRUPTED.to_string();
         assert!(rendered.contains('4'), "rendu inattendu : {rendered}");
+    }
+
+    #[test]
+    fn chaque_code_connu_recoit_sa_nature_portable() {
+        use air_tui_platform::{PlatformError, PlatformErrorKind};
+
+        let cases = [
+            (Errno::INTERRUPTED, PlatformErrorKind::Interrupted),
+            (Errno::INPUT_OUTPUT, PlatformErrorKind::InputOutput),
+            (Errno::BAD_FILE_DESCRIPTOR, PlatformErrorKind::InvalidDevice),
+            (Errno::NOT_A_TERMINAL, PlatformErrorKind::NotATerminal),
+            (Errno::INVALID_ARGUMENT, PlatformErrorKind::Other),
+        ];
+        for (errno, expected) in cases {
+            let converted = PlatformError::from(errno);
+            assert_eq!(converted.kind(), expected, "pour {errno}");
+            assert_eq!(converted.native_code(), Some(errno.code()));
+        }
+    }
+
+    #[test]
+    fn from_code_value_conserve_le_code() {
+        let code = NonZeroI32::new(25).expect("25 est non nul");
+        assert_eq!(Errno::from_code_value(code).code(), code);
     }
 
     #[test]

@@ -39,7 +39,7 @@ Commander est sa coquille — deux panneaux, ligne de commande, barre F1-F10 ét
 sa palette. Un « thème MC » appliqué au chrome de Turbo Vision ne ressemblerait pas à MC.
 D'où : `AirTheme` porte palette, glyphes et décorations ; la composition du chrome relève
 de l'`AirScreen` que l'application choisit. Deux applications d'exemple en découlent,
-`redit` et `airmc`, et non une application à deux thèmes.
+`redit` et `rmc`, et non une application à deux thèmes.
 
 **Les thèmes sont compilés, pas analysés au runtime.** Le Principe 11 d'Air — « quand un
 texte doit entrer, il ne passe pas par la porte d'exécution : un outil dédié le compile en

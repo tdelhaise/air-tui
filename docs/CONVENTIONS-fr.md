@@ -121,6 +121,38 @@ types ne font pas partie du modèle d'objets de l'interface.
 
 ---
 
+# Codecs
+
+Toute conversion d'un flux de données passe par un codec — un `Decoder`, un `Encoder`, ou
+les deux — et **tout codec est tenu à 100 % de couverture de code** (ADR-012).
+
+La contrainte a un effet voulu sur le style : une étape partielle écrite en ligne laisse
+une branche inatteignable, donc impossible à couvrir. Un `unwrap_or` sur une conversion
+infaillible, un `if let` sur un index toujours valide — chacun crée un angle mort. On
+extrait donc chaque étape partielle dans une fonction **totale**, dont le cas dégénéré est
+inatteignable depuis l'appelant mais directement testable.
+
+Tout **décodeur** porte une cible `cargo-fuzz` : il reçoit des octets hostiles par
+définition.
+
+---
+
+# Portage et plateformes
+
+Le code dépendant du système vit dans une crate d'implémentation dédiée, derrière les
+traits d'`air-tui-platform` (ADR-011). Deux règles en découlent :
+
+- **aucun `#[cfg(target_os)]` au-dessus de la couche de contrat.** La divergence entre
+  plateformes est absorbée par la crate d'implémentation, pas saupoudrée dans le cœur ;
+- `air-tui` ne dépend **jamais** d'une crate d'implémentation. C'est le binaire final qui
+  en choisit une et l'injecte.
+
+Le portage à venir sur `linux-air` — où air-tui sera en couche 2 ou 3, sans aucun accès
+direct à la couche 0 — consistera à écrire `air-tui-platform-air` sans toucher au cœur.
+Préférer massivement les traits là où une notion peut différer d'une cible à l'autre.
+
+---
+
 # Versionnement
 
 Semver strict, **une version par crate**, incrémentée par toute PR qui touche la crate
@@ -159,3 +191,5 @@ Aucun de ces contrôles n'est écrit. Ils sont à exécuter à la main, et **ne 
 - `check-dco` — `Signed-off-by` sur chaque commit, aucun `Co-Authored-By: Claude`.
 - `check-versions` — refuser une PR qui modifie le code d'une crate sans incrémenter sa
   version (ADR-009).
+- `check-codec-coverage` — mesurer par fichier et refuser qu'un module de `codec/`
+  descende sous 100 % (ADR-012).

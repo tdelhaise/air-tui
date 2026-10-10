@@ -8,25 +8,10 @@ use core::ffi::c_int;
 use core::time::Duration;
 use std::os::fd::{AsRawFd, BorrowedFd};
 
+use air_tui_platform::{InputReadiness, PlatformError};
+
 use crate::errno::Errno;
 use crate::ffi::{self, PollDescriptor};
-
-/// Ce qu'a conclu une attente.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum InputReadiness {
-    /// Des octets sont disponibles en lecture.
-    ///
-    /// Une fin de flux compte comme disponible : la lecture qui suit rendra zéro octet,
-    /// et c'est à l'appelant de l'interpréter.
-    Ready,
-    /// Le délai a expiré sans qu'aucun octet n'arrive.
-    TimedOut,
-    /// L'autre extrémité a raccroché et plus aucune donnée n'arrivera.
-    ///
-    /// Sur un terminal, cela signifie que le pty a disparu — la session est partie. Une
-    /// boucle d'événements doit s'arrêter, pas réessayer.
-    Closed,
-}
 
 /// Attend qu'une entrée soit disponible sur le descripteur.
 ///
@@ -50,7 +35,7 @@ pub enum InputReadiness {
 pub fn wait_for_input(
     file_descriptor: BorrowedFd<'_>,
     timeout: Option<Duration>,
-) -> Result<InputReadiness, Errno> {
+) -> Result<InputReadiness, PlatformError> {
     let timeout_milliseconds = match timeout {
         // `poll` prend un délai négatif pour « indéfiniment ».
         None => -1,
@@ -74,12 +59,12 @@ pub fn wait_for_input(
         unsafe { ffi::poll(core::ptr::from_mut(&mut watched), 1, timeout_milliseconds) };
 
     if ready_count == -1 {
-        return Err(Errno::last());
+        return Err(Errno::last().into());
     }
     if ready_count == 0 {
         return Ok(InputReadiness::TimedOut);
     }
-    classify(watched.returned_events)
+    classify(watched.returned_events).map_err(PlatformError::from)
 }
 
 /// Traduit un champ `revents` en issue typée.
@@ -112,7 +97,9 @@ mod tests {
     use std::io::Write;
     use std::os::fd::AsFd;
 
-    use super::{InputReadiness, classify, wait_for_input};
+    use air_tui_platform::{InputReadiness, PlatformErrorKind};
+
+    use super::{classify, wait_for_input};
     use crate::errno::Errno;
     use crate::ffi;
 
@@ -174,8 +161,10 @@ mod tests {
     fn sur_macos_poll_refuse_dev_null() {
         let file = std::fs::File::open("/dev/null").expect("ouverture de /dev/null");
         assert_eq!(
-            wait_for_input(file.as_fd(), Some(Duration::from_millis(0))).err(),
-            Some(Errno::BAD_FILE_DESCRIPTOR)
+            wait_for_input(file.as_fd(), Some(Duration::from_millis(0)))
+                .err()
+                .map(air_tui_platform::PlatformError::kind),
+            Some(PlatformErrorKind::InvalidDevice)
         );
     }
 

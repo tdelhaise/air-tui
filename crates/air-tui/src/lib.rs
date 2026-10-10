@@ -13,8 +13,11 @@
 //!
 //! # Architecture
 //!
-//! Cette crate est la couche 1 : elle est en `#![forbid(unsafe_code)]` et ne peut donc pas
-//! appeler de C. Tout ce qui touche au système passe par `air-tui-sys` (ADR-002).
+//! Cette crate est le cœur du framework. Elle est en `#![forbid(unsafe_code)]` et ne
+//! dépend **que** du contrat `air-tui-platform` : elle n'a aucune dépendance vers une
+//! implémentation de plateforme, et ne peut donc pas atteindre le système, même par
+//! accident (ADR-002, ADR-011). C'est le binaire final qui choisit un
+//! [`TerminalDevice`] et l'injecte.
 //!
 //! # Conventions de nommage
 //!
@@ -30,12 +33,15 @@
 #![cfg_attr(test, allow(clippy::expect_used, clippy::unwrap_used))]
 
 pub mod cell;
+pub mod codec;
 pub mod geometry;
 pub mod surface;
 pub mod terminal;
 pub mod theme;
 
+pub use air_tui_platform::{InputReadiness, PlatformError, PlatformErrorKind, TerminalDevice};
 pub use cell::{AirAttributes, AirCell, AirColor};
+pub use codec::{AirCellPresentation, AirSgrEncoder};
 pub use geometry::{AirColumn, AirPoint, AirRectangle, AirRow, AirSize};
 pub use surface::AirSurface;
 pub use terminal::AirTerminal;

@@ -1,0 +1,16 @@
+[package]
+name = "air-tui-platform"
+description = "Le contrat de plateforme d'air-tui : des traits, et rien d'autre. Aucun unsafe, aucun appel C."
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+# ADR-005 : aucune dépendance. ADR-011 : cette crate ne contient que des traits et des
+# types portables — elle ne sait pas sur quel système elle tourne.
+[dependencies]
+
+[lints]
+workspace = true

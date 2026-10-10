@@ -1,7 +1,7 @@
 [package]
 name = "air-tui"
 description = "Framework d'interface en mode texte, sans dépendance, à thèmes graphiques (Turbo Vision, Midnight Commander)."
-version = "0.1.0"
+version = "0.2.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -10,9 +10,15 @@ authors.workspace = true
 keywords = ["tui", "terminal", "turbo-vision", "widgets", "theme"]
 categories = ["command-line-interface"]
 
-# ADR-005 : aucune dépendance tierce. `air-tui-sys` est la couche 0 du même projet.
+# ADR-005 : aucune dépendance tierce. ADR-011 : le cœur ne dépend QUE du contrat de
+# plateforme — jamais d'une implémentation. C'est ce qui l'empêche d'atteindre le système,
+# et ce qui rendra le portage sur `linux-air` transparent pour lui.
 [dependencies]
-air-tui-sys = { path = "../air-tui-sys", version = "0.1.0" }
+air-tui-platform = { path = "../air-tui-platform", version = "0.1.0" }
+
+# L'exemple choisit une plateforme ; le cœur, lui, n'en dépend pas.
+[dev-dependencies]
+air-tui-platform-posix = { path = "../air-tui-platform-posix", version = "0.1.0" }
 
 [lints]
 workspace = true

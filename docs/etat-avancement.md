@@ -14,17 +14,25 @@ le socle technique minimal. Rien n'est utilisable comme framework à ce stade.
 
 - Conventions reprises d'Air et consignées (`docs/CONVENTIONS-fr.md`), dont la règle de
   nommage sans abréviation et son glossaire.
-- ADR-001 à ADR-010 rédigés (français seulement, traduction anglaise à venir).
-- Espace de travail à deux crates, lints d'arithmétique défensive en `deny`.
-- `air-tui-sys` : les six symboles C, les enveloppes typées `terminal_window_size`,
-  `enter_raw_mode` / `restore_mode`, `wait_for_input`, le type `Errno`.
+- ADR-001 à ADR-012 rédigés (français seulement, traduction anglaise à venir).
+- Espace de travail à **trois** crates (ADR-011), lints d'arithmétique défensive en `deny`.
+- `air-tui-platform` : le contrat — `TerminalDevice` (object-safe), `Decoder`, `Encoder`,
+  `PlatformError` portable, `WindowSize`, `InputReadiness`. Zéro `unsafe`, zéro C.
+- `air-tui-platform-posix` : les six symboles C derrière des enveloppes typées, et
+  `PosixTerminal` qui implémente le contrat.
+- Codecs : `AirSgrEncoder` et l'écriture décimale, **tous deux à 100 % de couverture**
+  (ADR-012).
 - `air-tui` : géométrie (`AirColumn`, `AirRow`, `AirPoint`, `AirSize`, `AirRectangle`),
   `AirCell`, `AirSurface` avec différentiel, `AirTerminal` en RAII, un thème minimal aux
   glyphes Borland, et l'exemple `frame`.
 - Vérifié sur macOS `x86_64` : `cargo fmt --check` propre,
-  `cargo clippy --workspace --all-targets -- -D warnings` propre, **41 tests** au vert, et
-  l'exemple `frame` exécuté dans un pty rend bien le bureau hachuré, la barre de menu, la
-  fenêtre à case `[■]` et la barre de statut, puis restaure le terminal (code de sortie 0).
+  `cargo clippy --workspace --all-targets -- -D warnings` propre, **94 tests** au vert,
+  `cargo build --locked` OK, et l'exemple `frame` exécuté dans un pty rend bien le bureau
+  hachuré, la barre de menu, la fenêtre à case `[■]` et la barre de statut, puis restaure
+  le terminal (code de sortie 0).
+- Couverture mesurée au 2026-10-10 : **91,2 %** de régions sur l'ensemble. Les deux codecs
+  sont à 100 %. Le cœur `terminal.rs` est à 93,8 % — il était à 0 % avant la couture par
+  traits, qui a rendu le rendu testable sans terminal.
 - Divergence de plateforme **constatée et consignée** : le `poll` de macOS rend `POLLNVAL`
   sur `/dev/null` là où Linux rend `POLLIN`. C'est le contrôle du champ `revents` — et non
   le compte rendu par `poll` — qui l'a révélée au premier lancement. Les deux
@@ -32,15 +40,17 @@ le socle technique minimal. Rien n'est utilisable comme framework à ce stade.
 
 ### Pas fait — et à ne pas annoncer comme fait
 
-- Parseur ANSI, souris, protocole clavier Kitty, `modifyOtherKeys`.
+- Décodeur ANSI d'entrée, souris, protocole clavier Kitty, `modifyOtherKeys`.
 - Tables Unicode (largeur d'affichage, segmentation en graphèmes).
 - Arbre de vues, routage en trois phases, focus, ordre de profondeur, découpage.
 - Tout widget au-delà du cadre dessiné par l'exemple.
 - Moteur de thèmes complet, quantificateur de couleurs, thème Midnight Commander.
 - Couche MVC.
-- `redit`, `airmc`.
-- Tout gate `cargo xtask`, dont `check-naming` (ADR-004) et `check-versions` (ADR-009).
-  Les contrôles sont manuels.
+- `redit`, `rmc`.
+- Tout gate `cargo xtask` : `check-naming` (ADR-004), `check-versions` (ADR-009),
+  `check-codec-coverage` (ADR-012). Les contrôles sont manuels.
+- `air-tui-platform-air`, l'implémentation pour la cible `linux-air`.
+- Toute cible `cargo-fuzz` : aucun décodeur n'existe encore.
 - Le découpage par vue : `draw_text` découpe sur le bord de la **surface**, pas sur celui
   d'une fenêtre. Un texte trop long écrase donc le cadre — constaté sur l'exemple, à
   traiter avec l'arbre de vues (M4).
@@ -50,8 +60,8 @@ le socle technique minimal. Rien n'est utilisable comme framework à ce stade.
 
 ## Prochaine tâche
 
-Terminer M0 : vérifier le socle sur Linux (noyau 6.1+, x86_64 et aarch64), puis écrire les
-premiers tests de couverture sur `AirSurface` et la géométrie.
+Terminer M0 : vérifier le socle sur Linux (noyau 6.1+, `x86_64` et `aarch64`), puis
+remonter la couverture de `air-tui-platform-posix` par des tests sous pty.
 
 Ensuite M1 : le parseur ANSI incrémental, avec sa cible `cargo-fuzz` dès le premier commit
 du module (Principe 1 d'Air : fuzzing systématique sur toute API qui accepte des données

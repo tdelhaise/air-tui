@@ -1,14 +1,24 @@
 # Espace de travail air-tui.
 #
-# Deux crates, et la frontière entre elles est la règle structurante du projet
-# (cf. `docs/adrs/ADR-002-architecture-en-couches-fr.md`) :
+# Trois crates, et la couture entre elles est la règle structurante du projet
+# (cf. `ADR-002-architecture-en-couches-fr.md` et `ADR-011-couture-de-plateforme-fr.md`) :
 #
-# - `air-tui-sys`  — couche 0 : le SEUL endroit où vivent `unsafe` et les appels C ;
-# - `air-tui`      — couche 1 : Rust pur, `#![forbid(unsafe_code)]`.
+# - `air-tui-platform`        — le contrat : des traits, zéro `unsafe`, zéro appel C ;
+# - `air-tui-platform-posix`  — couche 0 POSIX : le SEUL `unsafe`, le SEUL appel C ;
+# - `air-tui`                 — le cœur : ne dépend QUE du contrat.
+#
+# `air-tui` n'a pas de dépendance vers une implémentation de plateforme : elle ne peut
+# donc pas atteindre le système, même par accident. C'est le binaire final qui choisit
+# une implémentation et l'injecte. La cible `linux-air` recevra sa propre crate
+# d'implémentation sans qu'une ligne du cœur ne change.
 
 [workspace]
 resolver = "3"
-members = ["crates/air-tui-sys", "crates/air-tui"]
+members = [
+    "crates/air-tui-platform",
+    "crates/air-tui-platform-posix",
+    "crates/air-tui",
+]
 
 [workspace.package]
 # Pas de `version` partagée ici : chaque crate porte la sienne et évolue à son rythme

@@ -6,21 +6,10 @@
 
 use std::os::fd::{AsRawFd, BorrowedFd};
 
+use air_tui_platform::{PlatformError, WindowSize};
+
 use crate::errno::Errno;
 use crate::ffi::{self, Winsize};
-
-/// La taille utile du terminal, en cellules de texte.
-///
-/// Les deux dimensions sont garanties non nulles : le noyau emploie zéro comme sentinelle
-/// de « taille inconnue », et [`terminal_window_size`] la traduit en `None` plutôt que de
-/// la propager (ADR-021 §1).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct WindowSize {
-    /// Nombre de colonnes.
-    pub columns: u16,
-    /// Nombre de lignes.
-    pub rows: u16,
-}
 
 /// Interroge le terminal sur sa taille.
 ///
@@ -35,7 +24,9 @@ pub struct WindowSize {
 /// # Errors
 ///
 /// Rend l'`errno` posé par `ioctl` — `ENOTTY` si le descripteur n'est pas un terminal.
-pub fn terminal_window_size(file_descriptor: BorrowedFd<'_>) -> Result<Option<WindowSize>, Errno> {
+pub fn terminal_window_size(
+    file_descriptor: BorrowedFd<'_>,
+) -> Result<Option<WindowSize>, PlatformError> {
     let mut measured = Winsize::default();
     // SAFETY: `measured` est une allocation locale vivante pour la durée de l'appel, de
     // la taille exacte de `struct winsize` (vérifiée par un test), et le pointeur est
@@ -48,7 +39,7 @@ pub fn terminal_window_size(file_descriptor: BorrowedFd<'_>) -> Result<Option<Wi
         )
     };
     if outcome == -1 {
-        return Err(Errno::last());
+        return Err(Errno::last().into());
     }
     if measured.columns == 0 || measured.rows == 0 {
         return Ok(None);

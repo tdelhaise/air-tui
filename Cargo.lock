@@ -4,11 +4,19 @@ version = 4
 
 [[package]]
 name = "air-tui"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
- "air-tui-sys",
+ "air-tui-platform",
+ "air-tui-platform-posix",
 ]
 
 [[package]]
-name = "air-tui-sys"
+name = "air-tui-platform"
 version = "0.1.0"
+
+[[package]]
+name = "air-tui-platform-posix"
+version = "0.1.0"
+dependencies = [
+ "air-tui-platform",
+]
