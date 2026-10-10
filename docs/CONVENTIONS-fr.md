@@ -133,10 +133,17 @@ types ne font pas partie du modèle d'objets de l'interface.
 
 # Fichiers générés
 
-`crates/air-tui/src/unicode/tables.rs` est **produit** par
-`cargo xtask generate-unicode-tables` et ne s'édite **jamais** à la main (ADR-006). Une
-modification manuelle serait écrasée à la génération suivante, et
-`cargo xtask generate-unicode-tables --ucd-directory <répertoire> --check` la refuse.
+Deux fichiers sont **produits** et ne s'éditent **jamais** à la main :
+
+| Fichier | Produit par | Vérifié par |
+|---|---|---|
+| `crates/air-tui/src/unicode/tables.rs` | `cargo xtask generate-unicode-tables` (ADR-006) | `--check` |
+| `crates/air-tui/src/theme/skins/midnight_commander.rs` | `cargo xtask import-mc-skin` (ADR-008) | `--check` |
+
+Une modification manuelle serait écrasée à la génération suivante, et le `--check`
+correspondant la refuse. Celui de l'importeur de skins distingue deux échecs que le même
+symptôme recouvre : « l'artefact a dérivé de son skin » et « ce n'est pas le même skin »,
+grâce à l'empreinte que l'artefact porte en en-tête.
 
 Un fichier généré passe les **mêmes contrôles** que le code écrit à la main : `fmt`,
 `clippy -D warnings`, documentation de chaque élément public. C'est au générateur de s'y
@@ -218,6 +225,7 @@ chaque PR (`.github/workflows/ci.yml`) :
 | `check-naming` | une abréviation du glossaire ci-dessus dans un nom **déclaré** (ADR-004) |
 | `check-versions` | une crate touchée dont la version n'avance pas (ADR-009) |
 | `check-codec-coverage` | un codec sous 100 % de régions, de fonctions ou de lignes (ADR-012) |
+| `import-mc-skin --check` | un artefact de thème qui a dérivé de son skin, ou un skin qui n'est pas le sien (ADR-008) |
 
 Deux précisions sur `check-naming`, parce qu'un contrôle dont on ignore la portée donne
 une fausse assurance :

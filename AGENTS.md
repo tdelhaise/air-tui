@@ -75,9 +75,11 @@ Tout bloc `unsafe` porte un commentaire `// SAFETY:` qui justifie ses précondit
 
 ## Ce qui n'existe pas encore
 
-`cargo xtask` porte **cinq** commandes de vérification — `generate-unicode-tables --check`,
-`check-segmentation`, `check-naming` (ADR-004), `check-versions` (ADR-009) et
-`check-codec-coverage` (ADR-012) —, exécutées par l'intégration continue sur chaque PR.
+`cargo xtask` porte **six** commandes de vérification — `generate-unicode-tables --check`,
+`check-segmentation`, `check-naming` (ADR-004), `check-versions` (ADR-009),
+`check-codec-coverage` (ADR-012) et `import-mc-skin --check` (ADR-008). L'intégration
+continue en exécute **cinq** : celle de l'importeur demande le même `mc` installé, qu'un
+coureur n'a pas.
 
 Trois contrôles de `docs/CONVENTIONS-fr.md` restent **à écrire**, donc à tenir à la main :
 `check-licence-headers`, `check-safety-comments` et `check-dco`. Ne pas écrire qu'ils

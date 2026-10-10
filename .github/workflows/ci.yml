@@ -19,6 +19,11 @@
 # - Pas d'essai en pseudo-terminal : `tools/pty-drive.py` demande un vrai terminal de
 #   contrôle, et un coureur n'en a pas. Les deux essais restent dans la liste locale.
 # - Pas de fuzzing : il exige nightly, et le dépôt est pinné sur stable.
+# - Pas de `import-mc-skin --check` : il demande le fichier de skin qui a produit
+#   l'artefact, donc le même `mc` installé, et un coureur n'en a pas. Installer une version
+#   quelconque donnerait un rouge pour une raison fausse le jour où le skin amont change.
+#   Ce contrôle reste local, et l'empreinte que l'artefact porte en en-tête le rend
+#   concluant : il distingue « ce n'est pas le même skin » de « l'artefact a dérivé ».
 
 name: controles
 

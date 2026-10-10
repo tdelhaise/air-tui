@@ -75,9 +75,13 @@ ses préconditions.
 
 ## Ce qui n'existe pas encore
 
-`cargo xtask` porte **cinq** commandes de vérification — `generate-unicode-tables --check`,
-`check-segmentation`, `check-naming` (ADR-004), `check-versions` (ADR-009) et
-`check-codec-coverage` (ADR-012) —, et l'intégration continue les exécute sur chaque PR.
+`cargo xtask` porte **six** commandes de vérification — `generate-unicode-tables --check`,
+`check-segmentation`, `check-naming` (ADR-004), `check-versions` (ADR-009),
+`check-codec-coverage` (ADR-012) et `import-mc-skin --check` (ADR-008). L'intégration
+continue en exécute **cinq** : celle de l'importeur de skins demande le même fichier de
+skin que celui qui a produit l'artefact, donc le même `mc` installé, et un coureur n'en a
+pas. Elle reste locale, et l'empreinte que l'artefact porte en en-tête la rend
+vérifiable : elle dit « ce n'est pas le même skin » plutôt que « l'artefact a dérivé ».
 
 Trois contrôles de `docs/CONVENTIONS-fr.md` restent **à écrire**, donc à tenir à la main :
 `check-licence-headers`, `check-safety-comments` et `check-dco`. Ne pas écrire qu'ils
@@ -110,6 +114,21 @@ Et, quand la modification touche un codec (ADR-012) :
 cargo llvm-cov --summary-only            # 100 % attendu sur codec/ et input/
 cd fuzz && cargo +nightly fuzz run ansi_decoder -- -max_total_time=60
 ```
+
+Et, quand la modification touche un thème ou l'importeur de skins (ADR-008) :
+
+```sh
+# le même fichier que celui qui a produit l'artefact — l'empreinte en en-tête le dit
+cargo xtask import-mc-skin --skin /usr/local/share/mc/skins/default.ini --check
+cargo build --example frame
+tools/pty-drive.py ./target/debug/examples/frame mc -- 800 1b5b32317e   # doit sortir
+tools/pty-drive.py ./target/debug/examples/frame mc -- 600 1b66         # doit tenir
+```
+
+Le chemin du skin dépend de l'installation : `/usr/local/share/mc/skins/` sous Homebrew,
+`/usr/share/mc/skins/` sous Debian et Ubuntu. Le thème se vérifie sur les **octets émis**
+et non à l'œil : la barre de menu passe de `38;5;0;48;5;7` à `38;5;15;48;5;6`, et le
+bureau du `░` à l'espace.
 
 Et, quand la modification touche `unicode/` ou les tables générées :
 

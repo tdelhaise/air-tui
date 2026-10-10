@@ -29,8 +29,13 @@
 //! démonstration du découpage, et au jalon M0 elle aurait mangé la bordure droite.
 //!
 //! ```sh
-//! cargo run --example frame
+//! cargo run --example frame          # thème Turbo Vision
+//! cargo run --example frame -- mc    # thème Midnight Commander
 //! ```
+//!
+//! Les deux lancements dessinent **exactement** les mêmes vues : seules la palette et les
+//! glyphes changent. C'est la démonstration la plus courte de ce qu'ADR-008 affirme — le
+//! look and feel est une donnée, pas du code.
 
 use std::time::Duration;
 
@@ -199,6 +204,19 @@ fn build_screen(size: AirSize) -> AirScreen {
     screen
 }
 
+/// Le thème que la ligne de commande demande.
+///
+/// `cargo run --example frame -- --theme mc` échange la palette et les glyphes. Un nom
+/// inconnu retombe sur Turbo Vision : c'est une démonstration, pas une application, et
+/// refuser ferait perdre la seule chose qu'elle sait faire.
+fn chosen_theme() -> AirTheme {
+    let wants_midnight = std::env::args().any(|argument| argument == "mc");
+    if wants_midnight {
+        return AirTheme::midnight_commander();
+    }
+    AirTheme::turbo_vision()
+}
+
 fn main() -> Result<(), PlatformError> {
     // C'est ici, et nulle part ailleurs, que le choix de la plateforme est fait : le cœur
     // du framework ne connaît que le contrat (ADR-011).
@@ -214,7 +232,7 @@ fn main() -> Result<(), PlatformError> {
     // L'écran reste à l'exemple : c'est l'appelant qui possède l'arbre, et c'est ce qui
     // laisse un contrôleur atteindre ses vues typées (jalon M6).
     let mut screen = build_screen(size);
-    let mut application = AirApplication::new(Box::new(device), AirTheme::turbo_vision())?;
+    let mut application = AirApplication::new(Box::new(device), chosen_theme())?;
     // Le meilleur protocole clavier que le terminal accepte : sans lui, `Alt`+lettre
     // n'arrive pas de façon fiable (ADR-003).
     let _ = application.enable_best_keyboard_protocol(Duration::from_millis(100));

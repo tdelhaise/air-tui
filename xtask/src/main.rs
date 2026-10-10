@@ -15,6 +15,7 @@
 //! cargo xtask check-naming
 //! cargo xtask check-versions
 //! cargo xtask check-codec-coverage
+//! cargo xtask import-mc-skin --skin /usr/share/mc/skins/default.ini
 //! ```
 
 // `expect` et `unwrap` sont interdits en production (lints de l'espace de travail) et
@@ -23,6 +24,8 @@
 #![cfg_attr(test, allow(clippy::expect_used, clippy::unwrap_used))]
 
 mod codec_coverage;
+mod mc_skin;
+mod mc_theme;
 mod naming;
 mod segmentation_conformance;
 mod ucd;
@@ -32,6 +35,9 @@ mod versions;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+
+/// Le chemin de l'artefact du thème Midnight Commander, relatif à la racine du dépôt.
+const MC_THEME_PATH: &str = "crates/air-tui/src/theme/skins/midnight_commander.rs";
 
 /// Le chemin du fichier de tables, relatif à la racine du dépôt.
 const TABLES_PATH: &str = "crates/air-tui/src/unicode/tables.rs";
@@ -60,6 +66,7 @@ fn main() -> ExitCode {
         Some("check-naming") => check_naming(),
         Some("check-versions") => check_versions(&arguments),
         Some("check-codec-coverage") => check_codec_coverage(&arguments),
+        Some("import-mc-skin") => import_mc_skin(&arguments),
         Some(other) => Err(format!("commande inconnue : {other}\n\n{}", usage())),
         None => Err(usage()),
     };
@@ -83,7 +90,8 @@ fn usage() -> String {
      cargo xtask check-segmentation --ucd-directory <répertoire>\n  \
      cargo xtask check-naming\n  \
      cargo xtask check-versions [--base <référence>]\n  \
-     cargo xtask check-codec-coverage [--report <relevé.json>]"
+     cargo xtask check-codec-coverage [--report <relevé.json>]\n  \
+     cargo xtask import-mc-skin --skin <fichier.ini> [--check]"
         .to_owned()
 }
 
@@ -316,6 +324,74 @@ fn check_codec_coverage(arguments: &[String]) -> Result<String, String> {
     Err(summary)
 }
 
+/// Compile un skin de Midnight Commander en artefact Rust committé (ADR-008).
+///
+/// L'ADR-008 interdit d'analyser un thème à l'exécution : un skin mal formé doit être un
+/// refus ici, au moment où un humain lit le message, et jamais un comportement dégradé
+/// dans une application.
+fn import_mc_skin(arguments: &[String]) -> Result<String, String> {
+    let skin_path = option_value(arguments, "--skin")
+        .ok_or_else(|| format!("--skin est obligatoire\n\n{}", usage()))?;
+    let text = std::fs::read_to_string(&skin_path)
+        .map_err(|cause| format!("{skin_path} illisible : {cause}"))?;
+    let skin = mc_skin::parse(&text).map_err(|cause| format!("{skin_path} : {cause}"))?;
+    let fingerprint = mc_skin::fingerprint(&text);
+    let compiled = mc_theme::compile(&skin, &skin_path, fingerprint)
+        .map_err(|cause| format!("{skin_path} : {cause}"))?;
+    let destination = repository_root()?.join(MC_THEME_PATH);
+
+    if has_flag(arguments, "--check") {
+        let committed = std::fs::read_to_string(&destination)
+            .map_err(|cause| format!("{} illisible : {cause}", destination.display()))?;
+        let reference = format_through_rustfmt(&compiled.source, &destination)?;
+        if committed == reference {
+            return Ok(format!(
+                "{MC_THEME_PATH} est à jour, et vient bien de ce skin ({fingerprint:#018x})"
+            ));
+        }
+        // Deux échecs très différents portent le même symptôme, et les confondre fait
+        // perdre du temps : soit l'artefact a dérivé de son skin, soit ce n'est pas le
+        // même skin. L'empreinte tranche.
+        if let Some(recorded) = recorded_fingerprint(&committed)
+            && recorded != fingerprint
+        {
+            return Err(format!(
+                "{skin_path} n'est pas le skin qui a produit {MC_THEME_PATH} :\n  \
+                 empreinte de l'artefact : {recorded:#018x}\n  \
+                 empreinte du fichier    : {fingerprint:#018x}"
+            ));
+        }
+        return Err(format!(
+            "{MC_THEME_PATH} ne correspond plus au skin, dont l'empreinte est pourtant la \
+             même.\n\
+             C'est donc la compilation qui a changé. Relancer :\n  \
+             cargo xtask import-mc-skin --skin {skin_path}"
+        ));
+    }
+
+    if let Some(parent) = destination.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|cause| format!("création de {} impossible : {cause}", parent.display()))?;
+    }
+    std::fs::write(&destination, &compiled.source)
+        .map_err(|cause| format!("écriture de {} impossible : {cause}", destination.display()))?;
+    run_rustfmt(&destination)?;
+    Ok(format!(
+        "{MC_THEME_PATH} écrit ({fingerprint:#018x}) — {} rôles transcrits d'une clef, {} composés de deux, \
+         {} correspondances annotées, {} clefs du skin inemployées",
+        compiled.transcribed, compiled.composed, compiled.noted, compiled.unused_keys
+    ))
+}
+
+/// L'empreinte que l'artefact committé déclare, si elle y est.
+fn recorded_fingerprint(artifact: &str) -> Option<u64> {
+    let marker = "Empreinte FNV-1a du skin d'origine : `";
+    let (_, after) = artifact.split_once(marker)?;
+    let (value, _) = after.split_once('`')?;
+    let digits = value.strip_prefix("0x")?;
+    u64::from_str_radix(digits, 16).ok()
+}
+
 /// Passe un fichier au formateur de la toolchain pinnée.
 fn run_rustfmt(path: &Path) -> Result<(), String> {
     let status = std::process::Command::new("rustfmt")
@@ -401,5 +477,6 @@ mod tests {
         assert!(text.contains("check-naming"));
         assert!(text.contains("check-versions"));
         assert!(text.contains("check-codec-coverage"));
+        assert!(text.contains("import-mc-skin"));
     }
 }

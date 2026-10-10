@@ -39,5 +39,37 @@ Ces données appartiennent à Unicode, Inc. et sont distribuées sous la licence
 
     Texte complet : https://www.unicode.org/license.txt
 
-air-tui ne dépend d'aucune crate tierce (ADR-005) : cette notice couvre la seule donnée
-tierce incorporée au dépôt.
+Skin par défaut de GNU Midnight Commander
+------------------------------------------
+
+Le fichier `crates/air-tui/src/theme/skins/midnight_commander.rs` est **généré** à partir
+du skin par défaut de GNU Midnight Commander — `share/mc/skins/default.ini`, version
+**4.8.33** — par `cargo xtask import-mc-skin` (ADR-008).
+
+Ce qui en est repris est la **donnée de configuration** de ce fichier : vingt-huit couples
+de couleurs et douze caractères de dessin de cadre, transposés dans le modèle de rôles
+sémantiques d'air-tui. Aucune ligne de code de Midnight Commander n'est reprise, et
+air-tui n'embarque ni son analyseur de skins ni aucune de ses sources.
+
+GNU Midnight Commander est distribué sous **GNU General Public License, version 3 ou
+ultérieure** :
+
+    Copyright (C) 1994-2024 Free Software Foundation, Inc.
+
+    Midnight Commander is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Texte complet : https://www.gnu.org/licenses/gpl-3.0.html
+    Projet : https://midnight-commander.org/
+
+L'artefact généré porte en commentaire, rôle par rôle, la section et la clef du skin dont
+chaque valeur vient, ainsi qu'une empreinte du fichier d'origine : la provenance de chaque
+couleur est donc vérifiable ligne à ligne, et `cargo xtask import-mc-skin --check` la
+confronte au fichier.
+
+---
+
+air-tui ne dépend d'aucune crate tierce (ADR-005) : les deux notices ci-dessus couvrent
+les **seules** données tierces incorporées au dépôt.

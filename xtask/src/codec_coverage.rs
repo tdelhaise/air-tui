@@ -21,6 +21,25 @@
 //! compte : un fichier renommé sans que cette liste suive sortirait silencieusement de la
 //! règle, et le contrôle dirait que tout va bien.
 //!
+//! # Un décodeur qui n'est pas dans le cœur
+//!
+//! `xtask/src/mc_skin.rs` y figure, et c'est une décision à motiver. L'ADR-008 place
+//! l'importeur de skins **hors** du chemin d'exécution : un skin est compilé en artefact,
+//! jamais analysé par une application. On pourrait donc soutenir que l'ADR-012 ne le
+//! vise pas, puisque son argument porte sur « des octets venus de l'extérieur » à
+//! l'exécution.
+//!
+//! La règle est pourtant écrite large — « toute conversion d'un flux de données » —, et la
+//! tenir a coûté exactement ce que l'ADR-012 annonce : les branches défensives
+//! inatteignables ont été **supprimées** par le typage plutôt que couvertes. Les trois
+//! chiffres d'une couleur du cube et les six d'une vraie couleur se reconnaissent par
+//! motif de tranche, et la valeur d'un chiffre hexadécimal vient d'une table plutôt que
+//! d'un `to_digit` suivi d'une conversion qui ne peut pas échouer. Le fichier est plus
+//! simple qu'avant la règle, pas plus long.
+//!
+//! `xtask/src/mc_theme.rs`, qui **produit** du Rust à partir d'un skin déjà lu, n'y figure
+//! pas : ce n'est pas une conversion de flux, c'est de la génération.
+//!
 //! # Les deux modules que cette liste ne contient pas
 //!
 //! `crates/air-tui/src/codec/mod.rs` est une façade : deux `pub mod` et un `pub use`,
@@ -71,6 +90,11 @@ const CODEC_FILES: &[Codec] = &[
     Codec {
         path: "crates/air-tui/src/input/event.rs",
         role: "le modèle d'événements que le décodeur produit",
+    },
+    Codec {
+        path: "xtask/src/mc_skin.rs",
+        role: "décodeur des skins de Midnight Commander — hors exécution, mais c'est bien \
+               une conversion de flux",
     },
 ];
 
