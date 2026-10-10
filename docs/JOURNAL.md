@@ -6,6 +6,37 @@ tête. On ajoute, on ne réécrit jamais une entrée passée.
 Une entrée par campagne, pas par commit. Répartition des rôles : `etat-avancement.md` est
 l'état vivant, ce journal est la trace figée, `INDEX.md` est la carte structurelle.
 
+## 2026-10-10 — M2, le protocole clavier Kitty
+
+- `air-tui/src/input/kitty.rs` et l'extension du décodeur : frappes `CSI … u` avec
+  modificateurs complets, types d'événement dont le relâchement, et touche de la
+  disposition de base — `AirKeyEvent::base_layout` plus `shortcut_key()`, de quoi faire
+  fonctionner `Alt+F` sur un clavier cyrillique. Repli `modifyOtherKeys` niveau 2.
+- Négociation par interrogation `CSI ? u` **suivie** d'un jalon d'attributs de
+  périphérique : voir le jalon sans réponse Kitty avant lui est une conclusion négative
+  certaine, pas une expiration de délai. Le délai ne sert qu'au terminal muet. Ce qui est
+  tapé pendant l'interrogation est transmis, pas jeté. Le protocole est défait au `Drop`.
+- **Deux corrections de fond trouvées en écrivant les tests** : les paramètres de séquence
+  étaient en `u16`, ce qui faisait refuser `CSI 128512 u` — un emoji en numéro de touche —
+  comme malformé ; et les numéros hors table tombaient dans la zone à usage privé
+  d'Unicode, donc devenaient des caractères imprimables fantômes qu'une application aurait
+  insérés dans un champ de saisie. Les deux sont couvertes par un test nommé.
+- `air-tui` passe en **0.3.0** : `base_layout` est un champ ajouté à une structure
+  publique, donc une rupture pour toute construction littérale. En `0.y.z`, la rupture
+  prend la case du milieu (ADR-009).
+- 212 tests, 100 % de couverture sur les six modules de codec et d'entrée, 371 416
+  exécutions de fuzzing sans plantage sur le décodeur étendu.
+- **Vérifié sur les trois plateformes**, et le contrôle `aarch64` était le plus
+  important : sur neon (Raspberry Pi, Ubuntu 26.04, noyau 7.0.0-1020-raspi), 249 tests au
+  vert et l'exemple `frame` rendant une grille identique. La déclaration **variadique**
+  d'`ioctl` est donc juste — sur cette ABI les arguments variadiques passent par la pile,
+  et une déclaration non-variadique aurait fonctionné sur `x86_64` en cassant ici. C'était
+  le défaut latent le plus probable du projet.
+- **Affirmations périmées corrigées** : `CLAUDE.md`, `AGENTS.md`, `README.md` et
+  `CONVENTIONS-fr.md` nommaient encore `air-tui-sys`, crate renommée par ADR-011. Les ADR
+  antérieurs et le journal ne sont pas réécrits — ce sont des archives — et une note de
+  lecture dans `CONVENTIONS-fr.md` fait le pont.
+
 ## 2026-10-10 — vérification sur Linux, dette soldée
 
 - Branche M1 vérifiée sur **hydrogen** (Ubuntu 26.04.1 LTS, noyau 7.0.0-38, `x86_64`) :

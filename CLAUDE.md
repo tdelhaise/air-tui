@@ -67,9 +67,11 @@ paramètres et les variables locales.
 
 ## Frontière `unsafe`
 
-`unsafe` et les appels C vivent dans `air-tui-sys`, **et nulle part ailleurs**. La crate
-`air-tui` est en `#![forbid(unsafe_code)]`. Tout bloc `unsafe` porte un commentaire
-`// SAFETY:` qui justifie ses préconditions.
+`unsafe` et les appels C vivent dans **`air-tui-platform-posix`**, et nulle part ailleurs.
+`air-tui-platform` porte le contrat en traits et `air-tui` le cœur : les deux sont en
+`#![forbid(unsafe_code)]`, et le cœur n'a même pas de dépendance vers une implémentation
+de plateforme (ADR-011). Tout bloc `unsafe` porte un commentaire `// SAFETY:` qui justifie
+ses préconditions.
 
 ## Ce qui n'existe pas encore
 
@@ -96,9 +98,12 @@ cd fuzz && cargo +nightly fuzz run ansi_decoder -- -max_total_time=60
 Le fuzzing exige nightly ; `fuzz/` est un espace de travail séparé pour cette raison, et
 le dépôt reste pinné sur stable.
 
-`cargo llvm-cov` est l'objectif de couverture (100 % sur `air-tui-sys` et le cœur
-d'`air-tui`, cf. `docs/CONVENTIONS-fr.md`) ; le seuil n'est pas encore atteint et ne doit
-pas être annoncé comme tel.
+Sur la couverture, deux exigences de portée différente, à ne pas confondre :
+
+- **100 % sur les codecs**, régions comprises — c'est ADR-012, et c'est tenu aujourd'hui
+  sur `codec/` et `input/` ;
+- un objectif élevé ailleurs, **non atteint** : `air-tui-platform-posix` demande un vrai
+  terminal pour être couvert. Ne pas annoncer un seuil global qui n'existe pas.
 
 ## Git
 

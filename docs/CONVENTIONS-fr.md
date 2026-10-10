@@ -40,6 +40,14 @@ correspondant ne sont pas repris tant que la traduction n'est pas faite.
 **Pas de règle des 80 % sur les dépendances.** Elle est sans objet : air-tui n'a aucune
 dépendance (ADR-005). `deny.toml` garde néanmoins les bornes d'Air.
 
+## Note de lecture des ADR antérieurs à ADR-011
+
+Les ADR 001, 002, 004 et 009 nomment une crate **`air-tui-sys`**. Elle a été renommée
+**`air-tui-platform-posix`** par ADR-011, qui a aussi introduit `air-tui-platform`. Ces
+ADR ne sont pas réécrits — ce sont des archives de décision, et les réécrire effacerait la
+trace du changement ; ADR-011 en porte le motif. Partout ailleurs, c'est le nom actuel qui
+vaut.
+
 ## La règle qui n'est PAS reprise
 
 ADR-004 d'Air pose **Linux exclusivement** et interdit tout repli macOS dans le code.
@@ -101,7 +109,8 @@ abréviations qu'on écrit sans y penser à la quarantième occurrence.
    d'emprunt ne se traduit pas, sinon on ne peut plus le confronter à sa page de manuel.
    La frontière est nette : verbatim **dans** la déclaration, nom complet dès l'enveloppe
    Rust (`terminal_window_size()`, pas `tiocgwinsz()`).
-3. **Le suffixe `-sys`** de `air-tui-sys` : convention de l'écosystème Rust, et précédent
+3. **Le suffixe `-sys`**, et l'acronyme `posix` de `air-tui-platform-posix` : convention
+   de l'écosystème Rust pour une crate d'interface système, et précédent
    dans Air avec `air-sys-types` et `air-sys-syscall`.
 4. **`Id`** : précédent direct dans Air (`AirInputId`, `AirMonotonicId`). Donc `AirViewId`,
    pas `AirViewIdentifier`.
@@ -115,7 +124,8 @@ Le choix est assumé : Rust a des modules, donc le préfixe est techniquement re
 mais c'est celui de Qt (`QWidget`), de Cocoa (`NSWindow`) et de GTK (`GtkWindow`), il rend
 le `grep` sans ambiguïté, et il translittère le `T` de Turbo Vision pour qui vient de là.
 
-**La couche 0 ne le porte pas.** `air-tui-sys` expose `Errno`, `WindowSize`, `TerminalMode`
+**Les crates de plateforme ne le portent pas.** `air-tui-platform` et
+`air-tui-platform-posix` exposent `PlatformError`, `WindowSize`, `TerminalDevice`
 sans préfixe, comme Air expose `air_sys_types::Errno` : le chemin de module suffit, et ces
 types ne font pas partie du modèle d'objets de l'interface.
 
@@ -187,7 +197,8 @@ Aucun de ces contrôles n'est écrit. Ils sont à exécuter à la main, et **ne 
 - `check-naming` — balayer les identifiants déclarés et refuser le glossaire ci-dessus,
   avec les quatre exceptions en liste blanche.
 - `check-licence-headers` — en-tête MPL présent sur chaque `.rs`.
-- `check-safety-comments` — un `// SAFETY:` par bloc `unsafe` dans `air-tui-sys`.
+- `check-safety-comments` — un `// SAFETY:` par bloc `unsafe` dans
+  `air-tui-platform-posix`.
 - `check-dco` — `Signed-off-by` sur chaque commit, aucun `Co-Authored-By: Claude`.
 - `check-versions` — refuser une PR qui modifie le code d'une crate sans incrémenter sa
   version (ADR-009).

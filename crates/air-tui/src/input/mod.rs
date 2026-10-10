@@ -15,6 +15,7 @@
 
 pub mod ansi;
 pub mod event;
+pub mod kitty;
 pub mod scanning;
 
 pub use ansi::{AirAnsiDecoder, AirDecodeError};
@@ -22,3 +23,5 @@ pub use event::{
     AirInputEvent, AirKey, AirKeyEvent, AirKeyState, AirModifiers, AirMouseButton, AirMouseEvent,
     AirMouseEventKind, AirScanCode,
 };
+pub use kitty::{AirKeyboardFlags, AirKeyboardProtocol};
+pub use scanning::AirParameterField;

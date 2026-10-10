@@ -67,9 +67,11 @@ paramètres et les variables locales.
 
 ## Frontière `unsafe`
 
-`unsafe` et les appels C vivent dans `air-tui-sys`, **et nulle part ailleurs**. La crate
-`air-tui` est en `#![forbid(unsafe_code)]`. Tout bloc `unsafe` porte un commentaire
-`// SAFETY:` qui justifie ses préconditions.
+`unsafe` et les appels C vivent dans **`air-tui-platform-posix`**, et nulle part ailleurs.
+`air-tui-platform` porte le contrat en traits et `air-tui` le cœur : les deux sont en
+`#![forbid(unsafe_code)]`, et le cœur n'a même pas de dépendance vers une implémentation
+de plateforme (ADR-011). Tout bloc `unsafe` porte un commentaire `// SAFETY:` qui justifie
+ses préconditions.
 
 ## Ce qui n'existe pas encore
 

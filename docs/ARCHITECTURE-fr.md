@@ -157,7 +157,40 @@ indiscernable du début d'une séquence, seul le temps les sépare. Le décodeur
 rend « incomplet » ; c'est la boucle d'événements, qui sait qu'un délai s'est écoulé, qui
 appelle `AirAnsiDecoder::isolated_escape_event`.
 
-L'étage **natif** (M8) et le protocole Kitty (M2) restent à écrire.
+### Le protocole Kitty, et pourquoi il était indispensable
+
+Écrit au jalon M2 (`air-tui/src/input/kitty.rs`). C'est le seul mécanisme qui livre les
+modificateurs complets à travers un pty : sans lui, `Ctrl+Shift+S` et `Ctrl+S` produisent
+tous deux l'octet `0x13` et sont indiscernables. Il apporte aussi deux choses qu'aucun
+autre étage terminal ne donne :
+
+- les **relâchements de touche**, et la distinction enfoncement / répétition ;
+- la **touche de la disposition de base**, exposée par `AirKeyEvent::base_layout` et
+  `shortcut_key()`. C'est ce qui fait fonctionner `Alt+F` pour « Fichier » sur un clavier
+  cyrillique comme sur un QWERTY — exactement le problème qu'un framework à menus doit
+  résoudre, et que le codage historique ne permet pas de résoudre du tout.
+
+**La négociation ne repose pas sur un délai.** On envoie l'interrogation `CSI ? u`
+*suivie* d'une demande d'attributs de périphérique. Les terminaux répondent dans l'ordre :
+voir les attributs sans avoir vu de réponse Kitty avant eux est donc une conclusion
+négative **certaine**. Le délai ne sert qu'au terminal qui ne répond à rien, pour ne jamais
+geler le lancement. Et ce qui est tapé pendant l'interrogation est transmis à l'appelant,
+pas jeté.
+
+Le repli est `modifyOtherKeys` niveau 2, demandé **sans interrogation** : il n'existe pas
+de sondage universel pour lui, mais la demande est inoffensive — un terminal qui ne la
+comprend pas l'ignore.
+
+Le protocole demandé est défait à la destruction du terminal. Laisser un terminal en
+protocole Kitty après la sortie rendrait le shell inutilisable.
+
+Deux limites consignées : la table des touches fonctionnelles ne couvre que les numéros
+**certains** — tabulation, entrée, échappement, retour arrière, caractères imprimables,
+`F13` à `F35` —, le pavé numérique et les touches multimédia étant hors table et donc
+consommés sans événement ; et cette table a été écrite d'après la spécification, **pas
+vérifiée contre un terminal réel**.
+
+L'étage **natif** (M8) reste à écrire.
 
 ## Le rendu
 

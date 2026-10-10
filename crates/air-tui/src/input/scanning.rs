@@ -31,21 +31,71 @@ pub const fn utf8_sequence_length(leading_byte: u8) -> Option<usize> {
 ///
 /// Un paramètre **vide** vaut `Some(None)` : c'est la valeur par défaut, que la norme
 /// autorise et que les terminaux emploient (`CSI ; 5 A`). Un paramètre qui n'est pas
-/// décimal, ou qui déborde d'un `u16`, rend `None` — c'est une séquence malformée, pas une
+/// décimal, ou qui déborde d'un `u32`, rend `None` — c'est une séquence malformée, pas une
 /// valeur par défaut, et le décodeur doit les distinguer.
-pub fn parse_parameter(bytes: &[u8]) -> Option<Option<u16>> {
+///
+/// # Pourquoi `u32` et non `u16`
+///
+/// Le protocole clavier Kitty transmet des **points de code Unicode** comme numéros de
+/// touche : un emoji y vaut plus de cent mille. Un accumulateur de seize bits refuserait
+/// `CSI 128512 u` comme malformé alors que la séquence est parfaitement valide.
+pub fn parse_parameter(bytes: &[u8]) -> Option<Option<u32>> {
     if bytes.is_empty() {
         return Some(None);
     }
-    let mut accumulated: u16 = 0;
+    let mut accumulated: u32 = 0;
     for byte in bytes {
         let digit = match byte {
-            b'0'..=b'9' => u16::from(byte.wrapping_sub(b'0')),
+            b'0'..=b'9' => u32::from(byte.wrapping_sub(b'0')),
             _ => return None,
         };
         accumulated = accumulated.checked_mul(10)?.checked_add(digit)?;
     }
     Some(Some(accumulated))
+}
+
+/// Un champ de paramètre de séquence de contrôle, sous-paramètres compris.
+///
+/// Trois valeurs suffisent, et ce n'est pas arbitraire : c'est exactement ce que le
+/// protocole clavier Kitty met dans son premier champ —
+/// `numéro-de-touche : touche-décalée : touche-de-la-disposition-de-base`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct AirParameterField {
+    /// La valeur principale ; `None` si le champ est vide, donc par défaut.
+    pub primary: Option<u32>,
+    /// Le premier sous-paramètre — la touche décalée, ou le type d'événement.
+    pub first_sub: Option<u32>,
+    /// Le deuxième sous-paramètre — la touche de la disposition de base.
+    pub second_sub: Option<u32>,
+}
+
+/// Lit un champ de paramètre, sous-paramètres compris.
+///
+/// Les sous-paramètres sont séparés par `:` et le protocole clavier Kitty s'en sert
+/// partout : `97:65:97` désigne la touche `a`, dont la variante décalée est `A` et dont la
+/// disposition de base nomme `a` ; `5:3` désigne « contrôle » avec le type d'événement
+/// « relâchement ».
+///
+/// Les sous-paramètres au-delà du deuxième sont **validés** — un champ malformé reste une
+/// erreur — mais pas conservés : aucune séquence traitée n'en emploie davantage.
+pub fn parse_parameter_field(field: &[u8]) -> Option<AirParameterField> {
+    let mut parts = field.split(|byte| *byte == b':');
+    let primary = parse_parameter(parts.next().unwrap_or(&[]))?;
+    let mut first_sub = None;
+    let mut second_sub = None;
+    for (index, part) in parts.enumerate() {
+        let value = parse_parameter(part)?;
+        match index {
+            0 => first_sub = value,
+            1 => second_sub = value,
+            _ => {}
+        }
+    }
+    Some(AirParameterField {
+        primary,
+        first_sub,
+        second_sub,
+    })
 }
 
 /// Traduit le paramètre de modificateurs d'xterm en modificateurs nommés.
@@ -56,7 +106,7 @@ pub fn parse_parameter(bytes: &[u8]) -> Option<Option<u16>> {
 ///
 /// Un paramètre nul est traité comme `1` : certains terminaux l'émettent, et il n'y a
 /// qu'une lecture raisonnable.
-pub const fn modifiers_from_parameter(parameter: u16) -> AirModifiers {
+pub const fn modifiers_from_parameter(parameter: u32) -> AirModifiers {
     let mask = parameter.saturating_sub(1);
     AirModifiers {
         shift: mask & 0b0001 != 0,
@@ -105,8 +155,8 @@ pub fn partial_suffix_length(haystack: &[u8], needle: &[u8]) -> usize {
 #[cfg(test)]
 mod tests {
     use super::{
-        find_subslice, modifiers_from_parameter, parse_parameter, partial_suffix_length,
-        utf8_sequence_length,
+        AirParameterField, find_subslice, modifiers_from_parameter, parse_parameter,
+        parse_parameter_field, partial_suffix_length, utf8_sequence_length,
     };
 
     #[test]
@@ -159,10 +209,93 @@ mod tests {
 
     #[test]
     fn un_parametre_qui_deborde_est_refuse_et_non_tronque() {
-        // 65536 ne tient pas dans un u16 : le refuser est le seul comportement qui ne
-        // mente pas sur ce que le terminal a envoyé.
-        assert_eq!(parse_parameter(b"65536"), None);
-        assert_eq!(parse_parameter(b"999999"), None);
+        // Refuser est le seul comportement qui ne mente pas sur ce que le terminal a
+        // envoyé. La borne est celle d'un u32, pas d'un u16 : Kitty transmet des points de
+        // code Unicode comme numéros de touche.
+        assert_eq!(parse_parameter(b"4294967296"), None);
+        assert_eq!(parse_parameter(b"99999999999"), None);
+    }
+
+    #[test]
+    fn un_point_de_code_hors_du_plan_de_base_est_accepte() {
+        // `CSI 128512 u` : l'emoji souriant en protocole Kitty. Un accumulateur de seize
+        // bits le refuserait à tort.
+        assert_eq!(parse_parameter(b"128512"), Some(Some(128_512)));
+        assert_eq!(parse_parameter(b"4294967295"), Some(Some(u32::MAX)));
+    }
+
+    fn field(
+        primary: Option<u32>,
+        first_sub: Option<u32>,
+        second_sub: Option<u32>,
+    ) -> AirParameterField {
+        AirParameterField {
+            primary,
+            first_sub,
+            second_sub,
+        }
+    }
+
+    #[test]
+    fn un_champ_sans_sous_parametre_rend_la_valeur_seule() {
+        assert_eq!(
+            parse_parameter_field(b"97"),
+            Some(field(Some(97), None, None))
+        );
+        assert_eq!(parse_parameter_field(b""), Some(field(None, None, None)));
+    }
+
+    #[test]
+    fn un_champ_avec_un_sous_parametre_rend_les_deux() {
+        assert_eq!(
+            parse_parameter_field(b"97:65"),
+            Some(field(Some(97), Some(65), None))
+        );
+        assert_eq!(
+            parse_parameter_field(b"5:3"),
+            Some(field(Some(5), Some(3), None))
+        );
+    }
+
+    #[test]
+    fn un_champ_avec_deux_sous_parametres_rend_les_trois() {
+        // La forme complète du premier champ de Kitty : touche, décalée, disposition de base.
+        assert_eq!(
+            parse_parameter_field(b"1092:0:97"),
+            Some(field(Some(1092), Some(0), Some(97)))
+        );
+    }
+
+    #[test]
+    fn un_sous_parametre_vide_vaut_la_valeur_par_defaut() {
+        assert_eq!(
+            parse_parameter_field(b"97:"),
+            Some(field(Some(97), None, None))
+        );
+        assert_eq!(
+            parse_parameter_field(b":3"),
+            Some(field(None, Some(3), None))
+        );
+        assert_eq!(
+            parse_parameter_field(b"97::65"),
+            Some(field(Some(97), None, Some(65)))
+        );
+    }
+
+    #[test]
+    fn les_sous_parametres_au_dela_du_deuxieme_sont_valides_mais_ignores() {
+        assert_eq!(
+            parse_parameter_field(b"97:65:120:9"),
+            Some(field(Some(97), Some(65), Some(120)))
+        );
+        // Le quatrième est invalide : le champ entier est refusé.
+        assert_eq!(parse_parameter_field(b"97:65:120:x"), None);
+    }
+
+    #[test]
+    fn un_champ_dont_une_valeur_est_invalide_est_refuse() {
+        assert_eq!(parse_parameter_field(b"x:65"), None);
+        assert_eq!(parse_parameter_field(b"97:x"), None);
     }
 
     #[test]
@@ -189,7 +322,7 @@ mod tests {
 
     #[test]
     fn tous_les_masques_de_quatre_bits_sont_couverts() {
-        for mask in 0..16_u16 {
+        for mask in 0..16_u32 {
             let modifiers = modifiers_from_parameter(mask.saturating_add(1));
             assert_eq!(modifiers.shift, mask & 1 != 0, "masque {mask}");
             assert_eq!(modifiers.alternate, mask & 2 != 0, "masque {mask}");
