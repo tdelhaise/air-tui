@@ -12,6 +12,9 @@
 //! cargo xtask generate-unicode-tables --ucd-directory /tmp/ucd
 //! cargo xtask generate-unicode-tables --ucd-directory /tmp/ucd --check
 //! cargo xtask check-segmentation --ucd-directory /tmp/ucd
+//! cargo xtask check-naming
+//! cargo xtask check-versions
+//! cargo xtask check-codec-coverage
 //! ```
 
 // `expect` et `unwrap` sont interdits en production (lints de l'espace de travail) et
@@ -19,9 +22,12 @@
 // bruyamment. Même choix que dans `air-tui`.
 #![cfg_attr(test, allow(clippy::expect_used, clippy::unwrap_used))]
 
+mod codec_coverage;
+mod naming;
 mod segmentation_conformance;
 mod ucd;
 mod unicode_tables;
+mod versions;
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -29,6 +35,9 @@ use std::process::ExitCode;
 
 /// Le chemin du fichier de tables, relatif à la racine du dépôt.
 const TABLES_PATH: &str = "crates/air-tui/src/unicode/tables.rs";
+
+/// La référence de comparaison par défaut des contrôles de plage.
+const DEFAULT_BASE: &str = "origin/main";
 
 /// Les fichiers du référentiel à télécharger, avec leur chemin dans l'arborescence amont.
 const UCD_FILES: &[&str] = &[
@@ -48,6 +57,9 @@ fn main() -> ExitCode {
         Some("download-ucd") => download_ucd(&arguments),
         Some("generate-unicode-tables") => generate_unicode_tables(&arguments),
         Some("check-segmentation") => check_segmentation(&arguments),
+        Some("check-naming") => check_naming(),
+        Some("check-versions") => check_versions(&arguments),
+        Some("check-codec-coverage") => check_codec_coverage(&arguments),
         Some(other) => Err(format!("commande inconnue : {other}\n\n{}", usage())),
         None => Err(usage()),
     };
@@ -68,7 +80,10 @@ fn usage() -> String {
     "usage :\n  \
      cargo xtask download-ucd --version <version> --output-directory <répertoire>\n  \
      cargo xtask generate-unicode-tables --ucd-directory <répertoire> [--check]\n  \
-     cargo xtask check-segmentation --ucd-directory <répertoire>"
+     cargo xtask check-segmentation --ucd-directory <répertoire>\n  \
+     cargo xtask check-naming\n  \
+     cargo xtask check-versions [--base <référence>]\n  \
+     cargo xtask check-codec-coverage [--report <relevé.json>]"
         .to_owned()
 }
 
@@ -212,6 +227,95 @@ fn check_segmentation(arguments: &[String]) -> Result<String, String> {
     Ok(summary.trim_end().to_owned())
 }
 
+/// Refuse une abréviation dans un nom déclaré (ADR-004).
+///
+/// Le contrôle porte sur les sites de déclaration, et son angle mort — les liaisons de
+/// bras de `match` — est documenté dans l'en-tête de [`naming`].
+fn check_naming() -> Result<String, String> {
+    let report = naming::check(&repository_root()?)?;
+    if report.violations.is_empty() {
+        return Ok(format!(
+            "{} noms déclarés inspectés dans {} fichiers, aucune abréviation",
+            report.declarations, report.files
+        ));
+    }
+    let mut summary = format!(
+        "{} abréviation(s) dans un nom déclaré, sur {} noms inspectés :\n",
+        report.violations.len(),
+        report.declarations
+    );
+    for violation in &report.violations {
+        let _ = writeln!(
+            summary,
+            "  {}:{} — `{}` porte `{}`, attendu `{}`",
+            violation.file, violation.line, violation.name, violation.word, violation.expected
+        );
+    }
+    let _ = write!(
+        summary,
+        "\nLe glossaire contraignant est dans docs/CONVENTIONS-fr.md."
+    );
+    Err(summary)
+}
+
+/// Refuse une crate touchée dont la version n'avance pas (ADR-009).
+fn check_versions(arguments: &[String]) -> Result<String, String> {
+    let base = option_value(arguments, "--base").unwrap_or_else(|| DEFAULT_BASE.to_owned());
+    let report = versions::check(&repository_root()?, &base)?;
+    let origin = if report.working_tree_joined {
+        "la plage et l'arbre de travail"
+    } else {
+        "la plage"
+    };
+    if report.violations.is_empty() {
+        return Ok(format!(
+            "{} crates examinées contre {}, {} touchée(s) d'après {origin} : {}",
+            report.examined,
+            report.base,
+            report.touched.len(),
+            describe(&report.touched)
+        ));
+    }
+    let mut summary = format!(
+        "{} manquement(s) au versionnement, contre {} :\n",
+        report.violations.len(),
+        report.base
+    );
+    for violation in &report.violations {
+        let _ = writeln!(summary, "  {} — {}", violation.subject, violation.detail);
+    }
+    Err(summary)
+}
+
+/// Une énumération lisible, ou une mention explicite de l'absence.
+fn describe(names: &[String]) -> String {
+    if names.is_empty() {
+        return "aucune".to_owned();
+    }
+    names.join(", ")
+}
+
+/// Refuse qu'un codec descende sous 100 % de couverture (ADR-012).
+fn check_codec_coverage(arguments: &[String]) -> Result<String, String> {
+    let prepared = option_value(arguments, "--report").map(PathBuf::from);
+    let report = codec_coverage::check(&repository_root()?, prepared.as_deref())?;
+    if report.violations.is_empty() {
+        return Ok(format!(
+            "{} codecs à 100 % de régions, de fonctions et de lignes",
+            report.required
+        ));
+    }
+    let mut summary = format!(
+        "{} codec(s) en défaut de couverture, sur {} exigés :\n",
+        report.violations.len(),
+        report.required
+    );
+    for violation in &report.violations {
+        let _ = writeln!(summary, "  {} — {}", violation.file, violation.detail);
+    }
+    Err(summary)
+}
+
 /// Passe un fichier au formateur de la toolchain pinnée.
 fn run_rustfmt(path: &Path) -> Result<(), String> {
     let status = std::process::Command::new("rustfmt")
@@ -289,10 +393,13 @@ mod tests {
     }
 
     #[test]
-    fn le_mode_d_emploi_cite_les_trois_commandes() {
+    fn le_mode_d_emploi_cite_les_commandes() {
         let text = usage();
         assert!(text.contains("download-ucd"));
         assert!(text.contains("generate-unicode-tables"));
         assert!(text.contains("check-segmentation"));
+        assert!(text.contains("check-naming"));
+        assert!(text.contains("check-versions"));
+        assert!(text.contains("check-codec-coverage"));
     }
 }
