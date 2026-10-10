@@ -6,7 +6,7 @@
 //!
 //! # État
 //!
-//! Douze widgets, tous colorés par les rôles du thème et jamais par une couleur écrite en
+//! Treize widgets, tous colorés par les rôles du thème et jamais par une couleur écrite en
 //! dur :
 //!
 //! - [`AirPanel`], un conteneur bordé à titre, et [`AirWindow`], une fenêtre à case de
@@ -19,13 +19,17 @@
 //! - [`AirScrollBar`], un ascenseur qui **demande** une position sans rien défiler ;
 //! - [`AirListBox`], une liste à une colonne qui tient son curseur et son défilement, et
 //!   qui demande au contrôleur d'ouvrir ou de marquer un item ;
+//! - [`AirCluster`], un groupe de **cases à cocher** ou de **boutons radio** — un seul
+//!   type pour les deux, comme `TCluster` chez Borland, parce qu'ils ne diffèrent que par
+//!   trois choses ;
 //! - [`AirEditorView`], le reflet d'un [`crate::model::AirTextBuffer`] — la seule vue qui
 //!   produit des **intentions** au lieu de commandes, parce qu'éditer du texte ne se
 //!   réduit pas à un numéro de commande (ADR-007) ;
 //! - [`AirPromptDialog`], une question et sa réponse, à poser en modal par
 //!   [`crate::application::AirScreen::set_modal`].
 //!
-//! Ce qui manque encore : les cases à cocher et les boutons radio.
+//! Ce qui manque encore : une liste à plusieurs colonnes, et le défilement d'un groupe
+//! d'items plus long que sa place.
 //!
 //! # La sélection, et qui la tient
 //!
@@ -52,8 +56,9 @@
 //!
 //! Toute vue est bordée par défaut (ADR-010). Les **petits contrôles** la retirent dans
 //! leur constructeur : [`AirStaticText`], [`AirButton`], [`AirInputLine`], [`AirMenuBar`],
-//! [`AirStatusLine`] et [`AirScrollBar`] le font, parce qu'un contrôle d'une ligne encadré
-//! n'a plus de place pour son contenu. [`AirEditorView`] et [`AirListBox`] la retirent
+//! [`AirStatusLine`], [`AirScrollBar`] et [`AirCluster`] le font, parce qu'un contrôle
+//! d'une ligne encadré n'a plus de place pour son contenu — et qu'un groupe encadré n'a
+//! plus la place de ses libellés. [`AirEditorView`] et [`AirListBox`] la retirent
 //! aussi, pour une raison voisine : elles sont le contenu d'une fenêtre qui porte déjà la
 //! sienne, et deux cadres emboîtés mangeraient deux lignes. Les **conteneurs** la gardent : [`AirPanel`]
 //! et [`AirWindow`] la gardent.
@@ -80,6 +85,7 @@
 //!   les prendre avant la vue focalisée reviendrait à les lui voler.
 
 pub mod button;
+pub mod cluster;
 pub mod editor_view;
 pub mod hotkey;
 pub mod input_line;
@@ -93,6 +99,7 @@ pub mod status_line;
 pub mod window;
 
 pub use button::AirButton;
+pub use cluster::{AirCluster, AirClusterItem, AirClusterKind};
 pub use editor_view::AirEditorView;
 pub use hotkey::{AirHotkeyLabel, split_hotkey};
 pub use input_line::AirInputLine;
