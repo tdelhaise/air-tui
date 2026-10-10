@@ -441,9 +441,47 @@ pub fn previous_word_start(text: &str, offset: usize) -> usize {
     found
 }
 
+/// Les bornes du segment qui couvre `offset`, en octets.
+///
+/// Le segment **tel que l'UAX #29 le découpe** : un mot, mais aussi une suite d'espaces ou
+/// un signe de ponctuation, parce que c'est ce qui couvre la position. C'est ce qu'un
+/// double clic doit sélectionner — sur un espace, sélectionner la suite d'espaces est ce
+/// que fait tout éditeur, et rendre « rien » laisserait le geste sans effet visible.
+///
+/// Un décalage à la fin du texte rend le dernier segment, et un texte vide rend `(0, 0)` :
+/// il n'y a rien à sélectionner, et la sélection vide est déjà traitée comme une absence
+/// par le tampon comme par le champ de saisie.
+#[must_use]
+pub fn segment_at(text: &str, offset: usize) -> (usize, usize) {
+    let mut walked: usize = 0;
+    for segment in words(text) {
+        let end = walked.saturating_add(segment.len());
+        if offset < end {
+            return (walked, end);
+        }
+        walked = end;
+    }
+    // `offset` est à la fin du texte, ou au delà : le dernier segment, s'il y en a un.
+    let start = previous_segment_start(text);
+    (start, text.len())
+}
+
+/// Le début du dernier segment du texte, ou zéro s'il n'y en a aucun.
+fn previous_segment_start(text: &str) -> usize {
+    let mut walked: usize = 0;
+    let mut last: usize = 0;
+    for segment in words(text) {
+        last = walked;
+        walked = walked.saturating_add(segment.len());
+    }
+    last
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{AirWordBreak, is_word, next_word_start, previous_word_start, word_break, words};
+    use super::{
+        AirWordBreak, is_word, next_word_start, previous_word_start, segment_at, word_break, words,
+    };
 
     fn segments(text: &str) -> Vec<&str> {
         words(text).collect()
@@ -638,5 +676,45 @@ mod tests {
         assert_eq!(word_break('カ'), AirWordBreak::Katakana);
         assert_eq!(word_break('\u{05D0}'), AirWordBreak::HebrewLetter);
         assert_eq!(word_break('日'), AirWordBreak::Other);
+    }
+
+    // --------------------------------------- le segment qui couvre un décalage
+
+    #[test]
+    fn le_segment_qui_couvre_un_decalage_est_le_mot() {
+        // « une belle journée » : le décalage 6 tombe dans « belle ».
+        assert_eq!(segment_at("une belle journée", 6), (4, 9));
+    }
+
+    #[test]
+    fn le_segment_qui_couvre_un_espace_est_la_suite_d_espaces() {
+        // Rendre « rien » laisserait le double clic sans effet visible.
+        assert_eq!(segment_at("une  belle", 3), (3, 5));
+    }
+
+    #[test]
+    fn un_decalage_a_la_fin_rend_le_dernier_segment() {
+        let text = "une belle";
+        assert_eq!(segment_at(text, text.len()), (4, 9));
+    }
+
+    #[test]
+    fn un_texte_vide_n_a_aucun_segment_a_couvrir() {
+        assert_eq!(segment_at("", 0), (0, 0));
+    }
+
+    #[test]
+    fn le_segment_respecte_les_grappes() {
+        // « e » suivi d'un accent combinant est une seule grappe, et un seul mot.
+        let text = "e\u{301}te\u{301}";
+        assert_eq!(segment_at(text, 0), (0, text.len()));
+    }
+
+    #[test]
+    fn le_segment_d_un_idiogramme_ne_mange_pas_ses_voisins() {
+        // L'UAX #29 coupe entre idéogrammes : chacun est son propre segment.
+        let text = "\u{6F22}\u{5B57}";
+        assert_eq!(segment_at(text, 0), (0, 3));
+        assert_eq!(segment_at(text, 3), (3, 6));
     }
 }
