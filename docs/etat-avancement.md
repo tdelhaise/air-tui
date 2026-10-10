@@ -3,7 +3,7 @@
 Document de suivi **vivant** : où en est-on, quelle est la prochaine tâche. Il se met à
 jour à chaque session. L'historique figé est dans [`JOURNAL.md`](JOURNAL.md).
 
-**Dernière mise à jour : 2026-10-10** (publication du dépôt).
+**Dernière mise à jour : 2026-10-10** (jalon M1 — décodeur ANSI d'entrée).
 
 ## Dépôt
 
@@ -16,8 +16,9 @@ vérifications de `CLAUDE.md` sont à exécuter en local avant d'ouvrir une PR.
 
 ## Où en est-on
 
-Jalon **M0 en cours**. Le dépôt est initialisé avec ses conventions, ses ADR fondateurs et
-le socle technique minimal. Rien n'est utilisable comme framework à ce stade.
+Jalon **M0 terminé sur macOS**, jalon **M1 terminé**. Le dépôt porte ses conventions, ses
+ADR fondateurs, le socle de rendu et le décodeur d'entrée. Ce n'est pas encore utilisable
+comme framework : il n'y a ni arbre de vues, ni widget.
 
 ### Fait
 
@@ -29,8 +30,13 @@ le socle technique minimal. Rien n'est utilisable comme framework à ce stade.
   `PlatformError` portable, `WindowSize`, `InputReadiness`. Zéro `unsafe`, zéro C.
 - `air-tui-platform-posix` : les six symboles C derrière des enveloppes typées, et
   `PosixTerminal` qui implémente le contrat.
-- Codecs : `AirSgrEncoder` et l'écriture décimale, **tous deux à 100 % de couverture**
-  (ADR-012).
+- Codecs : `AirSgrEncoder`, l'écriture décimale et le **décodeur ANSI d'entrée**, tous à
+  **100 % de couverture** (ADR-012).
+- **M1 — décodeur ANSI d'entrée** (`air-tui/src/input/`) : caractères UTF-8, commandes C0,
+  combinaisons avec la touche alternative, séquences CSI et SS3 avec modificateurs, souris
+  SGR 1006 avec molette et déplacement, collages encadrés recollés à travers les lectures,
+  événements de focus. Modèle d'événements conforme à l'ADR-003, `physical` optionnel et
+  employé par aucun widget.
 - `air-tui` : géométrie (`AirColumn`, `AirRow`, `AirPoint`, `AirSize`, `AirRectangle`),
   `AirCell`, `AirSurface` avec différentiel, `AirTerminal` en RAII, un thème minimal aux
   glyphes Borland, et l'exemple `frame`.
@@ -39,9 +45,27 @@ le socle technique minimal. Rien n'est utilisable comme framework à ce stade.
   `cargo build --locked` OK, et l'exemple `frame` exécuté dans un pty rend bien le bureau
   hachuré, la barre de menu, la fenêtre à case `[■]` et la barre de statut, puis restaure
   le terminal (code de sortie 0).
-- Couverture mesurée au 2026-10-10 : **91,2 %** de régions sur l'ensemble. Les deux codecs
-  sont à 100 %. Le cœur `terminal.rs` est à 93,8 % — il était à 0 % avant la couture par
-  traits, qui a rendu le rendu testable sans terminal.
+- Couverture mesurée au 2026-10-10 : les cinq modules d'entrée et de codec sont à
+  **100 %** de régions, de fonctions et de lignes (`input/ansi.rs`, `input/event.rs`,
+  `input/scanning.rs`, `codec/sgr.rs`, `codec/decimal.rs`). Le cœur `terminal.rs` est à
+  93,8 % — il était à 0 % avant la couture par traits.
+- **Vérifié sur Linux** (hydrogen — Ubuntu 26.04.1 LTS, noyau 7.0.0-38, `x86_64`) :
+  `fmt`, `clippy -D warnings`, **188 tests**, `build --locked` et `deny check` propres ;
+  couverture globale **95,0 %** de régions, et les cinq modules d'entrée et de codec
+  toujours à 100 % ; l'exemple `frame` rend une grille identique au pixel à celle de
+  macOS, en 80×25, avec les accents intacts. Les trois valeurs propres à Linux sont donc
+  justes : `TIOCGWINSZ = 0x5413`, `nfds_t` sur 64 bits, et `poll` qui rend `POLLIN` sur
+  `/dev/null`.
+- **Un défaut trouvé par cette vérification, et invisible depuis macOS** : un import ne
+  servant qu'à un test gardé par `cfg(target_os = "macos")` faisait échouer
+  `clippy -D warnings` sur Linux. Corrigé ; `air-tui-platform-posix` passe en 0.1.1.
+- **Fuzzing du décodeur** : `cargo +nightly fuzz run ansi_decoder` — 494 565 exécutions en
+  61 secondes, **aucun plantage**, 673 entrées retenues au corpus. Trois invariants
+  vérifiés : les octets consommés ne dépassent jamais l'entrée, aucun reste décodable
+  n'est laissé derrière, et **découper l'entrée en deux lectures produit la même suite
+  d'événements** — la propriété qui compte sur un terminal, où une séquence arrive coupée
+  sans prévenir. Rejoué sur Linux : 371 229 exécutions de plus, aucun plantage non plus,
+  soit près de 866 000 exécutions cumulées sur les deux plateformes.
 - Divergence de plateforme **constatée et consignée** : le `poll` de macOS rend `POLLNVAL`
   sur `/dev/null` là où Linux rend `POLLIN`. C'est le contrôle du champ `revents` — et non
   le compte rendu par `poll` — qui l'a révélée au premier lancement. Les deux
@@ -49,7 +73,9 @@ le socle technique minimal. Rien n'est utilisable comme framework à ce stade.
 
 ### Pas fait — et à ne pas annoncer comme fait
 
-- Décodeur ANSI d'entrée, souris, protocole clavier Kitty, `modifyOtherKeys`.
+- Protocole clavier Kitty et repli `modifyOtherKeys` (M2). Sans eux, `Ctrl+Shift+S` reste
+  indiscernable de `Ctrl+S` sur un pty — limite du codage historique, pas du code.
+- Le double clic : il demande une horloge, donc il n'a pas sa place dans un décodeur pur.
 - Tables Unicode (largeur d'affichage, segmentation en graphèmes).
 - Arbre de vues, routage en trois phases, focus, ordre de profondeur, découpage.
 - Tout widget au-delà du cadre dessiné par l'exemple.
@@ -60,18 +86,26 @@ le socle technique minimal. Rien n'est utilisable comme framework à ce stade.
   `check-codec-coverage` (ADR-012). Les contrôles sont manuels.
 - Toute CI. `main` n'exige donc aucun contrôle à la fusion, faute d'en avoir un à exiger.
 - `air-tui-platform-air`, l'implémentation pour la cible `linux-air`.
-- Toute cible `cargo-fuzz` : aucun décodeur n'existe encore.
+- Les cibles `cargo-fuzz` des décodeurs à venir (Kitty, graphèmes Unicode).
 - Le découpage par vue : `draw_text` découpe sur le bord de la **surface**, pas sur celui
   d'une fenêtre. Un texte trop long écrase donc le cadre — constaté sur l'exemple, à
   traiter avec l'arbre de vues (M4).
 - La bordure par défaut des vues (ADR-010) : décidée, pas implémentée.
 - Couverture de tests : loin de l'objectif de 100 %. Quelques tests unitaires seulement.
-- **Vérification sur Linux** : le socle n'a été construit et exécuté que sur macOS x86_64.
+- *(plus rien ici : la dette de vérification Linux est soldée, voir ci-dessous)*
 
 ## Prochaine tâche
 
-Terminer M0 : vérifier le socle sur Linux (noyau 6.1+, `x86_64` et `aarch64`), puis
-remonter la couverture de `air-tui-platform-posix` par des tests sous pty.
+**M2 — le protocole clavier Kitty**, tier-1 par ADR-003 : c'est le seul mécanisme qui livre
+les modificateurs complets à travers un pty, donc en SSH et sur macOS. Négociation par
+`CSI > 1 u`, décodage de `CSI … u`, et repli sur `modifyOtherKeys` niveau 2 pour xterm et
+VTE. Ce sera un décodeur, donc 100 % de couverture et une cible de fuzzing.
+
+Une dette restante : remonter la couverture de `air-tui-platform-posix` par des tests sous
+pty. Et deux vérifications encore absentes, de nature différente : **`aarch64`**, qui n'a
+été ni construit ni exécuté — c'est là que le piège variadique d'`ioctl` se manifesterait
+—, et la **console Linux native**, inaccessible par SSH et dont dépend tout l'étage natif
+du jalon M8.
 
 Ensuite M1 : le parseur ANSI incrémental, avec sa cible `cargo-fuzz` dès le premier commit
 du module (Principe 1 d'Air : fuzzing systématique sur toute API qui accepte des données
@@ -81,8 +115,8 @@ externes).
 
 | Jalon | Contenu | État |
 |---|---|---|
-| M0 | socle : couche 0, surface, différentiel, rendu ANSI, exemple | en cours |
-| M1 | parseur ANSI, souris SGR, collage encadré, redimensionnement | à faire |
+| M0 | socle : couche 0, surface, différentiel, rendu ANSI, exemple | **fait** |
+| M1 | décodeur ANSI, souris SGR, collage encadré, focus | **fait** |
 | M2 | protocole clavier Kitty, repli `modifyOtherKeys` | à faire |
 | M3 | tables Unicode : largeur et graphèmes | à faire |
 | M4 | arbre de vues, trois phases, focus, découpage, widgets de base | à faire |

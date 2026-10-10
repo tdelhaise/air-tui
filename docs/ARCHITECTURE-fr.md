@@ -134,6 +134,31 @@ pub struct AirKeyEvent {
 Règle d'API : **aucun widget d'air-tui ne doit dépendre de `physical`**. Un widget qui le
 ferait casserait en SSH.
 
+### Ce qui est écrit
+
+L'étage **terminal** l'est : `air-tui/src/input/` décode les caractères UTF-8, les
+commandes C0, les combinaisons avec la touche alternative, les séquences CSI et SS3 avec
+leurs modificateurs, la souris au format SGR 1006, les collages encadrés et les événements
+de focus. Il est à 100 % de couverture et porte une cible `cargo-fuzz`, comme l'ADR-012
+l'exige d'un décodeur.
+
+Trois propriétés y sont tenues, et c'est ce qui le rend utilisable sur un flux réel :
+
+- un **préfixe incomplet** ne consomme rien, donc une séquence coupée entre deux lectures
+  n'est pas perdue — le fuzzing vérifie qu'un découpage arbitraire de l'entrée produit la
+  même suite d'événements qu'un morceau unique ;
+- une séquence **malformée** est une erreur, jamais une devinette ;
+- une séquence **bien formée mais non reconnue** est consommée sans produire d'événement.
+  Ce n'est pas de la tolérance : un terminal émet des réponses qu'on ne lui a pas
+  demandées, et les refuser bloquerait le flux sur la première.
+
+L'ambiguïté de l'échappement est traitée là où elle peut l'être : un `ESC` isolé est
+indiscernable du début d'une séquence, seul le temps les sépare. Le décodeur, qui est pur,
+rend « incomplet » ; c'est la boucle d'événements, qui sait qu'un délai s'est écoulé, qui
+appelle `AirAnsiDecoder::isolated_escape_event`.
+
+L'étage **natif** (M8) et le protocole Kitty (M2) restent à écrire.
+
 ## Le rendu
 
 `AirSurface` tient deux grilles — la courante et la précédente — et produit un

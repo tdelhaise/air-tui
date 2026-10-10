@@ -1,0 +1,26 @@
+# Espace de travail séparé : `cargo-fuzz` exige nightly, alors que le dépôt est pinné sur
+# stable (ADR-005, `rust-toolchain.toml`). L'isoler évite que la crate de fuzzing impose
+# son canal au reste du projet.
+[workspace]
+
+[package]
+name = "air-tui-fuzz"
+version = "0.1.0"
+edition = "2024"
+license = "MPL-2.0"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+air-tui = { path = "../crates/air-tui" }
+air-tui-platform = { path = "../crates/air-tui-platform" }
+
+[[bin]]
+name = "ansi_decoder"
+path = "fuzz_targets/ansi_decoder.rs"
+test = false
+doc = false
+bench = false
