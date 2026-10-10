@@ -65,6 +65,11 @@ comme framework : il n'y a ni arbre de vues, ni widget.
   **100 %** de régions, de fonctions et de lignes (`input/ansi.rs`, `input/event.rs`,
   `input/scanning.rs`, `codec/sgr.rs`, `codec/decimal.rs`). Le cœur `terminal.rs` est à
   93,8 % — il était à 0 % avant la couture par traits.
+- **Génération reproductible sur les trois plateformes** : macOS `x86_64`, hydrogen et
+  neon ont chacune retéléchargé le référentiel et régénéré les tables ; le fichier
+  committé correspond **à l'octet** dans les trois cas
+  (`cargo xtask generate-unicode-tables --check`). C'est la vérification concrète de ce
+  qu'ADR-025 promet.
 - **Vérifié sur `aarch64`** (neon — Ubuntu 26.04, noyau 7.0.0-1020-raspi, Raspberry Pi) :
   249 tests au vert et l'exemple `frame` rendant une grille identique à celle des deux
   autres plateformes. C'était le contrôle décisif : la déclaration **variadique**

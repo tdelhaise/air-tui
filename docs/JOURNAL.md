@@ -34,8 +34,12 @@ l'état vivant, ce journal est la trace figée, `INDEX.md` est la carte structur
   toute construction littérale (ADR-009). `xtask` naît en 0.1.0, non publiée.
 - `NOTICE` ajouté : les données du référentiel Unicode sont sous `Unicode-3.0`, et c'est la
   seule donnée tierce du dépôt.
-- 321 tests. Sept modules à 100 % de couverture : les six de codec et d'entrée, plus
+- 322 tests. Sept modules à 100 % de couverture : les six de codec et d'entrée, plus
   `unicode/mod.rs`.
+- **Génération reproductible, et vérifiée comme telle** : macOS `x86_64`, hydrogen
+  (Linux `x86_64`) et neon (Linux `aarch64`) ont chacune retéléchargé le référentiel et
+  régénéré les tables. Le fichier committé correspond à l'octet dans les trois cas. C'est
+  ce qu'ADR-025 promet, constaté plutôt qu'affirmé.
 
 ## 2026-10-10 — M2, le protocole clavier Kitty
 
