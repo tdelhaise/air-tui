@@ -1,0 +1,25 @@
+[package]
+name = "redit"
+description = "Éditeur de texte en mode terminal, équivalent de tvedit de Turbo Vision, bâti sur air-tui."
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+keywords = ["editor", "tui", "terminal", "turbo-vision"]
+categories = ["command-line-utilities", "text-editors"]
+
+# C'est le **binaire final** qui choisit une implémentation de plateforme et l'injecte
+# (ADR-011). Le cœur du framework ne connaît que le contrat ; cette crate est le seul
+# endroit de l'arborescence `redit` où `air-tui-platform-posix` paraît.
+[dependencies]
+air-tui = { path = "../air-tui", version = "0.7.0" }
+air-tui-platform-posix = { path = "../air-tui-platform-posix", version = "0.2.0" }
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "redit"
+path = "src/main.rs"

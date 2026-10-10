@@ -22,6 +22,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "redit"
+version = "0.1.0"
+dependencies = [
+ "air-tui",
+ "air-tui-platform-posix",
+]
+
+[[package]]
 name = "xtask"
 version = "0.2.0"
 dependencies = [

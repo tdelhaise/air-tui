@@ -8,12 +8,14 @@
 //!
 //! **Utilisable, incomplet.** Ce qui existe : la géométrie, la cellule, la surface
 //! différentielle, le terminal en RAII, le décodeur d'entrée et le protocole clavier
-//! Kitty, les tables Unicode, l'arbre de vues à découpage réel, le moteur de thèmes et
-//! huit widgets. L'exemple `frame` en fait une application qui répond.
+//! Kitty, les tables Unicode — largeur, graphèmes et **mots** —, l'arbre de vues à
+//! découpage réel, le moteur de thèmes, onze widgets, la **couche modèle** de l'ADR-007
+//! et la hiérarchie `AirApplication` / `AirScreen` / `AirDesktop`. L'application `redit`
+//! édite des fichiers avec.
 //!
-//! Ce qui n'existe **pas** encore : `AirApplication`, `AirScreen` et `AirDesktop` —
-//! l'application monte sa boucle et son arbre à la main —, le journal de changements de
-//! la couche MVC, l'éditeur de texte, et les listes. Voir `docs/etat-avancement.md`.
+//! Ce qui n'existe **pas** encore : la sélection de texte, les listes, les cases à cocher
+//! et les boutons radio, le thème Midnight Commander et `rmc`, et l'étage natif Linux.
+//! Voir `docs/etat-avancement.md`.
 //!
 //! # Architecture
 //!
@@ -76,10 +78,11 @@ pub use unicode::{
     word_break, words,
 };
 pub use view::{
-    AirBorderStyle, AirContext, AirEvent, AirGroup, AirOutcome, AirPainter, AirPhase, AirView,
-    AirViewId, AirViewState, dispatch_event, draw_view,
+    AirBorderStyle, AirContext, AirDrawContext, AirEvent, AirGroup, AirOutcome, AirPainter,
+    AirPhase, AirView, AirViewId, AirViewState, dispatch_event, draw_view, find, find_mut,
 };
 pub use widgets::{
     AirButton, AirEditorView, AirInputLine, AirMenu, AirMenuBar, AirMenuItem, AirOrientation,
-    AirPanel, AirScrollBar, AirStaticText, AirStatusItem, AirStatusLine, AirWindow,
+    AirPanel, AirPromptDialog, AirScrollBar, AirStaticText, AirStatusItem, AirStatusLine,
+    AirWindow,
 };

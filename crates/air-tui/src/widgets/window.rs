@@ -51,6 +51,14 @@ impl AirWindow {
         }
     }
 
+    /// Change le titre inscrit sur le cadre.
+    ///
+    /// Un éditeur l'emploie à chaque tour de boucle : le nom du fichier, la marque de
+    /// modification et la position du curseur y vivent, et ils changent sans arrêt.
+    pub fn set_title(&mut self, title: impl Into<String>) {
+        self.title = Some(title.into());
+    }
+
     /// La même fenêtre, avec un titre.
     #[must_use]
     pub fn with_title(mut self, title: impl Into<String>) -> Self {

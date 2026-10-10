@@ -31,6 +31,7 @@
 pub mod group;
 pub mod painter;
 
+use core::any::Any;
 use core::num::NonZeroU32;
 
 pub use group::AirGroup;
@@ -431,7 +432,21 @@ impl AirViewState {
 /// Le trait est **object-safe** : un propriétaire tient des `Box<dyn AirView>`, donc
 /// l'arbre ne porte aucun paramètre de type et une application peut y mêler ses propres
 /// vues.
-pub trait AirView {
+///
+/// # Pourquoi `Any`
+///
+/// L'effacement de type a un prix exact : une fois la vue d'édition posée dans l'arbre,
+/// plus personne ne peut lui demander de se synchroniser sur le modèle. Un contrôleur MVC
+/// a besoin de retrouver **ses** vues avec leur type, et les deux autres solutions se
+/// paient plus cher — un paramètre de type sur tous les conteneurs se propage jusqu'à
+/// l'application, et une méthode par type de vue dans le trait ferait du cœur le
+/// catalogue de ses widgets.
+///
+/// Le lien d'héritage `Any` permet à [`find`] et [`find_mut`] de rendre une vue avec son
+/// type, sans coût à l'exécution autre qu'une comparaison d'identifiant de type, et sans
+/// une ligne de plus dans les vues. Il impose `'static` aux implémentations, ce qu'elles
+/// sont toutes : une vue ne contient pas d'emprunt.
+pub trait AirView: Any {
     /// L'état commun, en lecture.
     fn state(&self) -> &AirViewState;
 
@@ -767,6 +782,44 @@ fn indices_where(view: &dyn AirView, predicate: fn(&AirViewState) -> bool) -> Ve
         .collect()
 }
 
+/// La vue d'identifiant donné dans un arbre, rendue avec son type d'origine.
+///
+/// Rend `None` quand l'identifiant est absent **ou** quand la vue trouvée n'est pas du
+/// type demandé : se tromper de type est une erreur de programme qui mérite une absence,
+/// pas une panique.
+///
+/// La recherche est en profondeur, dans l'ordre de l'arbre. Un contrôleur qui s'en sert à
+/// chaque tour de boucle garde les identifiants de ses vues et paie un parcours de
+/// quelques dizaines de nœuds, ce qui est sans commune mesure avec le rendu.
+#[must_use]
+pub fn find<ViewType: AirView>(view: &dyn AirView, identifier: AirViewId) -> Option<&ViewType> {
+    if view.state().identifier() == identifier {
+        return (view as &dyn Any).downcast_ref::<ViewType>();
+    }
+    for child in view.children() {
+        if let Some(found) = find::<ViewType>(child.as_ref(), identifier) {
+            return Some(found);
+        }
+    }
+    None
+}
+
+/// La vue d'identifiant donné dans un arbre, en écriture et avec son type d'origine.
+pub fn find_mut<ViewType: AirView>(
+    view: &mut dyn AirView,
+    identifier: AirViewId,
+) -> Option<&mut ViewType> {
+    if view.state().identifier() == identifier {
+        return (view as &mut dyn Any).downcast_mut::<ViewType>();
+    }
+    for child in view.children_mut() {
+        if let Some(found) = find_mut::<ViewType>(child.as_mut(), identifier) {
+            return Some(found);
+        }
+    }
+    None
+}
+
 /// La dimension minimale d'une vue bordée pour qu'elle ait un intérieur.
 ///
 /// Trois cellules dans chaque direction : deux pour le cadre, une au moins pour le
@@ -784,8 +837,8 @@ mod tests {
 
     use super::{
         AirBorderStyle, AirContext, AirDrawContext, AirEvent, AirGroup, AirOutcome, AirPainter,
-        AirPhase, AirView, AirViewId, AirViewState, dispatch_event, draw_view, frame_glyphs,
-        minimum_bordered_size,
+        AirPhase, AirView, AirViewId, AirViewState, dispatch_event, draw_view, find, find_mut,
+        frame_glyphs, minimum_bordered_size,
     };
     use crate::cell::{AirAttributes, AirCell, AirColor};
     use crate::command::{AirCommandSet, SAVE};
@@ -1023,6 +1076,48 @@ mod tests {
             &mut painter,
             &AirDrawContext::new(&theme, &AirCommandSet::new()),
         )
+    }
+
+    #[test]
+    fn une_vue_se_retrouve_dans_l_arbre_avec_son_type() {
+        // C'est ce dont un contrôleur MVC a besoin : la vue est dans l'arbre, et il doit
+        // pouvoir lui parler avec son type.
+        let mut root = AirGroup::new(AirViewState::new(
+            identifier(1),
+            AirRectangle::from_parts(0, 0, 20, 10),
+        ));
+        let mut inner = AirGroup::new(AirViewState::new(
+            identifier(2),
+            AirRectangle::from_parts(0, 0, 10, 5),
+        ));
+        inner.insert(Box::new(Spy::new(
+            3,
+            AirRectangle::from_parts(0, 0, 4, 2),
+            'x',
+        )));
+        root.insert(Box::new(inner));
+
+        assert!(find::<Spy>(&root, identifier(3)).is_some());
+        assert!(find_mut::<Spy>(&mut root, identifier(3)).is_some());
+        assert!(find::<AirGroup>(&root, identifier(2)).is_some());
+        assert!(find::<AirGroup>(&root, identifier(1)).is_some());
+    }
+
+    #[test]
+    fn un_identifiant_absent_ou_un_type_errone_ne_rend_rien() {
+        let mut root = AirGroup::new(AirViewState::new(
+            identifier(1),
+            AirRectangle::from_parts(0, 0, 20, 10),
+        ));
+        root.insert(Box::new(Spy::new(
+            2,
+            AirRectangle::from_parts(0, 0, 4, 2),
+            'x',
+        )));
+        assert!(find::<Spy>(&root, identifier(99)).is_none());
+        // Le bon identifiant, le mauvais type : une absence, pas une panique.
+        assert!(find::<AirGroup>(&root, identifier(2)).is_none());
+        assert!(find_mut::<AirGroup>(&mut root, identifier(2)).is_none());
     }
 
     #[test]

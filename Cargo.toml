@@ -1,11 +1,12 @@
 # Espace de travail air-tui.
 #
-# Trois crates, et la couture entre elles est la règle structurante du projet
+# Quatre crates, et la couture entre les trois premières est la règle structurante du projet
 # (cf. `ADR-002-architecture-en-couches-fr.md` et `ADR-011-couture-de-plateforme-fr.md`) :
 #
 # - `air-tui-platform`        — le contrat : des traits, zéro `unsafe`, zéro appel C ;
 # - `air-tui-platform-posix`  — couche 0 POSIX : le SEUL `unsafe`, le SEUL appel C ;
-# - `air-tui`                 — le cœur : ne dépend QUE du contrat.
+# - `air-tui`                 — le cœur : ne dépend QUE du contrat ;
+# - `redit`                   — l'application : le SEUL endroit qui choisit une plateforme.
 #
 # `air-tui` n'a pas de dépendance vers une implémentation de plateforme : elle ne peut
 # donc pas atteindre le système, même par accident. C'est le binaire final qui choisit
@@ -18,6 +19,7 @@ members = [
     "crates/air-tui-platform",
     "crates/air-tui-platform-posix",
     "crates/air-tui",
+    "crates/redit",
     "xtask",
 ]
 

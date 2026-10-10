@@ -26,13 +26,21 @@ avec sa propre frontière `unsafe` reste possible et n'est pas fait.
 Usage
 -----
     tools/pty-drive.py BINAIRE [DELAI_MS OCTETS_HEX]...
+    tools/pty-drive.py BINAIRE [ARGUMENT]... -- [DELAI_MS OCTETS_HEX]...
 
 Chaque paire écrit des octets dans le terminal, puis lit la sortie pendant le
 délai donné. La sortie collectée va sur la sortie standard, le verdict sur la
 sortie d'erreur.
 
+Le `--` sépare les arguments du programme des frappes à lui envoyer. Sans lui,
+le programme est lancé sans argument — la forme courte, qui suffit pour un
+exemple.
+
     # Alt+F ouvre un menu, F10 quitte
     tools/pty-drive.py ./target/debug/examples/frame 800 1b66 500 1b5b32317e
+
+    # un éditeur sur un fichier, puis F10
+    tools/pty-drive.py ./target/debug/redit /tmp/essai.txt -- 800 1b5b32317e
 
 Verdicts : `exit:<code>` quand le programme est sorti, `timeout` quand il était
 encore vivant au bout de dix secondes. Les deux sont des résultats utiles : un
@@ -55,16 +63,25 @@ POLL_SECONDS = 0.05
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) < 2 or len(argv) % 2 != 0:
+    if len(argv) < 2:
         print(__doc__, file=sys.stderr)
         return 2
     binary = argv[1]
-    steps = argv[2:]
+    if "--" in argv:
+        separator = argv.index("--")
+        program_arguments = argv[2:separator]
+        steps = argv[separator + 1 :]
+    else:
+        program_arguments = []
+        steps = argv[2:]
+    if len(steps) % 2 != 0:
+        print(__doc__, file=sys.stderr)
+        return 2
 
     process, master = pty.fork()
     if process == 0:
         os.environ["TERM"] = "xterm-256color"
-        os.execv(binary, [binary])
+        os.execv(binary, [binary, *program_arguments])
         return 127  # inatteignable : execv ne rend pas la main
 
     collected = bytearray()
