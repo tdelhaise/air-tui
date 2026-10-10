@@ -3,7 +3,7 @@
 Document de suivi **vivant** : où en est-on, quelle est la prochaine tâche. Il se met à
 jour à chaque session. L'historique figé est dans [`JOURNAL.md`](JOURNAL.md).
 
-**Dernière mise à jour : 2026-10-10** (jalon M1 — décodeur ANSI d'entrée).
+**Dernière mise à jour : 2026-10-10** (jalon M2 — protocole clavier Kitty).
 
 ## Dépôt
 
@@ -16,7 +16,7 @@ vérifications de `CLAUDE.md` sont à exécuter en local avant d'ouvrir une PR.
 
 ## Où en est-on
 
-Jalon **M0 terminé sur macOS**, jalon **M1 terminé**. Le dépôt porte ses conventions, ses
+Jalons **M0, M1 et M2 terminés**. Le dépôt porte ses conventions, ses
 ADR fondateurs, le socle de rendu et le décodeur d'entrée. Ce n'est pas encore utilisable
 comme framework : il n'y a ni arbre de vues, ni widget.
 
@@ -32,6 +32,13 @@ comme framework : il n'y a ni arbre de vues, ni widget.
   `PosixTerminal` qui implémente le contrat.
 - Codecs : `AirSgrEncoder`, l'écriture décimale et le **décodeur ANSI d'entrée**, tous à
   **100 % de couverture** (ADR-012).
+- **M2 — protocole clavier Kitty** (`air-tui/src/input/kitty.rs`) : décodage des frappes
+  `CSI … u` avec modificateurs complets, types d'événement — enfoncement, répétition,
+  **relâchement** — et **touche de la disposition de base**, exposée par
+  `AirKeyEvent::base_layout` et `shortcut_key()`. Repli `modifyOtherKeys` niveau 2.
+  Négociation par interrogation `CSI ? u` suivie d'un jalon d'attributs de périphérique,
+  donc **sans dépendre d'un délai** ; protocole défait à la destruction du terminal.
+  Paramètres élargis en `u32`, sans quoi un emoji en numéro de touche était refusé à tort.
 - **M1 — décodeur ANSI d'entrée** (`air-tui/src/input/`) : caractères UTF-8, commandes C0,
   combinaisons avec la touche alternative, séquences CSI et SS3 avec modificateurs, souris
   SGR 1006 avec molette et déplacement, collages encadrés recollés à travers les lectures,
@@ -73,9 +80,11 @@ comme framework : il n'y a ni arbre de vues, ni widget.
 
 ### Pas fait — et à ne pas annoncer comme fait
 
-- Protocole clavier Kitty et repli `modifyOtherKeys` (M2). Sans eux, `Ctrl+Shift+S` reste
-  indiscernable de `Ctrl+S` sur un pty — limite du codage historique, pas du code.
 - Le double clic : il demande une horloge, donc il n'a pas sa place dans un décodeur pur.
+- La table des touches fonctionnelles de Kitty au-delà des numéros certains : pavé
+  numérique, touches multimédia, touches modificatrices seules. Hors table, donc consommées
+  sans événement — et la table a été écrite d'après la spécification, **pas vérifiée contre
+  un terminal réel**.
 - Tables Unicode (largeur d'affichage, segmentation en graphèmes).
 - Arbre de vues, routage en trois phases, focus, ordre de profondeur, découpage.
 - Tout widget au-delà du cadre dessiné par l'exemple.
@@ -96,10 +105,10 @@ comme framework : il n'y a ni arbre de vues, ni widget.
 
 ## Prochaine tâche
 
-**M2 — le protocole clavier Kitty**, tier-1 par ADR-003 : c'est le seul mécanisme qui livre
-les modificateurs complets à travers un pty, donc en SSH et sur macOS. Négociation par
-`CSI > 1 u`, décodage de `CSI … u`, et repli sur `modifyOtherKeys` niveau 2 pour xterm et
-VTE. Ce sera un décodeur, donc 100 % de couverture et une cible de fuzzing.
+**M3 — les tables Unicode** (ADR-006) : largeur d'affichage et segmentation en graphèmes,
+générées depuis l'UCD par un `xtask` et committées. Sans elles, l'alignement casse au
+premier idéogramme et le curseur de l'éditeur démembre les emoji composés. C'est le poste
+où les interfaces texte artisanales se cassent les dents, et il vaut un jalon à lui seul.
 
 Une dette restante : remonter la couverture de `air-tui-platform-posix` par des tests sous
 pty. Et deux vérifications encore absentes, de nature différente : **`aarch64`**, qui n'a
@@ -117,7 +126,7 @@ externes).
 |---|---|---|
 | M0 | socle : couche 0, surface, différentiel, rendu ANSI, exemple | **fait** |
 | M1 | décodeur ANSI, souris SGR, collage encadré, focus | **fait** |
-| M2 | protocole clavier Kitty, repli `modifyOtherKeys` | à faire |
+| M2 | protocole clavier Kitty, repli `modifyOtherKeys` | **fait** |
 | M3 | tables Unicode : largeur et graphèmes | à faire |
 | M4 | arbre de vues, trois phases, focus, découpage, widgets de base | à faire |
 | M5 | moteur de thèmes, thème Turbo Vision, quantificateur | à faire |

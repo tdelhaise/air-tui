@@ -23,8 +23,10 @@ terminal veut bien les donner.
   `AirWindow`, composés d'`AirView`.
 - **MVC.** Le modèle ne connaît aucune vue et n'appelle personne : il consigne ce qui a
   changé et rend la main. Les vues n'émettent que des intentions.
-- **Zéro dépendance.** La couche 0 (`air-tui-sys`) isole les appels système ; tout le
-  reste est du Rust sûr, en `#![forbid(unsafe_code)]`.
+- **Zéro dépendance.** La couche 0 (`air-tui-platform-posix`) isole les appels système
+  derrière un contrat en traits ; tout le reste est du Rust sûr, en
+  `#![forbid(unsafe_code)]`, et le cœur n'a aucune dépendance vers une implémentation de
+  plateforme.
 
 ## État
 

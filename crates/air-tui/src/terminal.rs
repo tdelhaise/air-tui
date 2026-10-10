@@ -10,11 +10,19 @@
 //! `linux-air` demain.
 
 use core::time::Duration;
+use std::time::Instant;
 
-use air_tui_platform::{Encoder, InputReadiness, PlatformError, TerminalDevice};
+use air_tui_platform::{Decoder, Encoder, InputReadiness, PlatformError, TerminalDevice};
 
 use crate::codec::{AirCellPresentation, AirSgrEncoder, decimal::push_decimal};
 use crate::geometry::AirSize;
+use crate::input::ansi::AirAnsiDecoder;
+use crate::input::event::AirInputEvent;
+use crate::input::kitty::{
+    AirKeyboardFlags, AirKeyboardProtocol, MODIFY_OTHER_KEYS_DISABLE_SEQUENCE,
+    MODIFY_OTHER_KEYS_ENABLE_SEQUENCE, POP_SEQUENCE, PRIMARY_DEVICE_ATTRIBUTES_SEQUENCE,
+    QUERY_SEQUENCE, push_request_sequence,
+};
 use crate::surface::AirSurface;
 
 /// La dimension retenue quand la plateforme annonce une taille inconnue.
@@ -36,6 +44,8 @@ pub struct AirTerminal {
     output: Vec<u8>,
     /// L'encodeur de présentation, qui n'émet que sur changement.
     sgr_encoder: AirSgrEncoder,
+    /// Le protocole clavier demandé au terminal, à défaire en sortie.
+    keyboard_protocol: AirKeyboardProtocol,
 }
 
 impl core::fmt::Debug for AirTerminal {
@@ -63,6 +73,7 @@ impl AirTerminal {
             // une poignée d'octets de positionnement et d'attributs.
             output: Vec::with_capacity(64 * 1024),
             sgr_encoder: AirSgrEncoder::new(),
+            keyboard_protocol: AirKeyboardProtocol::Legacy,
         };
         terminal.device.write_output(b"\x1b[?1049h\x1b[?25l")?;
         terminal.device.flush_output()?;
@@ -112,6 +123,157 @@ impl AirTerminal {
     /// Si la lecture échoue.
     pub fn read_available(&mut self, buffer: &mut [u8]) -> Result<usize, PlatformError> {
         self.device.read_input(buffer)
+    }
+
+    /// Interroge le terminal sur sa prise en charge du protocole clavier Kitty.
+    ///
+    /// # Pourquoi ce n'est pas une affaire de délai
+    ///
+    /// On envoie l'interrogation `CSI ? u` **suivie** d'une demande d'attributs de
+    /// périphérique. Les terminaux répondent dans l'ordre : voir les attributs sans avoir
+    /// vu de réponse Kitty avant eux est donc une conclusion négative **certaine**, et non
+    /// l'expiration d'un délai choisi au hasard.
+    ///
+    /// `timeout` ne sert qu'au terminal qui ne répond à rien : il ne doit jamais geler le
+    /// lancement.
+    ///
+    /// # Ce qui est tapé pendant l'interrogation n'est pas perdu
+    ///
+    /// Les événements qui ne sont pas des réponses du terminal — l'utilisateur impatient
+    /// qui tape — sont transmis à `emit`. Les jeter serait un défaut qu'on ne verrait
+    /// qu'au lancement d'une machine lente.
+    ///
+    /// # Errors
+    ///
+    /// Si l'écriture de l'interrogation ou la lecture de la réponse échoue. Une séquence
+    /// indécodable, elle, **n'est pas** une erreur : l'interrogation s'arrête et conclut
+    /// avec ce qu'elle a vu.
+    pub fn detect_keyboard_protocol(
+        &mut self,
+        timeout: Duration,
+        emit: &mut dyn FnMut(AirInputEvent),
+    ) -> Result<AirKeyboardProtocol, PlatformError> {
+        self.output.clear();
+        self.output.extend_from_slice(QUERY_SEQUENCE);
+        self.output
+            .extend_from_slice(PRIMARY_DEVICE_ATTRIBUTES_SEQUENCE);
+        let request = core::mem::take(&mut self.output);
+        let written = self.device.write_output(&request);
+        self.output = request;
+        written?;
+        self.device.flush_output()?;
+
+        let deadline = Instant::now().checked_add(timeout);
+        let mut decoder = AirAnsiDecoder::new();
+        let mut pending = Vec::new();
+        let mut read_buffer = [0_u8; 256];
+        let mut detected = None;
+        let mut fence_reached = false;
+
+        while !fence_reached {
+            let remaining = match deadline {
+                Some(instant) => instant.saturating_duration_since(Instant::now()),
+                // Un délai si grand qu'il déborde de l'horloge : on prend le délai demandé
+                // tel quel, ce qui revient à attendre aussi longtemps qu'annoncé.
+                None => timeout,
+            };
+            if remaining.is_zero() {
+                break;
+            }
+            match self.device.wait_for_input(Some(remaining))? {
+                InputReadiness::Ready => {}
+                InputReadiness::TimedOut | InputReadiness::Closed => break,
+            }
+            let count = self.device.read_input(&mut read_buffer)?;
+            if count == 0 {
+                break;
+            }
+            pending.extend_from_slice(read_buffer.get(..count).unwrap_or(&[]));
+
+            let outcome = decoder.decode(&pending, &mut |event| match event {
+                AirInputEvent::KeyboardProtocolReported(_) => {
+                    detected = Some(AirKeyboardProtocol::Kitty);
+                }
+                AirInputEvent::DeviceAttributesReported => fence_reached = true,
+                other => emit(other),
+            });
+            match outcome {
+                Ok(consumed) => {
+                    pending.drain(..consumed);
+                }
+                // Une séquence indécodable pendant l'interrogation n'est pas une panne :
+                // on conclut avec ce qu'on a vu plutôt que d'échouer au lancement.
+                Err(_) => break,
+            }
+        }
+
+        Ok(detected.unwrap_or(AirKeyboardProtocol::Legacy))
+    }
+
+    /// Demande au terminal le protocole clavier `protocol`.
+    ///
+    /// Le protocole demandé est mémorisé et défait à la destruction du terminal : laisser
+    /// un terminal en protocole Kitty après la sortie rendrait le shell inutilisable.
+    ///
+    /// # Errors
+    ///
+    /// Si l'écriture échoue.
+    pub fn enable_keyboard_protocol(
+        &mut self,
+        protocol: AirKeyboardProtocol,
+    ) -> Result<(), PlatformError> {
+        self.output.clear();
+        match protocol {
+            AirKeyboardProtocol::Kitty => {
+                push_request_sequence(&mut self.output, AirKeyboardFlags::WANTED);
+            }
+            AirKeyboardProtocol::ModifyOtherKeys => {
+                self.output
+                    .extend_from_slice(MODIFY_OTHER_KEYS_ENABLE_SEQUENCE);
+            }
+            // Rien à demander : c'est l'état par défaut de tout terminal.
+            AirKeyboardProtocol::Legacy => {}
+        }
+        let request = core::mem::take(&mut self.output);
+        let written = self.device.write_output(&request);
+        self.output = request;
+        written?;
+        self.device.flush_output()?;
+        self.keyboard_protocol = protocol;
+        Ok(())
+    }
+
+    /// Détecte le meilleur protocole clavier disponible et l'active.
+    ///
+    /// Kitty quand le terminal le reconnaît ; sinon `modifyOtherKeys` niveau 2, demandé
+    /// **sans interrogation**. Ce choix est délibéré : il n'existe pas de sondage fiable
+    /// et universel pour `modifyOtherKeys`, mais la demande est inoffensive — un terminal
+    /// qui ne la comprend pas l'ignore, et le décodeur continue de lire le codage
+    /// historique.
+    ///
+    /// # Errors
+    ///
+    /// Si l'interrogation ou l'activation échoue.
+    pub fn enable_best_keyboard_protocol(
+        &mut self,
+        timeout: Duration,
+        emit: &mut dyn FnMut(AirInputEvent),
+    ) -> Result<AirKeyboardProtocol, PlatformError> {
+        let detected = self.detect_keyboard_protocol(timeout, emit)?;
+        let chosen = match detected {
+            AirKeyboardProtocol::Kitty => AirKeyboardProtocol::Kitty,
+            AirKeyboardProtocol::Legacy | AirKeyboardProtocol::ModifyOtherKeys => {
+                AirKeyboardProtocol::ModifyOtherKeys
+            }
+        };
+        self.enable_keyboard_protocol(chosen)?;
+        Ok(chosen)
+    }
+
+    /// Le protocole clavier en vigueur.
+    #[must_use]
+    pub const fn keyboard_protocol(&self) -> AirKeyboardProtocol {
+        self.keyboard_protocol
     }
 
     /// Envoie au terminal les cellules qui ont changé, puis marque la surface comme
@@ -173,6 +335,17 @@ impl Drop for AirTerminal {
         // Aucune erreur n'est remontée : on est en train de partir, et laisser le terminal
         // en mode brut serait pire que d'ignorer un échec d'écriture. Chaque étape est
         // donc tentée indépendamment des précédentes.
+        // Défaire le protocole clavier avant tout le reste : laisser un terminal en
+        // protocole Kitty après la sortie rendrait le shell inutilisable.
+        match self.keyboard_protocol {
+            AirKeyboardProtocol::Kitty => {
+                let _ = self.device.write_output(POP_SEQUENCE);
+            }
+            AirKeyboardProtocol::ModifyOtherKeys => {
+                let _ = self.device.write_output(MODIFY_OTHER_KEYS_DISABLE_SEQUENCE);
+            }
+            AirKeyboardProtocol::Legacy => {}
+        }
         let _ = self.device.write_output(b"\x1b[0m\x1b[?25h\x1b[?1049l");
         let _ = self.device.flush_output();
         let _ = self.device.restore_mode();
@@ -181,13 +354,15 @@ impl Drop for AirTerminal {
 
 #[cfg(test)]
 mod tests {
+    use core::cell::RefCell;
     use core::time::Duration;
+    use std::rc::Rc;
 
     use air_tui_platform::{
         InputReadiness, PlatformError, PlatformErrorKind, TerminalDevice, WindowSize,
     };
 
-    use super::{AirTerminal, FALLBACK_SIZE};
+    use super::{AirKeyboardProtocol, AirTerminal, FALLBACK_SIZE};
     use crate::cell::{AirCell, AirColor};
     use crate::geometry::{AirColumn, AirPoint, AirRow, AirSize};
     use crate::surface::AirSurface;
@@ -502,6 +677,284 @@ mod tests {
         terminal.present(&mut surface).expect("premier rendu");
         terminal.present(&mut surface).expect("second rendu");
         assert_eq!(replay(&terminal.output), Vec::new());
+    }
+
+    /// Un périphérique scriptable pour l'interrogation du protocole clavier.
+    ///
+    /// Il rend prêt tant qu'il a des octets à donner, puis expire — le comportement d'un
+    /// vrai terminal qui a fini de répondre. Ses écritures sont partagées pour rester
+    /// observables **après** la destruction du terminal, ce qui est le seul moyen de
+    /// vérifier ce que `Drop` émet.
+    struct ProbeDevice {
+        /// Les réponses à servir, dans l'ordre, un morceau par lecture.
+        responses: Vec<Vec<u8>>,
+        /// Tout ce qui a été écrit, partagé avec le test.
+        written: Rc<RefCell<Vec<u8>>>,
+        /// Ce que l'attente rend quand il n'y a plus de réponse.
+        exhausted: InputReadiness,
+    }
+
+    impl ProbeDevice {
+        fn new(responses: Vec<&[u8]>) -> (Self, Rc<RefCell<Vec<u8>>>) {
+            let written = Rc::new(RefCell::new(Vec::new()));
+            let device = Self {
+                responses: responses.into_iter().map(<[u8]>::to_vec).collect(),
+                written: Rc::clone(&written),
+                exhausted: InputReadiness::TimedOut,
+            };
+            (device, written)
+        }
+    }
+
+    impl TerminalDevice for ProbeDevice {
+        fn window_size(&self) -> Result<Option<WindowSize>, PlatformError> {
+            Ok(Some(WindowSize {
+                columns: 80,
+                rows: 25,
+            }))
+        }
+        fn enter_raw_mode(&mut self) -> Result<(), PlatformError> {
+            Ok(())
+        }
+        fn restore_mode(&mut self) -> Result<(), PlatformError> {
+            Ok(())
+        }
+        fn wait_for_input(
+            &mut self,
+            _timeout: Option<Duration>,
+        ) -> Result<InputReadiness, PlatformError> {
+            if self.responses.is_empty() {
+                return Ok(self.exhausted);
+            }
+            Ok(InputReadiness::Ready)
+        }
+        fn read_input(&mut self, buffer: &mut [u8]) -> Result<usize, PlatformError> {
+            if self.responses.is_empty() {
+                return Ok(0);
+            }
+            let chunk = self.responses.remove(0);
+            let count = chunk.len().min(buffer.len());
+            let Some(slot) = buffer.get_mut(..count) else {
+                return Err(PlatformError::new(PlatformErrorKind::Other));
+            };
+            slot.copy_from_slice(chunk.get(..count).unwrap_or(&[]));
+            Ok(count)
+        }
+        fn write_output(&mut self, bytes: &[u8]) -> Result<(), PlatformError> {
+            self.written.borrow_mut().extend_from_slice(bytes);
+            Ok(())
+        }
+        fn flush_output(&mut self) -> Result<(), PlatformError> {
+            Ok(())
+        }
+    }
+
+    fn probe(responses: Vec<&[u8]>) -> (AirTerminal, Rc<RefCell<Vec<u8>>>) {
+        let (device, written) = ProbeDevice::new(responses);
+        let terminal = AirTerminal::new(Box::new(device)).expect("construction");
+        (terminal, written)
+    }
+
+    #[test]
+    fn l_interrogation_envoie_la_question_et_le_jalon() {
+        let (mut terminal, written) = probe(vec![b"\x1b[?62;1;6c"]);
+        let _ = terminal
+            .detect_keyboard_protocol(Duration::from_millis(50), &mut |_| {})
+            .expect("interrogation");
+        let emitted = written.borrow().clone();
+        let text = String::from_utf8_lossy(&emitted);
+        assert!(
+            text.contains("\u{1b}[?u"),
+            "interrogation absente : {text:?}"
+        );
+        assert!(text.contains("\u{1b}[c"), "jalon absent : {text:?}");
+    }
+
+    #[test]
+    fn une_reponse_kitty_conclut_a_kitty() {
+        let (mut terminal, _) = probe(vec![b"\x1b[?23u\x1b[?62;1;6c"]);
+        assert_eq!(
+            terminal
+                .detect_keyboard_protocol(Duration::from_millis(50), &mut |_| {})
+                .expect("interrogation"),
+            AirKeyboardProtocol::Kitty
+        );
+    }
+
+    #[test]
+    fn le_jalon_seul_conclut_au_codage_historique() {
+        // Et c'est une conclusion certaine, pas une expiration : les attributs sont
+        // arrivés, donc la réponse Kitty ne viendra plus.
+        let (mut terminal, _) = probe(vec![b"\x1b[?62;1;6c"]);
+        assert_eq!(
+            terminal
+                .detect_keyboard_protocol(Duration::from_millis(50), &mut |_| {})
+                .expect("interrogation"),
+            AirKeyboardProtocol::Legacy
+        );
+    }
+
+    #[test]
+    fn une_reponse_decoupee_en_deux_lectures_est_recollee() {
+        let (mut terminal, _) = probe(vec![b"\x1b[?2", b"3u\x1b[?62c"]);
+        assert_eq!(
+            terminal
+                .detect_keyboard_protocol(Duration::from_millis(50), &mut |_| {})
+                .expect("interrogation"),
+            AirKeyboardProtocol::Kitty
+        );
+    }
+
+    #[test]
+    fn un_terminal_muet_conclut_au_codage_historique_sans_geler() {
+        let (mut terminal, _) = probe(Vec::new());
+        assert_eq!(
+            terminal
+                .detect_keyboard_protocol(Duration::from_millis(1), &mut |_| {})
+                .expect("interrogation"),
+            AirKeyboardProtocol::Legacy
+        );
+    }
+
+    #[test]
+    fn un_delai_nul_n_attend_pas() {
+        let (mut terminal, _) = probe(vec![b"\x1b[?23u"]);
+        assert_eq!(
+            terminal
+                .detect_keyboard_protocol(Duration::ZERO, &mut |_| {})
+                .expect("interrogation"),
+            AirKeyboardProtocol::Legacy
+        );
+    }
+
+    #[test]
+    fn ce_qui_est_tape_pendant_l_interrogation_n_est_pas_perdu() {
+        // L'utilisateur impatient tape avant que le terminal ait répondu. Jeter sa frappe
+        // serait un défaut qu'on ne verrait qu'au lancement d'une machine lente.
+        let (mut terminal, _) = probe(vec![b"a\x1b[?23u\x1b[?62c"]);
+        let mut collected = Vec::new();
+        let detected = terminal
+            .detect_keyboard_protocol(Duration::from_millis(50), &mut |event| {
+                collected.push(event);
+            })
+            .expect("interrogation");
+        assert_eq!(detected, AirKeyboardProtocol::Kitty);
+        assert_eq!(collected.len(), 1, "la frappe a été perdue : {collected:?}");
+    }
+
+    #[test]
+    fn une_sequence_indecodable_arrete_l_interrogation_sans_echouer() {
+        let (mut terminal, _) = probe(vec![b"\xff"]);
+        assert_eq!(
+            terminal
+                .detect_keyboard_protocol(Duration::from_millis(50), &mut |_| {})
+                .expect("une séquence indécodable n'est pas une panne"),
+            AirKeyboardProtocol::Legacy
+        );
+    }
+
+    #[test]
+    fn un_peripherique_qui_raccroche_arrete_l_interrogation() {
+        let (device, _) = ProbeDevice::new(Vec::new());
+        let mut closing = device;
+        closing.exhausted = InputReadiness::Closed;
+        let mut terminal = AirTerminal::new(Box::new(closing)).expect("construction");
+        assert_eq!(
+            terminal
+                .detect_keyboard_protocol(Duration::from_millis(50), &mut |_| {})
+                .expect("interrogation"),
+            AirKeyboardProtocol::Legacy
+        );
+    }
+
+    #[test]
+    fn l_activation_ecrit_la_sequence_de_chaque_protocole() {
+        for (protocol, expected) in [
+            (AirKeyboardProtocol::Kitty, "\u{1b}[>23u"),
+            (AirKeyboardProtocol::ModifyOtherKeys, "\u{1b}[>4;2m"),
+        ] {
+            let (mut terminal, written) = probe(Vec::new());
+            written.borrow_mut().clear();
+            terminal
+                .enable_keyboard_protocol(protocol)
+                .expect("activation");
+            assert_eq!(terminal.keyboard_protocol(), protocol);
+            let emitted = String::from_utf8_lossy(&written.borrow()).to_string();
+            assert!(
+                emitted.contains(expected),
+                "{expected:?} absent de {emitted:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn activer_le_codage_historique_n_ecrit_rien() {
+        let (mut terminal, written) = probe(Vec::new());
+        written.borrow_mut().clear();
+        terminal
+            .enable_keyboard_protocol(AirKeyboardProtocol::Legacy)
+            .expect("activation");
+        assert_eq!(written.borrow().len(), 0);
+        assert_eq!(terminal.keyboard_protocol(), AirKeyboardProtocol::Legacy);
+    }
+
+    #[test]
+    fn le_meilleur_protocole_est_kitty_quand_il_est_reconnu() {
+        let (mut terminal, _) = probe(vec![b"\x1b[?23u\x1b[?62c"]);
+        assert_eq!(
+            terminal
+                .enable_best_keyboard_protocol(Duration::from_millis(50), &mut |_| {})
+                .expect("activation"),
+            AirKeyboardProtocol::Kitty
+        );
+    }
+
+    #[test]
+    fn le_meilleur_protocole_retombe_sur_modify_other_keys() {
+        // Demandé sans interrogation : il n'existe pas de sondage universel, et la demande
+        // est inoffensive pour un terminal qui ne la comprend pas.
+        let (mut terminal, _) = probe(vec![b"\x1b[?62c"]);
+        assert_eq!(
+            terminal
+                .enable_best_keyboard_protocol(Duration::from_millis(50), &mut |_| {})
+                .expect("activation"),
+            AirKeyboardProtocol::ModifyOtherKeys
+        );
+    }
+
+    #[test]
+    fn la_destruction_defait_le_protocole_demande() {
+        // Laisser un terminal en protocole Kitty après la sortie rendrait le shell
+        // inutilisable : c'est le genre de défaut qu'on ne pardonne pas à un framework.
+        for (protocol, expected) in [
+            (AirKeyboardProtocol::Kitty, "\u{1b}[<u"),
+            (AirKeyboardProtocol::ModifyOtherKeys, "\u{1b}[>4;0m"),
+        ] {
+            let (mut terminal, written) = probe(Vec::new());
+            terminal
+                .enable_keyboard_protocol(protocol)
+                .expect("activation");
+            written.borrow_mut().clear();
+            drop(terminal);
+            let emitted = String::from_utf8_lossy(&written.borrow()).to_string();
+            assert!(
+                emitted.contains(expected),
+                "{expected:?} absent de {emitted:?} pour {protocol:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn la_destruction_en_codage_historique_ne_defait_rien_de_plus() {
+        let (terminal, written) = probe(Vec::new());
+        written.borrow_mut().clear();
+        drop(terminal);
+        let emitted = String::from_utf8_lossy(&written.borrow()).to_string();
+        assert!(
+            !emitted.contains("\u{1b}[<u"),
+            "pop inattendu : {emitted:?}"
+        );
+        assert!(emitted.contains("\u{1b}[?1049l"), "restauration absente");
     }
 
     #[test]

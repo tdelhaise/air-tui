@@ -27,7 +27,7 @@ note   = "découpage précisé par ADR-011 : trois crates au lieu de deux"
 ["003"]
 objet  = "Entrée clavier à deux étages : terminal en tier-1, natif en complément local"
 statut = "en-cours"
-note   = "étage terminal écrit et fuzzé (M1) ; Kitty en M2, étage natif en M8"
+note   = "étage terminal et protocole Kitty écrits et fuzzés (M1, M2) ; étage natif en M8"
 
 ["004"]
 objet  = "Conventions de nommage : aucune abréviation, préfixe Air sur le modèle d'objets"
@@ -37,7 +37,7 @@ note   = "gate check-naming à écrire ; règle tenue à la main en attendant"
 ["005"]
 objet  = "Zéro dépendance : std plus six symboles de la libc déjà liée"
 statut = "en-cours"
-note   = "les six déclarations existent dans air-tui-sys"
+note   = "les six déclarations existent dans air-tui-platform-posix"
 
 ["006"]
 objet  = "Unicode : tables UCD générées et committées"

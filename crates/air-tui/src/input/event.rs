@@ -68,7 +68,10 @@ pub enum AirKey {
     PageUp,
     /// Page suivante.
     PageDown,
-    /// Une touche de fonction, de 1 à 20.
+    /// Une touche de fonction, de 1 à 35.
+    ///
+    /// Au-delà de `F12`, seul le protocole clavier Kitty sait les rapporter : le codage
+    /// historique n'a pas de place pour elles.
     Function(u8),
 }
 
@@ -163,6 +166,16 @@ pub struct AirKeyEvent {
     /// fonctionnerait sur la console de son auteur et casserait chez tout utilisateur
     /// distant.
     pub physical: Option<AirScanCode>,
+    /// La touche telle que la **disposition de base** la nomme, quand la source la fournit.
+    ///
+    /// Seul le protocole clavier Kitty la rapporte. C'est ce qui permet à `Alt+F` d'ouvrir
+    /// le menu « Fichier » sur un clavier AZERTY comme sur un QWERTY : un raccourci se
+    /// compare à la disposition de base, pas au caractère produit.
+    ///
+    /// Contrairement à [`Self::physical`], un widget **peut** s'en servir — mais en
+    /// repli sur [`Self::logical`] quand elle est absente, ce qui est le cas de tout
+    /// terminal sans protocole Kitty.
+    pub base_layout: Option<AirKey>,
 }
 
 impl AirKeyEvent {
@@ -174,6 +187,20 @@ impl AirKeyEvent {
             modifiers: AirModifiers::NONE,
             state: AirKeyState::Press,
             physical: None,
+            base_layout: None,
+        }
+    }
+
+    /// La touche sur laquelle comparer un raccourci.
+    ///
+    /// La disposition de base quand la source la fournit, le caractère produit sinon.
+    /// C'est la seule comparaison qui fonctionne à la fois sur un terminal moderne et sur
+    /// un terminal historique.
+    #[must_use]
+    pub const fn shortcut_key(&self) -> AirKey {
+        match self.base_layout {
+            Some(key) => key,
+            None => self.logical,
         }
     }
 
@@ -248,6 +275,17 @@ pub enum AirInputEvent {
     FocusGained,
     /// Le terminal a perdu le focus.
     FocusLost,
+    /// Le terminal a rapporté les fonctions du protocole clavier Kitty qu'il applique.
+    ///
+    /// Réponse à [`crate::input::kitty::QUERY_SEQUENCE`]. Son arrivée **est** la preuve
+    /// que le protocole est pris en charge.
+    KeyboardProtocolReported(crate::input::kitty::AirKeyboardFlags),
+    /// Le terminal a rapporté ses attributs de périphérique.
+    ///
+    /// Sert de **jalon** à la négociation : les terminaux répondent dans l'ordre, donc
+    /// voir ce rapport sans avoir vu de réponse Kitty avant lui est une conclusion
+    /// négative certaine — et non l'expiration d'un délai choisi au hasard.
+    DeviceAttributesReported,
 }
 
 #[cfg(test)]
@@ -270,6 +308,19 @@ mod tests {
         assert!(event.modifiers.is_empty());
         assert_eq!(event.state, AirKeyState::Press);
         assert_eq!(event.physical, None);
+        assert_eq!(event.base_layout, None);
+    }
+
+    #[test]
+    fn un_raccourci_se_compare_a_la_disposition_de_base_quand_elle_existe() {
+        // Sur un AZERTY, `Alt+F` produit bien `f` ; mais sur une disposition où la touche
+        // physique du `f` produit autre chose, c'est la disposition de base qui tranche.
+        let without = AirKeyEvent::press(AirKey::Character('ф'));
+        assert_eq!(without.shortcut_key(), AirKey::Character('ф'));
+
+        let mut with_base = without;
+        with_base.base_layout = Some(AirKey::Character('a'));
+        assert_eq!(with_base.shortcut_key(), AirKey::Character('a'));
     }
 
     #[test]

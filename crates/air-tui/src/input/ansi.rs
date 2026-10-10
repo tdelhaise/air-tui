@@ -41,17 +41,21 @@ use crate::input::event::{
     AirInputEvent, AirKey, AirKeyEvent, AirModifiers, AirMouseButton, AirMouseEvent,
     AirMouseEventKind,
 };
+use crate::input::kitty::{AirKeyboardFlags, key_for_code, key_state_from_event_type};
 use crate::input::scanning::{
-    find_subslice, modifiers_from_parameter, parse_parameter, partial_suffix_length,
-    utf8_sequence_length,
+    AirParameterField, find_subslice, modifiers_from_parameter, parse_parameter_field,
+    partial_suffix_length, utf8_sequence_length,
 };
 
 /// La séquence qui ouvre un collage encadré.
-const PASTE_START_PARAMETER: u16 = 200;
+const PASTE_START_PARAMETER: u32 = 200;
 /// La séquence qui ferme un collage encadré.
 const PASTE_END_SEQUENCE: &[u8] = b"\x1b[201~";
 /// Le paramètre de fermeture d'un collage encadré, rencontré hors collage.
-const PASTE_END_PARAMETER: u16 = 201;
+const PASTE_END_PARAMETER: u32 = 201;
+
+/// Le premier paramètre d'une séquence `modifyOtherKeys` niveau 2.
+const MODIFY_OTHER_KEYS_PARAMETER: u32 = 27;
 
 /// Nombre maximal d'octets de paramètres d'une séquence de contrôle.
 ///
@@ -96,61 +100,82 @@ impl core::error::Error for AirDecodeError {}
 /// allouer (ADR-021 §4 d'Air).
 #[derive(Debug, Clone, Copy, Default)]
 struct Parameters {
-    /// Le premier paramètre ; `None` s'il est absent ou vide, donc par défaut.
-    first: Option<u16>,
-    /// Le deuxième paramètre — les modificateurs pour une touche, la colonne pour la souris.
-    second: Option<u16>,
-    /// Le troisième paramètre — la ligne, pour la souris.
-    third: Option<u16>,
-    /// Combien de paramètres ont été rencontrés, retenus ou non.
+    /// Le premier champ : le numéro de touche, ou la valeur de navigation.
+    first: AirParameterField,
+    /// Le deuxième champ : les modificateurs pour une touche, la colonne pour la souris.
+    second: AirParameterField,
+    /// Le troisième champ : le texte associé, ou la ligne pour la souris.
+    third: AirParameterField,
+    /// Combien de champs ont été rencontrés, retenus ou non.
     count: usize,
 }
 
 impl Parameters {
-    /// La valeur du paramètre d'indice `index`, ou `fallback` s'il est absent ou vide.
+    /// Le champ d'indice `index`.
     ///
-    /// Des champs nommés plutôt qu'un tableau indexé : trois paramètres suffisent aux
+    /// Des champs nommés plutôt qu'un tableau indexé : trois champs suffisent aux
     /// séquences traitées, et l'indexation d'un tableau est un accès qui peut paniquer —
     /// ce que le Principe 3 d'Air refuse sur un chemin d'entrée.
-    const fn value_or(&self, index: usize, fallback: u16) -> u16 {
-        let stored = match index {
+    const fn field(&self, index: usize) -> AirParameterField {
+        match index {
             0 => self.first,
             1 => self.second,
             2 => self.third,
-            _ => None,
-        };
-        match stored {
+            _ => AirParameterField {
+                primary: None,
+                first_sub: None,
+                second_sub: None,
+            },
+        }
+    }
+
+    /// La valeur principale du champ d'indice `index`, ou `fallback` s'il est absent.
+    const fn value_or(&self, index: usize, fallback: u32) -> u32 {
+        match self.field(index).primary {
             Some(value) => value,
             None => fallback,
         }
     }
 
-    /// Retient un paramètre de plus.
+    /// Le premier sous-paramètre du champ d'indice `index`, ou `fallback` s'il est absent.
+    const fn first_sub_or(&self, index: usize, fallback: u32) -> u32 {
+        match self.field(index).first_sub {
+            Some(value) => value,
+            None => fallback,
+        }
+    }
+
+    /// Le deuxième sous-paramètre du champ d'indice `index`, sans valeur de repli.
+    const fn second_sub(&self, index: usize) -> Option<u32> {
+        self.field(index).second_sub
+    }
+
+    /// Retient un champ de plus.
     ///
-    /// Au-delà du troisième, le paramètre est compté mais pas conservé : les séquences
+    /// Au-delà du troisième, le champ est compté mais pas conservé : les séquences
     /// traitées n'en emploient pas davantage.
-    const fn push(&mut self, value: Option<u16>) {
+    const fn push(&mut self, field: AirParameterField) {
         match self.count {
-            0 => self.first = value,
-            1 => self.second = value,
-            2 => self.third = value,
+            0 => self.first = field,
+            1 => self.second = field,
+            2 => self.third = field,
             _ => {}
         }
         self.count = self.count.saturating_add(1);
     }
 }
 
-/// Découpe et lit les paramètres d'une séquence de contrôle.
+/// Découpe et lit les champs d'une séquence de contrôle, sous-paramètres compris.
 fn parse_parameters(bytes: &[u8]) -> Result<Parameters, AirDecodeError> {
     let mut parameters = Parameters::default();
     if bytes.is_empty() {
         return Ok(parameters);
     }
-    for field in bytes.split(|byte| *byte == b';') {
-        let Some(value) = parse_parameter(field) else {
+    for raw_field in bytes.split(|byte| *byte == b';') {
+        let Some(field) = parse_parameter_field(raw_field) else {
             return Err(AirDecodeError::MalformedSequence);
         };
-        parameters.push(value);
+        parameters.push(field);
     }
     Ok(parameters)
 }
@@ -216,11 +241,12 @@ const fn control_key_event(byte: u8) -> AirKeyEvent {
         modifiers,
         state: crate::input::event::AirKeyState::Press,
         physical: None,
+        base_layout: None,
     }
 }
 
 /// La touche de navigation ou de fonction désignée par un paramètre de séquence `~`.
-const fn key_for_tilde_parameter(parameter: u16) -> Option<AirKey> {
+const fn key_for_tilde_parameter(parameter: u32) -> Option<AirKey> {
     match parameter {
         1 | 7 => Some(AirKey::Home),
         2 => Some(AirKey::Insert),
@@ -271,7 +297,7 @@ const fn key_for_final_byte(final_byte: u8) -> Option<AirKey> {
 }
 
 /// Les modificateurs encodés dans le code de bouton d'un événement de souris SGR.
-const fn mouse_modifiers(code: u16) -> AirModifiers {
+const fn mouse_modifiers(code: u32) -> AirModifiers {
     AirModifiers {
         shift: code & 0b0000_0100 != 0,
         alternate: code & 0b0000_1000 != 0,
@@ -281,7 +307,7 @@ const fn mouse_modifiers(code: u16) -> AirModifiers {
 }
 
 /// Le bouton désigné par les deux bits de poids faible d'un code de souris.
-const fn mouse_button(code: u16) -> Option<AirMouseButton> {
+const fn mouse_button(code: u32) -> Option<AirMouseButton> {
     match code & 0b11 {
         0 => Some(AirMouseButton::Left),
         1 => Some(AirMouseButton::Middle),
@@ -294,7 +320,7 @@ const fn mouse_button(code: u16) -> Option<AirMouseButton> {
 ///
 /// Un enfoncement sans bouton n'a pas de sens : plutôt que d'inventer un bouton gauche,
 /// on ne produit pas d'événement.
-const fn mouse_kind(code: u16, is_release: bool) -> Option<AirMouseEventKind> {
+const fn mouse_kind(code: u32, is_release: bool) -> Option<AirMouseEventKind> {
     let button = mouse_button(code);
     if code & 0b0100_0000 != 0 {
         return match code & 0b11 {
@@ -424,18 +450,30 @@ impl AirAnsiDecoder {
         // `ESC`, `[`, les paramètres, et l'octet final.
         let consumed = index.saturating_add(3);
 
-        if parameter_bytes.first() == Some(&b'<') {
-            let mouse_parameters = parameter_bytes.get(1..).unwrap_or(&[]);
-            decode_mouse(mouse_parameters, final_byte, emit)?;
+        let (private_prefix, parameter_bytes) = split_private_prefix(parameter_bytes);
+        if private_prefix == Some(b'<') {
+            decode_mouse(parameter_bytes, final_byte, emit)?;
             return Ok(consumed);
         }
 
         let parameters = parse_parameters(parameter_bytes)?;
+
+        if private_prefix == Some(b'?') {
+            decode_terminal_report(&parameters, final_byte, emit);
+            return Ok(consumed);
+        }
+        if private_prefix.is_some() {
+            // Un préfixe privé qu'on ne reconnaît pas : la séquence est bien formée, elle
+            // est consommée, et on n'invente pas ce qu'elle voulait dire.
+            return Ok(consumed);
+        }
+
         let modifiers = modifiers_from_parameter(parameters.value_or(1, 1));
 
         match final_byte {
+            b'u' => decode_kitty_key(&parameters, emit),
             b'~' => {
-                self.decode_tilde_sequence(parameters.value_or(0, 0), modifiers, emit);
+                self.decode_tilde_sequence(&parameters, modifiers, emit);
             }
             b'Z' => {
                 emit(AirInputEvent::Key(
@@ -459,16 +497,27 @@ impl AirAnsiDecoder {
     /// Décode une séquence terminée par `~`, dont les collages encadrés.
     fn decode_tilde_sequence(
         &mut self,
-        parameter: u16,
+        parameters: &Parameters,
         modifiers: AirModifiers,
         emit: &mut dyn FnMut(AirInputEvent),
     ) {
+        let parameter = parameters.value_or(0, 0);
         if parameter == PASTE_START_PARAMETER {
             self.paste_buffer = Some(Vec::new());
             return;
         }
         if parameter == PASTE_END_PARAMETER {
             // Fermeture rencontrée hors collage : rien à fermer, rien à signaler.
+            return;
+        }
+        if parameter == MODIFY_OTHER_KEYS_PARAMETER {
+            // `CSI 27 ; modificateurs ; numéro ~` — la forme de `modifyOtherKeys`
+            // niveau 2, le repli d'xterm et de VTE quand le protocole Kitty est absent.
+            if let Some(logical) = key_for_code(parameters.value_or(2, 0)) {
+                emit(AirInputEvent::Key(
+                    AirKeyEvent::press(logical).with_modifiers(modifiers),
+                ));
+            }
             return;
         }
         if let Some(key) = key_for_tilde_parameter(parameter) {
@@ -578,6 +627,73 @@ fn decode_alternate(
     Ok(length.saturating_add(1))
 }
 
+/// Détache l'octet de préfixe privé d'une suite de paramètres.
+///
+/// La norme réserve `0x3C` à `0x3F` — `<`, `=`, `>`, `?` — au premier rang des paramètres
+/// pour marquer une séquence privée. Les trois formes qui nous concernent sont `<` pour la
+/// souris SGR, `?` pour une réponse du terminal, et `>` pour une demande.
+fn split_private_prefix(parameter_bytes: &[u8]) -> (Option<u8>, &[u8]) {
+    match parameter_bytes.first() {
+        Some(first) if (0x3C..=0x3F).contains(first) => {
+            (Some(*first), parameter_bytes.get(1..).unwrap_or(&[]))
+        }
+        _ => (None, parameter_bytes),
+    }
+}
+
+/// Décode une réponse du terminal, reconnaissable à son préfixe `?`.
+fn decode_terminal_report(
+    parameters: &Parameters,
+    final_byte: u8,
+    emit: &mut dyn FnMut(AirInputEvent),
+) {
+    match final_byte {
+        // `CSI ? <masque> u` : les fonctions du protocole clavier Kitty en vigueur. Son
+        // arrivée **est** la preuve que le protocole est pris en charge.
+        b'u' => emit(AirInputEvent::KeyboardProtocolReported(
+            AirKeyboardFlags::from_parameter(parameters.value_or(0, 0)),
+        )),
+        // `CSI ? … c` : les attributs de périphérique. Ils servent de jalon à la
+        // négociation, leur contenu ne nous apprend rien d'utile.
+        b'c' => emit(AirInputEvent::DeviceAttributesReported),
+        // Une autre réponse : consommée sans événement.
+        _ => {}
+    }
+}
+
+/// Décode une frappe au format du protocole clavier Kitty : `CSI … u`.
+///
+/// La forme complète est
+/// `CSI touche : décalée : disposition-de-base ; modificateurs : type ; texte u`.
+fn decode_kitty_key(parameters: &Parameters, emit: &mut dyn FnMut(AirInputEvent)) {
+    let Some(key_from_code) = key_for_code(parameters.value_or(0, 0)) else {
+        // Numéro hors de la table : pavé numérique, multimédia, touche modificatrice
+        // seule. Consommé sans événement plutôt que deviné.
+        return;
+    };
+    // Le texte associé, quand le terminal le rapporte, est ce que l'utilisateur a
+    // réellement produit : il prime sur le numéro de touche, qui ignore les
+    // compositions et AltGr.
+    let logical = match parameters.field(2).primary.and_then(key_for_code) {
+        Some(from_text) => from_text,
+        None => key_from_code,
+    };
+    emit(AirInputEvent::Key(AirKeyEvent {
+        logical,
+        modifiers: modifiers_from_parameter(parameters.value_or(1, 1)),
+        state: key_state_from_event_type(parameters.first_sub_or(1, 1)),
+        physical: None,
+        base_layout: parameters.second_sub(0).and_then(key_for_code),
+    }));
+}
+
+/// Ramène une coordonnée de terminal, comptée depuis un, à un indice de grille compté
+/// depuis zéro.
+fn narrow_coordinate(value: u32) -> u16 {
+    let from_zero = value.saturating_sub(1);
+    u16::try_from(from_zero).unwrap_or(u16::MAX)
+}
+
 /// Décode un événement de souris au format SGR 1006.
 fn decode_mouse(
     parameter_bytes: &[u8],
@@ -586,9 +702,10 @@ fn decode_mouse(
 ) -> Result<(), AirDecodeError> {
     let parameters = parse_parameters(parameter_bytes)?;
     let code = parameters.value_or(0, 0);
-    // Le terminal compte depuis un ; la grille depuis zéro.
-    let column = parameters.value_or(1, 1).saturating_sub(1);
-    let row = parameters.value_or(2, 1).saturating_sub(1);
+    // Le terminal compte depuis un ; la grille depuis zéro. La conversion est bornée : une
+    // grille de plus de 65 535 colonnes n'existe pas, et tronquer serait pire que saturer.
+    let column = narrow_coordinate(parameters.value_or(1, 1));
+    let row = narrow_coordinate(parameters.value_or(2, 1));
     let is_release = final_byte == b'm';
     if let Some(kind) = mouse_kind(code, is_release) {
         emit(AirInputEvent::Mouse(AirMouseEvent {
@@ -627,9 +744,10 @@ mod tests {
     use air_tui_platform::Decoder;
 
     use super::{
-        AirAnsiDecoder, AirDecodeError, MAXIMUM_PASTE_BYTES, Parameters, control_key_event,
-        first_character, key_for_final_byte, key_for_tilde_parameter, mouse_button, mouse_kind,
-        mouse_modifiers, parse_parameters,
+        AirAnsiDecoder, AirDecodeError, AirKeyboardFlags, MAXIMUM_PASTE_BYTES, Parameters,
+        control_key_event, first_character, key_for_final_byte, key_for_tilde_parameter,
+        mouse_button, mouse_kind, mouse_modifiers, narrow_coordinate, parse_parameters,
+        split_private_prefix,
     };
     use crate::geometry::{AirColumn, AirPoint, AirRow};
     use crate::input::event::{
@@ -994,8 +1112,8 @@ mod tests {
         // bloquerait le flux sur la première.
         assert_eq!(decode(b"\x1b[99~"), (5, Vec::new()));
         assert_eq!(decode(b"\x1b[1;2x"), (6, Vec::new()));
-        // `CSI u` relève du protocole Kitty, qui viendra au jalon M2.
-        assert_eq!(decode(b"\x1b[97;5u"), (7, Vec::new()));
+        // Un préfixe privé qu'on ne reconnaît pas.
+        assert_eq!(decode(b"\x1b[=1A"), (5, Vec::new()));
     }
 
     #[test]
@@ -1006,13 +1124,25 @@ mod tests {
 
     #[test]
     fn un_parametre_non_numerique_est_une_erreur() {
-        // `:` est dans la plage des paramètres mais n'est pas un chiffre.
-        assert_eq!(error_of(b"\x1b[:A"), AirDecodeError::MalformedSequence);
+        // `>` est dans la plage des paramètres mais n'est ni un chiffre, ni un séparateur.
+        // Hors première position il ne peut pas être un préfixe privé : c'est donc une
+        // séquence malformée.
+        assert_eq!(error_of(b"\x1b[1>A"), AirDecodeError::MalformedSequence);
+    }
+
+    #[test]
+    fn un_deux_points_est_un_separateur_et_non_une_erreur() {
+        // Il l'était avant le protocole Kitty, qui s'en sert pour ses sous-paramètres.
+        assert_eq!(decode(b"\x1b[1:2A"), (6, vec![key(AirKey::Up)]));
     }
 
     #[test]
     fn un_parametre_qui_deborde_est_une_erreur() {
-        assert_eq!(error_of(b"\x1b[99999A"), AirDecodeError::MalformedSequence);
+        // La borne est celle d'un u32 depuis que Kitty transmet des points de code.
+        assert_eq!(
+            error_of(b"\x1b[99999999999A"),
+            AirDecodeError::MalformedSequence
+        );
     }
 
     #[test]
@@ -1024,7 +1154,7 @@ mod tests {
     }
 
     #[test]
-    fn les_parametres_au_dela_du_quatrieme_sont_valides_mais_ignores() {
+    fn les_parametres_au_dela_du_troisieme_sont_valides_mais_ignores() {
         // Validés — une séquence malformée reste une erreur — mais pas conservés.
         assert_eq!(
             decode(b"\x1b[1;5;3;4;9;9A"),
@@ -1034,7 +1164,7 @@ mod tests {
             )
         );
         assert_eq!(
-            error_of(b"\x1b[1;5;3;4;9;:A"),
+            error_of(b"\x1b[1;5;3;4;9;>A"),
             AirDecodeError::MalformedSequence
         );
     }
@@ -1190,7 +1320,7 @@ mod tests {
 
     #[test]
     fn un_parametre_de_souris_malforme_est_une_erreur() {
-        assert_eq!(error_of(b"\x1b[<0;:;1M"), AirDecodeError::MalformedSequence);
+        assert_eq!(error_of(b"\x1b[<0;>;1M"), AirDecodeError::MalformedSequence);
     }
 
     #[test]
@@ -1325,6 +1455,247 @@ mod tests {
         assert_eq!(events.len(), 2);
     }
 
+    // ------------------------------------------- protocole clavier Kitty
+
+    #[test]
+    fn une_frappe_kitty_simple_est_decodee() {
+        assert_eq!(decode(b"\x1b[97u"), (5, vec![key(AirKey::Character('a'))]));
+    }
+
+    #[test]
+    fn une_frappe_kitty_porte_ses_modificateurs() {
+        assert_eq!(
+            decode(b"\x1b[97;5u"),
+            (
+                7,
+                vec![key_with(
+                    AirKey::Character('a'),
+                    AirModifiers::NONE.with_control()
+                )]
+            )
+        );
+    }
+
+    #[test]
+    fn kitty_distingue_ce_que_le_codage_historique_ne_sait_pas_exprimer() {
+        // C'est la raison d'être du jalon : sur un pty sans Kitty, `Ctrl+Shift+S` et
+        // `Ctrl+S` produisent le même octet 0x13. Ici ils sont distincts.
+        let control_only = decode(b"\x1b[115;5u").1;
+        let control_shift = decode(b"\x1b[115;6u").1;
+        assert_ne!(control_only, control_shift);
+        assert_eq!(
+            control_shift,
+            vec![key_with(
+                AirKey::Character('s'),
+                AirModifiers::NONE.with_control().with_shift()
+            )]
+        );
+    }
+
+    #[test]
+    fn les_trois_types_d_evenement_sont_rapportes() {
+        // `matches!` plutôt qu'une fermeture avec un bras par défaut : ce bras serait
+        // hors d'atteinte, donc une région non couverte (ADR-012).
+        for (input, expected) in [
+            (&b"\x1b[97;1:1u"[..], AirKeyState::Press),
+            (&b"\x1b[97;1:2u"[..], AirKeyState::Repeat),
+            (&b"\x1b[97;1:3u"[..], AirKeyState::Release),
+        ] {
+            let (_, events) = decode(input);
+            assert!(
+                matches!(events.first(), Some(AirInputEvent::Key(event)) if event.state == expected),
+                "état attendu {expected:?} pour {input:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn la_disposition_de_base_est_rapportee_et_sert_aux_raccourcis() {
+        // Sur un clavier cyrillique, la touche du `a` produit `ф`. Un raccourci doit
+        // continuer de fonctionner : c'est à cela que sert la disposition de base.
+        let (consumed, events) = decode("\x1b[1092:0:97;3u".as_bytes());
+        assert_eq!(consumed, 14);
+        assert!(matches!(
+            events.first(),
+            Some(AirInputEvent::Key(event))
+                if event.logical == AirKey::Character('ф')
+                    && event.base_layout == Some(AirKey::Character('a'))
+                    && event.shortcut_key() == AirKey::Character('a')
+                    && event.modifiers.alternate
+        ));
+    }
+
+    #[test]
+    fn le_texte_associe_prime_sur_le_numero_de_touche() {
+        // La touche de base est `e`, mais la composition a produit `é` : c'est `é` que
+        // l'application doit insérer.
+        let (_, events) = decode(b"\x1b[101;1;233u");
+        assert_eq!(events, vec![key(AirKey::Character('é'))]);
+    }
+
+    #[test]
+    fn un_point_de_code_hors_du_plan_de_base_est_decode() {
+        // Prouve l'élargissement des paramètres en u32 : 128512 ne tient pas dans un u16.
+        assert_eq!(
+            decode(b"\x1b[128512u"),
+            (9, vec![key(AirKey::Character('\u{1F600}'))])
+        );
+    }
+
+    #[test]
+    fn les_touches_nommees_de_kitty_sont_decodees() {
+        assert_eq!(decode(b"\x1b[27u"), (5, vec![key(AirKey::Escape)]));
+        assert_eq!(decode(b"\x1b[13u"), (5, vec![key(AirKey::Enter)]));
+        assert_eq!(decode(b"\x1b[9u"), (4, vec![key(AirKey::Tab)]));
+        assert_eq!(decode(b"\x1b[127u"), (6, vec![key(AirKey::Backspace)]));
+        assert_eq!(decode(b"\x1b[57376u"), (8, vec![key(AirKey::Function(13))]));
+    }
+
+    #[test]
+    fn un_numero_de_touche_hors_table_est_consomme_sans_evenement() {
+        // Pavé numérique et touches modificatrices seules : hors table. Les laisser
+        // passer comme caractères de la zone à usage privé insérerait des glyphes
+        // fantômes dans les champs de saisie.
+        assert_eq!(decode(b"\x1b[57399u"), (8, Vec::new()));
+        assert_eq!(decode(b"\x1b[57441u"), (8, Vec::new()));
+    }
+
+    #[test]
+    fn un_texte_associe_hors_table_retombe_sur_le_numero_de_touche() {
+        // Le troisième champ ne décrit pas un caractère : la touche de base reste.
+        assert_eq!(
+            decode(b"\x1b[97;1;3u"),
+            (9, vec![key(AirKey::Character('a'))])
+        );
+    }
+
+    // ------------------------------------------ réponses du terminal
+
+    #[test]
+    fn la_reponse_du_protocole_clavier_est_decodee() {
+        let (consumed, events) = decode(b"\x1b[?23u");
+        assert_eq!(consumed, 6);
+        assert_eq!(
+            events,
+            vec![AirInputEvent::KeyboardProtocolReported(
+                AirKeyboardFlags::WANTED
+            )]
+        );
+    }
+
+    #[test]
+    fn une_reponse_de_protocole_vide_reste_une_reponse() {
+        // C'est son arrivée qui prouve la prise en charge, pas son contenu.
+        let (_, events) = decode(b"\x1b[?0u");
+        assert_eq!(
+            events,
+            vec![AirInputEvent::KeyboardProtocolReported(
+                AirKeyboardFlags::default()
+            )]
+        );
+    }
+
+    #[test]
+    fn les_attributs_de_peripherique_servent_de_jalon() {
+        assert_eq!(
+            decode(b"\x1b[?62;1;6c"),
+            (10, vec![AirInputEvent::DeviceAttributesReported])
+        );
+    }
+
+    #[test]
+    fn une_autre_reponse_du_terminal_est_consommee_sans_evenement() {
+        assert_eq!(decode(b"\x1b[?1;2R"), (7, Vec::new()));
+    }
+
+    #[test]
+    fn split_private_prefix_detache_les_quatre_prefixes_reserves() {
+        assert_eq!(split_private_prefix(b"<0;1;1"), (Some(b'<'), &b"0;1;1"[..]));
+        assert_eq!(split_private_prefix(b"=1"), (Some(b'='), &b"1"[..]));
+        assert_eq!(split_private_prefix(b">4;2"), (Some(b'>'), &b"4;2"[..]));
+        assert_eq!(split_private_prefix(b"?23"), (Some(b'?'), &b"23"[..]));
+        assert_eq!(split_private_prefix(b"1;5"), (None, &b"1;5"[..]));
+        assert_eq!(split_private_prefix(b""), (None, &b""[..]));
+    }
+
+    // ----------------------------------------------- modifyOtherKeys
+
+    #[test]
+    fn modify_other_keys_est_decode() {
+        // Le repli d'xterm et de VTE : `CSI 27 ; modificateurs ; numéro ~`.
+        assert_eq!(
+            decode(b"\x1b[27;5;115~"),
+            (
+                11,
+                vec![key_with(
+                    AirKey::Character('s'),
+                    AirModifiers::NONE.with_control()
+                )]
+            )
+        );
+    }
+
+    #[test]
+    fn modify_other_keys_distingue_aussi_control_shift() {
+        assert_eq!(
+            decode(b"\x1b[27;6;83~"),
+            (
+                10,
+                vec![key_with(
+                    AirKey::Character('S'),
+                    AirModifiers::NONE.with_control().with_shift()
+                )]
+            )
+        );
+    }
+
+    #[test]
+    fn modify_other_keys_hors_table_est_consomme_sans_evenement() {
+        assert_eq!(decode(b"\x1b[27;1;57399~"), (13, Vec::new()));
+    }
+
+    // --------------------------------------- bornes et cas dégénérés
+
+    #[test]
+    fn une_coordonnee_de_souris_demesuree_sature_au_lieu_de_tronquer() {
+        // Tronquer ferait atterrir le clic à une position arbitraire ; saturer le place au
+        // bord, ce qui est faux mais pas absurde.
+        assert_eq!(
+            decode(b"\x1b[<0;70000;1M"),
+            (
+                13,
+                vec![mouse(
+                    u16::MAX,
+                    0,
+                    AirMouseEventKind::Pressed(AirMouseButton::Left)
+                )]
+            )
+        );
+    }
+
+    #[test]
+    fn narrow_coordinate_ramene_depuis_un_et_sature() {
+        assert_eq!(narrow_coordinate(0), 0);
+        assert_eq!(narrow_coordinate(1), 0);
+        assert_eq!(narrow_coordinate(10), 9);
+        assert_eq!(narrow_coordinate(70_000), u16::MAX);
+    }
+
+    #[test]
+    fn les_champs_au_dela_du_troisieme_sont_vides() {
+        let parameters = parse_parameters(b"1:2;3:4;5:6;7:8").expect("paramètres valides");
+        assert_eq!(parameters.value_or(3, 99), 99);
+        assert_eq!(parameters.first_sub_or(3, 99), 99);
+        assert_eq!(parameters.second_sub(3), None);
+    }
+
+    #[test]
+    fn les_sous_parametres_absents_prennent_leur_repli() {
+        let parameters = parse_parameters(b"97").expect("paramètres valides");
+        assert_eq!(parameters.first_sub_or(0, 7), 7);
+        assert_eq!(parameters.second_sub(0), None);
+    }
+
     // ---------------------------------------------- fonctions auxiliaires
 
     #[test]
@@ -1354,14 +1725,14 @@ mod tests {
         assert_eq!(key_for_tilde_parameter(4), Some(AirKey::End));
         assert_eq!(key_for_tilde_parameter(8), Some(AirKey::End));
         for parameter in [
-            11_u16, 12, 13, 14, 17, 18, 19, 20, 21, 23, 25, 26, 28, 29, 31, 32, 33,
+            11_u32, 12, 13, 14, 17, 18, 19, 20, 21, 23, 25, 26, 28, 29, 31, 32, 33,
         ] {
             assert!(
                 key_for_tilde_parameter(parameter).is_some(),
                 "paramètre {parameter}"
             );
         }
-        for parameter in [0_u16, 9, 10, 16, 22, 27, 30, 35, 999] {
+        for parameter in [0_u32, 9, 10, 16, 22, 30, 35, 999] {
             assert_eq!(
                 key_for_tilde_parameter(parameter),
                 None,
