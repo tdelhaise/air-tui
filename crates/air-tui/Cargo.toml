@@ -18,7 +18,7 @@ air-tui-platform = { path = "../air-tui-platform", version = "0.1.0" }
 
 # L'exemple choisit une plateforme ; le cœur, lui, n'en dépend pas.
 [dev-dependencies]
-air-tui-platform-posix = { path = "../air-tui-platform-posix", version = "0.1.0" }
+air-tui-platform-posix = { path = "../air-tui-platform-posix", version = "0.2.0" }
 
 [lints]
 workspace = true

@@ -78,3 +78,8 @@ ses préconditions.
 Aucun gate `cargo xtask` n'est écrit à ce jour. Les contrôles listés dans
 `docs/CONVENTIONS-fr.md` sous « à outiller » sont à exécuter **à la main**. Ne pas écrire
 qu'ils tournent avant qu'ils tournent (NO GO n° 1).
+
+## Contrôles à passer en local avant de pousser
+
+La liste fait foi dans [`CLAUDE.md`](CLAUDE.md) et n'est pas recopiée ici : deux listes
+divergent, et la divergence se découvre toujours le jour où l'une des deux comptait.

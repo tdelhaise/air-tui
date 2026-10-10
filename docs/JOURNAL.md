@@ -6,6 +6,49 @@ tête. On ajoute, on ne réécrit jamais une entrée passée.
 Une entrée par campagne, pas par commit. Répartition des rôles : `etat-avancement.md` est
 l'état vivant, ce journal est la trace figée, `INDEX.md` est la carte structurelle.
 
+## 2026-10-10 — Le défaut qui rendait air-tui inutilisable sur macOS
+
+- **`poll` sur `/dev/tty` rend `POLLNVAL` sur macOS.** `PosixTerminal::open` ouvrait
+  `/dev/tty` — un choix qui paraissait plus propre, puisqu'il fait survivre l'interface à
+  une redirection des flux. Conséquence réelle : `wait_for_input` échouait au **premier**
+  appel, et toute application sortait aussitôt. Le tableau mesuré hors d'air-tui :
+
+  | | macOS | Linux |
+  |---|---|---|
+  | `poll` sur `/dev/tty` | **`POLLNVAL`** | normal |
+  | `poll` sur le descripteur 0 du même terminal | normal | normal |
+  | `select` sur `/dev/tty` | normal | normal |
+
+  `/dev/tty` n'est pas un périphérique ordinaire : c'est un alias du terminal de contrôle
+  résolu à l'ouverture, et son pilote macOS ne prend pas en charge le mécanisme que `poll`
+  utilise.
+- **Le correctif choisit chaque bout séparément** : le descripteur standard quand c'en est
+  un terminal, `/dev/tty` sinon. C'est ce que font ncurses et Turbo Vision, et cela traite
+  du même coup le cas mixte — `programme > fichier` garde son entrée sur le descripteur 0,
+  donc une attente qui fonctionne, et ne passe par `/dev/tty` que pour écrire. Le seul cas
+  qui reste cassé sur macOS est assumé et documenté : `programme < fichier`, où lire les
+  frappes du terminal après avoir délibérément redirigé l'entrée est une demande
+  contradictoire.
+- **Ce qui a laissé passer le défaut, et ce qui l'a trouvé.** Compiler ne prouve rien pour
+  une application qui a besoin d'un terminal. `script(1)` ne suffit pas non plus : les
+  versions util-linux et BSD ne transmettent pas un stdin redirigé de la même façon, et le
+  même essai ne prouve donc pas la même chose sur les deux plateformes — sur macOS il
+  donnait « sortie 0 », que j'ai d'abord pris pour « la touche a fonctionné ». C'est
+  `tools/pty-drive.py`, et surtout l'**essai de contrôle**, qui ont tranché : sans la
+  touche de sortie, le programme doit rester vivant. Sans ce second essai, un programme
+  qui sort pour une tout autre raison donne le même verdict que celui qui obéit.
+- Le harnais est versionné et les deux essais sont inscrits dans la liste de contrôles de
+  `CLAUDE.md`. Il est en Python parce qu'il faut `forkpty`, que la bibliothèque standard de
+  Rust n'offre pas : le porter dans `xtask` avec sa propre frontière `unsafe` reste
+  possible et n'est pas fait.
+- Un test de régression sur l'invariante « un bout sur `/dev/tty` non ouvert est une erreur
+  et non une supposition » : l'état ne se produit pas par `open`, mais une invariante tenue
+  par construction reste une invariante, et un jour la construction change.
+- `air-tui-platform-posix` 0.1.1 → **0.2.0** : l'API ne change pas, mais la sortie va
+  désormais sur la sortie standard quand c'en est un terminal, là où elle allait toujours
+  sur `/dev/tty`. C'est un changement de comportement observable, donc un mineur et non un
+  correctif.
+
 ## 2026-10-10 — M5b, barre de menu, barre de statut, champ de saisie, curseur
 
 - **La surimpression annoncée au jalon M5 n'était pas nécessaire.** C'est la découverte du

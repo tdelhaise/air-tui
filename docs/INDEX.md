@@ -39,6 +39,7 @@ L'**avancement** vit dans [`etat-avancement.md`](etat-avancement.md), l'**histor
 | `crates/air-tui-platform-air` | implémentation `linux-air` | **à écrire** |
 | `fuzz/` | cibles `cargo-fuzz`, espace de travail séparé (nightly) | `ansi_decoder` |
 | `xtask/` | outillage du dépôt, en Rust | génération des tables Unicode |
+| `tools/` | outillage qui ne peut pas être en Rust sans un appel C de plus | `pty-drive.py` |
 
 ## Les modules d'`air-tui`
 

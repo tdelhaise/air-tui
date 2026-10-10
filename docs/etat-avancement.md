@@ -63,6 +63,14 @@ boucle et l'arbre sont montés à la main par l'application, comme le fait l'exe
   alignées aux mêmes colonnes sur toutes les lignes, texte accentué compris.
 - **`AirCommandSet`** : le mécanisme 3 de l'ADR-007, en *pull*. Griser une commande grise
   d'un coup tout ce qui la porte, sans que personne soit notifié.
+- **Le défaut bloquant de macOS corrigé** : `poll` sur un descripteur ouvert sur
+  `/dev/tty` y rend `POLLNVAL`, donc `wait_for_input` échouait au premier appel et toute
+  application sortait aussitôt. `PosixTerminal` choisit désormais chaque bout séparément —
+  le descripteur standard quand c'en est un terminal, `/dev/tty` sinon — ce qui est aussi
+  ce que font ncurses et Turbo Vision. Vérifié dans un pseudo-terminal sur les deux
+  plateformes, essai de contrôle compris.
+- **`tools/pty-drive.py`** : le harnais qui a trouvé ce défaut, versionné pour que la
+  vérification soit reproductible. Un essai manuel non reproductible est un essai perdu.
 - **M5b — les trois widgets qui demandaient une mécanique de plus** :
   - **`AirMenuBar`** à menus déroulants, avec `AirMenu` et `AirMenuItem`, séparateurs
     compris. Ouverture par `Alt`+lettre ou au clic, flèches verticales qui **sautent les
@@ -166,12 +174,7 @@ boucle et l'arbre sont montés à la main par l'application, comme le fait l'exe
 
 ### Défauts ouverts
 
-- ⛔ **macOS : `poll` sur `/dev/tty` rend `POLLNVAL`.** `PosixTerminal::open` ouvre
-  `/dev/tty`, donc `wait_for_input` échoue d'emblée et toute application sort aussitôt.
-  Mesuré hors d'air-tui : `poll` sur le descripteur 0 du même terminal fonctionne, `select`
-  sur `/dev/tty` fonctionne, et sur Linux les trois fonctionnent. Correctif prévu : se
-  servir des descripteurs standards quand ce sont des terminaux. **Bloquant sur une cible
-  tier-1.**
+*(aucun à ce jour)*
 
 ### Pas fait — et à ne pas annoncer comme fait
 
