@@ -7,8 +7,9 @@
 //! # Ce qu'il fait
 //!
 //! ```sh
-//! redit               # un document vide
-//! redit fichier.txt   # un fichier, existant ou à créer
+//! redit                        # un document vide
+//! redit fichier.txt            # un fichier, existant ou à créer
+//! redit --theme mc fichier.txt # aux couleurs de Midnight Commander
 //! ```
 //!
 //! - `F2` enregistre, `F3` ouvre, `F10` quitte ;
@@ -18,6 +19,9 @@
 //! - `Ctrl`+flèche se déplace **par mot**, au sens de l'annexe 29 d'Unicode — ce qui garde
 //!   `3,14` et `l'enfant` entiers là où une coupure sur la ponctuation les casserait ;
 //! - `Ctrl`+`Y` supprime la ligne, comme dans Turbo Vision ;
+//! - `--theme mc` échange la palette et les glyphes pour ceux du skin par défaut de
+//!   Midnight Commander — l'éditeur reste `redit`, seules les couleurs et les traits
+//!   changent, ce qui est précisément la preuve que le thème est une donnée ;
 //! - les deux ascenseurs suivent le texte, la molette défile sans déplacer le curseur ;
 //! - « Enregistrer » est **grisé** sur un document intact, dans le menu comme dans la
 //!   barre de statut : une seule source, deux chemins (ADR-007).
@@ -64,17 +68,55 @@ const TURN_TIMEOUT: Duration = Duration::from_millis(250);
 /// Le délai laissé au terminal pour répondre à la négociation du protocole clavier.
 const PROTOCOL_TIMEOUT: Duration = Duration::from_millis(100);
 
+/// Le thème que la ligne de commande demande.
+///
+/// Deux thèmes, nommés plutôt que numérotés : `--theme 2` ne dirait rien à personne.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum ThemeChoice {
+    /// Turbo Vision, le thème par défaut.
+    #[default]
+    TurboVision,
+    /// Midnight Commander, compilé depuis son skin par défaut.
+    MidnightCommander,
+}
+
+impl ThemeChoice {
+    /// Le thème que désigne un nom, s'il en désigne un.
+    fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "tv" | "turbo-vision" => Some(Self::TurboVision),
+            "mc" | "midnight-commander" => Some(Self::MidnightCommander),
+            _ => None,
+        }
+    }
+
+    /// Le thème lui-même.
+    fn theme(self) -> AirTheme {
+        match self {
+            Self::TurboVision => AirTheme::turbo_vision(),
+            Self::MidnightCommander => AirTheme::midnight_commander(),
+        }
+    }
+}
+
 /// Ce que la ligne de commande demande.
 #[derive(Debug, PartialEq, Eq)]
 enum Request {
-    /// Éditer, éventuellement un fichier.
-    Edit(Option<PathBuf>),
+    /// Éditer, éventuellement un fichier, avec un thème.
+    Edit {
+        /// Le fichier à ouvrir, s'il y en a un.
+        path: Option<PathBuf>,
+        /// Le thème demandé.
+        theme: ThemeChoice,
+    },
     /// Afficher le mode d'emploi.
     Usage,
     /// Afficher la version.
     Version,
     /// Une option inconnue.
     Unknown(String),
+    /// Un thème inconnu — distinct d'une option inconnue, parce que le message diffère.
+    UnknownTheme(String),
 }
 
 /// Interprète la ligne de commande.
@@ -83,10 +125,21 @@ enum Request {
 /// promettrait des onglets qui n'existent pas.
 fn parse(arguments: &[String]) -> Request {
     let mut path: Option<PathBuf> = None;
+    let mut theme = ThemeChoice::default();
+    let mut awaiting_theme = false;
     for argument in arguments {
+        if awaiting_theme {
+            let Some(choice) = ThemeChoice::from_name(argument) else {
+                return Request::UnknownTheme(argument.clone());
+            };
+            theme = choice;
+            awaiting_theme = false;
+            continue;
+        }
         match argument.as_str() {
             "-h" | "--help" => return Request::Usage,
             "-V" | "--version" => return Request::Version,
+            "--theme" => awaiting_theme = true,
             other if other.starts_with('-') => return Request::Unknown(other.to_owned()),
             other => {
                 if path.is_none() {
@@ -95,18 +148,24 @@ fn parse(arguments: &[String]) -> Request {
             }
         }
     }
-    Request::Edit(path)
+    if awaiting_theme {
+        // `--theme` sans nom : ne rien dire et prendre le défaut serait le pire des deux
+        // mondes, puisque l'intention était explicite.
+        return Request::UnknownTheme(String::new());
+    }
+    Request::Edit { path, theme }
 }
 
 /// Le mode d'emploi.
 fn usage() -> String {
     format!(
-        "usage : redit [FICHIER]\n\
+        "usage : redit [--theme tv|mc] [FICHIER]\n\
          \n\
          Éditeur de texte en mode terminal, bâti sur air-tui.\n\
          \n\
            -h, --help     affiche ce message\n\
            -V, --version  affiche la version\n\
+               --theme    tv (Turbo Vision, par défaut) ou mc (Midnight Commander)\n\
          \n\
          Touches : F2 enregistrer, F3 ouvrir, F10 quitter, Ctrl+Y supprimer la ligne.\n\
          Version {}\n",
@@ -118,11 +177,11 @@ fn usage() -> String {
 ///
 /// L'ordre des quatre étapes est celui de l'ADR-007, et il n'est pas interchangeable :
 /// réagir **avant** de dessiner, sinon l'écran montre l'état d'avant la réaction.
-fn run(mut editor: Editor) -> Result<(), PlatformError> {
+fn run(mut editor: Editor, theme: AirTheme) -> Result<(), PlatformError> {
     // C'est ici, et nulle part ailleurs dans `redit`, que le choix de la plateforme est
     // fait : le cœur du framework ne connaît que le contrat (ADR-011).
     let device = PosixTerminal::open()?;
-    let mut application = AirApplication::new(Box::new(device), AirTheme::turbo_vision())?;
+    let mut application = AirApplication::new(Box::new(device), theme)?;
     // Sans lui, `Alt`+lettre n'arrive pas de façon fiable (ADR-003). Les événements reçus
     // pendant la négociation sont ignorés : l'écran n'est pas encore dessiné.
     let _ = application.enable_best_keyboard_protocol(PROTOCOL_TIMEOUT);
@@ -166,12 +225,20 @@ fn main() -> ExitCode {
             eprintln!("option inconnue : {option}\n\n{}", usage());
             ExitCode::FAILURE
         }
-        Request::Edit(path) => {
+        Request::UnknownTheme(name) if name.is_empty() => {
+            eprintln!("--theme attend un nom\n\n{}", usage());
+            ExitCode::FAILURE
+        }
+        Request::UnknownTheme(name) => {
+            eprintln!("thème inconnu : {name}\n\n{}", usage());
+            ExitCode::FAILURE
+        }
+        Request::Edit { path, theme } => {
             let mut editor = Editor::new(Document::new());
             if let Some(path) = path.as_deref() {
                 editor.open(path);
             }
-            match run(editor) {
+            match run(editor, theme.theme()) {
                 Ok(()) => ExitCode::SUCCESS,
                 Err(error) => {
                     // Le terminal a été restauré par la destruction d'`AirApplication`
@@ -188,7 +255,7 @@ fn main() -> ExitCode {
 mod tests {
     use std::path::PathBuf;
 
-    use super::{Request, parse, usage};
+    use super::{Request, ThemeChoice, parse, usage};
 
     fn arguments(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| (*value).to_owned()).collect()
@@ -196,14 +263,23 @@ mod tests {
 
     #[test]
     fn sans_argument_on_edite_un_document_vide() {
-        assert_eq!(parse(&arguments(&[])), Request::Edit(None));
+        assert_eq!(
+            parse(&arguments(&[])),
+            Request::Edit {
+                path: None,
+                theme: ThemeChoice::TurboVision
+            }
+        );
     }
 
     #[test]
     fn un_nom_de_fichier_est_retenu() {
         assert_eq!(
             parse(&arguments(&["essai.txt"])),
-            Request::Edit(Some(PathBuf::from("essai.txt")))
+            Request::Edit {
+                path: Some(PathBuf::from("essai.txt")),
+                theme: ThemeChoice::TurboVision
+            }
         );
     }
 
@@ -212,8 +288,95 @@ mod tests {
         // `redit` n'ouvre qu'une fenêtre : accepter le second promettrait des onglets.
         assert_eq!(
             parse(&arguments(&["un.txt", "deux.txt"])),
-            Request::Edit(Some(PathBuf::from("un.txt")))
+            Request::Edit {
+                path: Some(PathBuf::from("un.txt")),
+                theme: ThemeChoice::TurboVision
+            }
         );
+    }
+
+    #[test]
+    fn le_theme_par_defaut_est_turbo_vision() {
+        assert_eq!(ThemeChoice::default(), ThemeChoice::TurboVision);
+    }
+
+    #[test]
+    fn les_deux_themes_ont_un_nom_court_et_un_nom_long() {
+        assert_eq!(ThemeChoice::from_name("tv"), Some(ThemeChoice::TurboVision));
+        assert_eq!(
+            ThemeChoice::from_name("turbo-vision"),
+            Some(ThemeChoice::TurboVision)
+        );
+        assert_eq!(
+            ThemeChoice::from_name("mc"),
+            Some(ThemeChoice::MidnightCommander)
+        );
+        assert_eq!(
+            ThemeChoice::from_name("midnight-commander"),
+            Some(ThemeChoice::MidnightCommander)
+        );
+        assert_eq!(ThemeChoice::from_name("borland"), None);
+    }
+
+    #[test]
+    fn un_theme_demande_est_retenu_avec_le_fichier() {
+        assert_eq!(
+            parse(&arguments(&["--theme", "mc", "essai.txt"])),
+            Request::Edit {
+                path: Some(PathBuf::from("essai.txt")),
+                theme: ThemeChoice::MidnightCommander
+            }
+        );
+    }
+
+    #[test]
+    fn le_theme_peut_suivre_le_fichier() {
+        assert_eq!(
+            parse(&arguments(&["essai.txt", "--theme", "mc"])),
+            Request::Edit {
+                path: Some(PathBuf::from("essai.txt")),
+                theme: ThemeChoice::MidnightCommander
+            }
+        );
+    }
+
+    #[test]
+    fn un_nom_de_theme_n_est_pas_pris_pour_un_fichier() {
+        // Le piège d'une option à valeur : sans l'état d'attente, « mc » deviendrait le
+        // nom du fichier à ouvrir.
+        assert_eq!(
+            parse(&arguments(&["--theme", "mc"])),
+            Request::Edit {
+                path: None,
+                theme: ThemeChoice::MidnightCommander
+            }
+        );
+    }
+
+    #[test]
+    fn un_theme_inconnu_est_rapporte_comme_tel() {
+        assert_eq!(
+            parse(&arguments(&["--theme", "borland"])),
+            Request::UnknownTheme("borland".to_owned())
+        );
+    }
+
+    #[test]
+    fn un_theme_sans_nom_est_refuse() {
+        // Prendre le défaut en silence serait le pire des deux mondes : l'intention
+        // était explicite.
+        assert_eq!(
+            parse(&arguments(&["--theme"])),
+            Request::UnknownTheme(String::new())
+        );
+    }
+
+    #[test]
+    fn le_mode_d_emploi_cite_les_deux_themes() {
+        let text = usage();
+        assert!(text.contains("--theme"));
+        assert!(text.contains("tv"));
+        assert!(text.contains("mc"));
     }
 
     #[test]
@@ -244,7 +407,7 @@ mod tests {
     #[test]
     fn le_mode_d_emploi_cite_les_touches_et_la_version() {
         let text = usage();
-        assert!(text.contains("redit [FICHIER]"));
+        assert!(text.contains("redit [--theme tv|mc] [FICHIER]"));
         assert!(text.contains("F10"));
         assert!(text.contains(env!("CARGO_PKG_VERSION")));
     }
