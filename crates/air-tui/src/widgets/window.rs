@@ -8,10 +8,11 @@ use crate::cell::AirCell;
 use crate::command::{AirCommand, CLOSE};
 use crate::geometry::{AirColumn, AirPoint, AirRectangle, AirRow};
 use crate::input::event::{AirInputEvent, AirMouseButton, AirMouseEventKind};
-use crate::theme::{AirRole, AirTheme};
+use crate::theme::AirRole;
 use crate::view::painter::AirPainter;
 use crate::view::{
-    AirBorderStyle, AirContext, AirEvent, AirGroup, AirOutcome, AirView, AirViewId, AirViewState,
+    AirBorderStyle, AirContext, AirDrawContext, AirEvent, AirGroup, AirOutcome, AirView, AirViewId,
+    AirViewState,
 };
 
 /// La colonne où commence la case de fermeture, dans les coordonnées de la fenêtre.
@@ -137,12 +138,12 @@ impl AirView for AirWindow {
         self.group.state_mut()
     }
 
-    fn draw_content(&self, painter: &mut AirPainter<'_>, theme: &AirTheme) {
+    fn draw_content(&self, painter: &mut AirPainter<'_>, context: &AirDrawContext<'_>) {
         let role = match self.group.state().border_style() {
             AirBorderStyle::Single => AirRole::WindowInterior,
             AirBorderStyle::Double => AirRole::DialogInterior,
         };
-        let colors = theme.palette.color_pair(role);
+        let colors = context.theme.palette.color_pair(role);
         let size = painter.size();
         painter.fill_rectangle(
             AirRectangle::new(AirPoint::ORIGIN, size),
@@ -150,7 +151,7 @@ impl AirView for AirWindow {
         );
     }
 
-    fn draw_frame_decorations(&self, painter: &mut AirPainter<'_>, theme: &AirTheme) {
+    fn draw_frame_decorations(&self, painter: &mut AirPainter<'_>, context: &AirDrawContext<'_>) {
         if !self.shows_close_box() {
             return;
         }
@@ -170,9 +171,9 @@ impl AirView for AirWindow {
                 }
             }
         };
-        let frame = theme.palette.color_pair(frame_role);
-        let mark = theme.palette.color_pair(self.frame_icon_role());
-        let glyphs = theme.glyphs;
+        let frame = context.theme.palette.color_pair(frame_role);
+        let mark = context.theme.palette.color_pair(self.frame_icon_role());
+        let glyphs = context.theme.glyphs;
         for (offset, character, colors) in [
             (0_u16, glyphs.close_box_left, frame),
             (1, glyphs.close_box_mark, mark),
@@ -242,8 +243,8 @@ mod tests {
     use crate::theme::{AirRole, AirTheme};
     use crate::view::painter::AirPainter;
     use crate::view::{
-        AirBorderStyle, AirContext, AirEvent, AirOutcome, AirView, AirViewId, AirViewState,
-        dispatch_event, draw_view,
+        AirBorderStyle, AirContext, AirDrawContext, AirEvent, AirOutcome, AirView, AirViewId,
+        AirViewState, dispatch_event, draw_view,
     };
     use crate::widgets::AirStaticText;
 
@@ -331,7 +332,11 @@ mod tests {
             AirWindow::new(state(1, AirRectangle::new(AirPoint::ORIGIN, size))).with_title("air");
         {
             let mut painter = AirPainter::new(&mut surface);
-            draw_view(&window, &mut painter, &theme);
+            draw_view(
+                &window,
+                &mut painter,
+                &AirDrawContext::new(&theme, &AirCommandSet::new()),
+            );
         }
         let lines = rendered(&surface, size);
         assert_eq!(lines.first().map(String::as_str), Some("┌─[■] air ─────┐"));
@@ -348,7 +353,11 @@ mod tests {
             .with_title("TitreLong");
         {
             let mut painter = AirPainter::new(&mut surface);
-            draw_view(&window, &mut painter, &theme);
+            draw_view(
+                &window,
+                &mut painter,
+                &AirDrawContext::new(&theme, &AirCommandSet::new()),
+            );
         }
         let lines = rendered(&surface, size);
         let top = lines.first().map(String::as_str).unwrap_or_default();
@@ -363,7 +372,11 @@ mod tests {
         let window = AirWindow::new(state(1, AirRectangle::new(AirPoint::ORIGIN, size)));
         {
             let mut painter = AirPainter::new(&mut surface);
-            draw_view(&window, &mut painter, &theme);
+            draw_view(
+                &window,
+                &mut painter,
+                &AirDrawContext::new(&theme, &AirCommandSet::new()),
+            );
         }
         let expected = theme.palette.color_pair(AirRole::WindowFrameIcon);
         assert_eq!(
@@ -382,7 +395,11 @@ mod tests {
             AirWindow::new(state(1, AirRectangle::new(AirPoint::ORIGIN, size))).as_dialog();
         {
             let mut painter = AirPainter::new(&mut surface);
-            draw_view(&dialog, &mut painter, &theme);
+            draw_view(
+                &dialog,
+                &mut painter,
+                &AirDrawContext::new(&theme, &AirCommandSet::new()),
+            );
         }
         let expected = theme.palette.color_pair(AirRole::DialogFrameIcon);
         assert_eq!(
@@ -401,7 +418,11 @@ mod tests {
             AirWindow::new(state(1, AirRectangle::new(AirPoint::ORIGIN, size))).without_close_box();
         {
             let mut painter = AirPainter::new(&mut surface);
-            draw_view(&window, &mut painter, &theme);
+            draw_view(
+                &window,
+                &mut painter,
+                &AirDrawContext::new(&theme, &AirCommandSet::new()),
+            );
         }
         let lines = rendered(&surface, size);
         assert_eq!(lines.first().map(String::as_str), Some("┌──────────┐"));

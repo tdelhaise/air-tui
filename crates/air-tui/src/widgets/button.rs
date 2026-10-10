@@ -8,9 +8,9 @@ use crate::cell::{AirAttributes, AirCell};
 use crate::command::AirCommand;
 use crate::geometry::{AirColumn, AirPoint, AirRectangle, AirRow};
 use crate::input::event::{AirInputEvent, AirKey, AirMouseButton, AirMouseEventKind};
-use crate::theme::{AirRole, AirTheme};
+use crate::theme::AirRole;
 use crate::view::painter::AirPainter;
-use crate::view::{AirContext, AirEvent, AirOutcome, AirView, AirViewState};
+use crate::view::{AirContext, AirDrawContext, AirEvent, AirOutcome, AirView, AirViewState};
 use crate::widgets::hotkey::split_hotkey;
 
 /// Un bouton.
@@ -99,9 +99,11 @@ impl AirView for AirButton {
         &mut self.state
     }
 
-    fn draw_content(&self, painter: &mut AirPainter<'_>, theme: &AirTheme) {
-        let enabled = self.state.is_enabled();
-        let colors = theme.palette.color_pair(self.label_role(enabled));
+    fn draw_content(&self, painter: &mut AirPainter<'_>, context: &AirDrawContext<'_>) {
+        // Deux raisons de griser, et il faut les deux : la vue peut être désactivée
+        // elle-même, et sa commande peut l'être globalement (ADR-007, mécanisme 3).
+        let enabled = self.state.is_enabled() && context.is_command_enabled(self.command);
+        let colors = context.theme.palette.color_pair(self.label_role(enabled));
         let size = painter.size();
         painter.fill_rectangle(
             AirRectangle::new(AirPoint::ORIGIN, size),
@@ -122,7 +124,7 @@ impl AirView for AirButton {
         // La lettre d'accès rapide reste lisible même désactivée : la griser avec le reste
         // vaut mieux que de la laisser en jaune sur un bouton inactif.
         let hotkey_colors = if enabled {
-            theme.palette.color_pair(AirRole::ButtonHotkey)
+            context.theme.palette.color_pair(AirRole::ButtonHotkey)
         } else {
             colors
         };
@@ -217,8 +219,8 @@ mod tests {
     use crate::theme::{AirRole, AirTheme};
     use crate::view::painter::AirPainter;
     use crate::view::{
-        AirContext, AirEvent, AirOutcome, AirView, AirViewId, AirViewState, dispatch_event,
-        draw_view,
+        AirContext, AirDrawContext, AirEvent, AirOutcome, AirView, AirViewId, AirViewState,
+        dispatch_event, draw_view,
     };
 
     fn state(bounds: AirRectangle) -> AirViewState {
@@ -298,7 +300,11 @@ mod tests {
         let view = AirButton::new(state(AirRectangle::new(AirPoint::ORIGIN, size)), "~O~K", OK);
         {
             let mut painter = AirPainter::new(&mut surface);
-            draw_view(&view, &mut painter, &theme);
+            draw_view(
+                &view,
+                &mut painter,
+                &AirDrawContext::new(&theme, &AirCommandSet::new()),
+            );
         }
         // Dix colonnes, deux caractères visibles : quatre espaces de chaque côté.
         assert_eq!(rendered(&surface, size), "    OK    ");
@@ -312,7 +318,11 @@ mod tests {
         let view = AirButton::new(state(AirRectangle::new(AirPoint::ORIGIN, size)), "~O~K", OK);
         {
             let mut painter = AirPainter::new(&mut surface);
-            draw_view(&view, &mut painter, &theme);
+            draw_view(
+                &view,
+                &mut painter,
+                &AirDrawContext::new(&theme, &AirCommandSet::new()),
+            );
         }
         let hotkey = theme.palette.color_pair(AirRole::ButtonHotkey);
         let normal = theme.palette.color_pair(AirRole::ButtonNormal);
@@ -352,7 +362,11 @@ mod tests {
             view.state_mut().set_enabled(!disabled);
             {
                 let mut painter = AirPainter::new(&mut surface);
-                draw_view(&view, &mut painter, &theme);
+                draw_view(
+                    &view,
+                    &mut painter,
+                    &AirDrawContext::new(&theme, &AirCommandSet::new()),
+                );
             }
             let colors = theme.palette.color_pair(expected);
             assert_eq!(

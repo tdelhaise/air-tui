@@ -4,9 +4,11 @@
 
 //! Le panneau — un conteneur bordé, à titre optionnel.
 
-use crate::theme::{AirRole, AirTheme};
+use crate::theme::AirRole;
 use crate::view::painter::AirPainter;
-use crate::view::{AirContext, AirEvent, AirGroup, AirOutcome, AirView, AirViewId, AirViewState};
+use crate::view::{
+    AirContext, AirDrawContext, AirEvent, AirGroup, AirOutcome, AirView, AirViewId, AirViewState,
+};
 
 /// Un conteneur bordé qui porte un titre.
 ///
@@ -67,8 +69,8 @@ impl AirView for AirPanel {
         self.group.state_mut()
     }
 
-    fn draw_content(&self, painter: &mut AirPainter<'_>, theme: &AirTheme) {
-        let colors = theme.palette.color_pair(AirRole::WindowInterior);
+    fn draw_content(&self, painter: &mut AirPainter<'_>, context: &AirDrawContext<'_>) {
+        let colors = context.theme.palette.color_pair(AirRole::WindowInterior);
         let size = painter.size();
         painter.fill_rectangle(
             crate::geometry::AirRectangle::new(crate::geometry::AirPoint::ORIGIN, size),
@@ -113,8 +115,8 @@ mod tests {
     use crate::theme::AirTheme;
     use crate::view::painter::AirPainter;
     use crate::view::{
-        AirContext, AirEvent, AirOutcome, AirView, AirViewId, AirViewState, dispatch_event,
-        draw_view,
+        AirContext, AirDrawContext, AirEvent, AirOutcome, AirView, AirViewId, AirViewState,
+        dispatch_event, draw_view,
     };
     use crate::widgets::AirStaticText;
 
@@ -190,7 +192,11 @@ mod tests {
         )));
         {
             let mut painter = AirPainter::new(&mut surface);
-            draw_view(&panel, &mut painter, &theme);
+            draw_view(
+                &panel,
+                &mut painter,
+                &AirDrawContext::new(&theme, &AirCommandSet::new()),
+            );
         }
         let lines = rendered(&surface, size);
         assert_eq!(lines.first().map(String::as_str), Some("┌── Air ──┐"));

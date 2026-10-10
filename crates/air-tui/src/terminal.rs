@@ -15,7 +15,7 @@ use std::time::Instant;
 use air_tui_platform::{Decoder, Encoder, InputReadiness, PlatformError, TerminalDevice};
 
 use crate::codec::{AirCellPresentation, AirSgrEncoder, decimal::push_decimal};
-use crate::geometry::AirSize;
+use crate::geometry::{AirPoint, AirSize};
 use crate::input::ansi::AirAnsiDecoder;
 use crate::input::event::AirInputEvent;
 use crate::input::kitty::{
@@ -49,6 +49,8 @@ pub struct AirTerminal {
     keyboard_protocol: AirKeyboardProtocol,
     /// Ce que le terminal sait afficher en couleurs.
     color_depth: AirColorDepth,
+    /// Où poser le curseur matériel à la prochaine image, s'il doit se voir.
+    cursor: Option<AirPoint>,
 }
 
 impl core::fmt::Debug for AirTerminal {
@@ -79,10 +81,27 @@ impl AirTerminal {
             keyboard_protocol: AirKeyboardProtocol::Legacy,
             // Déduite de l'environnement au démarrage ; l'application peut la forcer.
             color_depth: AirColorDepth::from_environment(),
+            // Caché jusqu'à ce qu'une vue focalisée en réclame un.
+            cursor: None,
         };
         terminal.device.write_output(b"\x1b[?1049h\x1b[?25l")?;
         terminal.device.flush_output()?;
         Ok(terminal)
+    }
+
+    /// Où poser le curseur matériel, ou `None` pour le cacher.
+    ///
+    /// C'est exactement ce que rend [`crate::view::draw_view`] : la boucle d'application
+    /// transmet sans interpréter. Le terminal ne connaît pas l'arbre de vues, et l'arbre
+    /// ne connaît pas le terminal.
+    pub const fn set_cursor(&mut self, cursor: Option<AirPoint>) {
+        self.cursor = cursor;
+    }
+
+    /// Où le curseur sera posé à la prochaine image.
+    #[must_use]
+    pub const fn cursor(&self) -> Option<AirPoint> {
+        self.cursor
     }
 
     /// La taille courante du terminal.
@@ -346,7 +365,21 @@ impl AirTerminal {
             );
         }
 
-        self.output.extend_from_slice(b"\x1b[0m\x1b[?2026l");
+        // Le curseur est posé **après** les cellules : l'écriture de la dernière cellule
+        // l'a laissé là où elle s'est terminée, et le laisser visible à cet endroit le
+        // ferait clignoter n'importe où.
+        self.output.extend_from_slice(b"\x1b[0m");
+        match self.cursor {
+            Some(position) => {
+                self.output.extend_from_slice(b"\x1b[");
+                push_decimal(&mut self.output, position.row.value().saturating_add(1));
+                self.output.push(b';');
+                push_decimal(&mut self.output, position.column.value().saturating_add(1));
+                self.output.extend_from_slice(b"H\x1b[?25h");
+            }
+            None => self.output.extend_from_slice(b"\x1b[?25l"),
+        }
+        self.output.extend_from_slice(b"\x1b[?2026l");
         // Le tampon est pris par valeur le temps de l'écriture pour ne pas emprunter
         // `self` deux fois.
         let payload = core::mem::take(&mut self.output);
@@ -609,6 +642,12 @@ mod tests {
     /// On ne vérifie pas une chaîne d'octets attendue : ce serait figer une mise en forme
     /// sans prouver que l'image est juste. On rejoue, et on compare ce que le terminal
     /// aurait affiché.
+    /// Vrai si la sortie se termine par cette séquence.
+    fn ends_with(emitted: &[u8], suffix: &[u8]) -> bool {
+        emitted.len() >= suffix.len()
+            && emitted.get(emitted.len().saturating_sub(suffix.len())..) == Some(suffix)
+    }
+
     fn replay(written: &[u8]) -> Vec<(u16, u16, char)> {
         let text = String::from_utf8_lossy(written);
         let mut replayed = Vec::new();
@@ -690,6 +729,56 @@ mod tests {
         }
         let replayed = replay(&collected);
         assert_eq!(replayed.first(), Some(&(1, 1, 'A')));
+    }
+
+    #[test]
+    fn sans_curseur_le_rendu_le_cache() {
+        // L'état initial : aucune vue focalisée n'en réclame, le terminal n'en montre pas.
+        let mut surface = AirSurface::new(AirSize::new(2, 1));
+        let recorder = RecordingDevice {
+            size: Some(WindowSize {
+                columns: 2,
+                rows: 1,
+            }),
+            ..RecordingDevice::default()
+        };
+        let mut terminal = AirTerminal::new(Box::new(recorder)).expect("construction");
+        assert_eq!(terminal.cursor(), None);
+        terminal.present(&mut surface).expect("rendu");
+        let emitted = terminal.output.clone();
+        assert!(ends_with(&emitted, b"\x1b[?25l\x1b[?2026l"), "{emitted:?}");
+    }
+
+    #[test]
+    fn le_curseur_est_pose_apres_les_cellules() {
+        // L'écriture de la dernière cellule laisse le curseur là où elle s'est terminée :
+        // le poser avant le ferait clignoter n'importe où.
+        let mut surface = AirSurface::new(AirSize::new(4, 2));
+        surface.mark_presented();
+        surface.set_cell(
+            AirPoint::new(AirColumn::new(3), AirRow::new(1)),
+            AirCell::new('Z', AirColor::WHITE, AirColor::BLUE),
+        );
+        let recorder = RecordingDevice {
+            size: Some(WindowSize {
+                columns: 4,
+                rows: 2,
+            }),
+            ..RecordingDevice::default()
+        };
+        let mut terminal = AirTerminal::new(Box::new(recorder)).expect("construction");
+        terminal.set_cursor(Some(AirPoint::new(AirColumn::new(1), AirRow::new(0))));
+        assert_eq!(
+            terminal.cursor(),
+            Some(AirPoint::new(AirColumn::new(1), AirRow::new(0)))
+        );
+        terminal.present(&mut surface).expect("rendu");
+        let emitted = terminal.output.clone();
+        // Comptées depuis un, comme toute coordonnée ANSI.
+        assert!(
+            ends_with(&emitted, b"\x1b[1;2H\x1b[?25h\x1b[?2026l"),
+            "{emitted:?}"
+        );
     }
 
     #[test]

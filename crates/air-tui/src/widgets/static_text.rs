@@ -6,9 +6,9 @@
 
 use crate::cell::AirAttributes;
 use crate::geometry::{AirColumn, AirPoint, AirRow};
-use crate::theme::{AirRole, AirTheme};
+use crate::theme::AirRole;
 use crate::view::painter::AirPainter;
-use crate::view::{AirView, AirViewState};
+use crate::view::{AirDrawContext, AirView, AirViewState};
 
 /// Une ligne de texte qui ne réagit à rien.
 ///
@@ -65,8 +65,8 @@ impl AirView for AirStaticText {
         &mut self.state
     }
 
-    fn draw_content(&self, painter: &mut AirPainter<'_>, theme: &AirTheme) {
-        let colors = theme.palette.color_pair(self.role);
+    fn draw_content(&self, painter: &mut AirPainter<'_>, context: &AirDrawContext<'_>) {
+        let colors = context.theme.palette.color_pair(self.role);
         painter.draw_text(
             AirPoint::new(AirColumn::FIRST, AirRow::FIRST),
             &self.text,
@@ -90,11 +90,12 @@ impl core::fmt::Debug for AirStaticText {
 #[cfg(test)]
 mod tests {
     use super::AirStaticText;
+    use crate::command::AirCommandSet;
     use crate::geometry::{AirColumn, AirPoint, AirRectangle, AirRow, AirSize};
     use crate::surface::AirSurface;
     use crate::theme::{AirRole, AirTheme};
     use crate::view::painter::AirPainter;
-    use crate::view::{AirView, AirViewId, AirViewState, draw_view};
+    use crate::view::{AirDrawContext, AirView, AirViewId, AirViewState, draw_view};
 
     fn state(value: u32, bounds: AirRectangle) -> AirViewState {
         AirViewState::new(
@@ -143,7 +144,11 @@ mod tests {
         let label = AirStaticText::new(state(1, AirRectangle::new(AirPoint::ORIGIN, size)), "abc");
         {
             let mut painter = AirPainter::new(&mut surface);
-            draw_view(&label, &mut painter, &theme);
+            draw_view(
+                &label,
+                &mut painter,
+                &AirDrawContext::new(&theme, &AirCommandSet::new()),
+            );
         }
         assert_eq!(rendered(&surface, size), vec!["abc   ".to_owned()]);
     }
@@ -159,7 +164,11 @@ mod tests {
         );
         {
             let mut painter = AirPainter::new(&mut surface);
-            draw_view(&label, &mut painter, &theme);
+            draw_view(
+                &label,
+                &mut painter,
+                &AirDrawContext::new(&theme, &AirCommandSet::new()),
+            );
         }
         assert_eq!(rendered(&surface, size), vec!["abc".to_owned()]);
     }
@@ -173,7 +182,11 @@ mod tests {
             .with_role(AirRole::StatusLine);
         {
             let mut painter = AirPainter::new(&mut surface);
-            draw_view(&label, &mut painter, &theme);
+            draw_view(
+                &label,
+                &mut painter,
+                &AirDrawContext::new(&theme, &AirCommandSet::new()),
+            );
         }
         let expected = theme.palette.color_pair(AirRole::StatusLine);
         assert_eq!(

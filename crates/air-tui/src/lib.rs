@@ -6,10 +6,14 @@
 //!
 //! # État
 //!
-//! **Préliminaire.** Seul le socle du jalon M0 existe : la géométrie, la cellule, la
-//! surface différentielle, le terminal en RAII et un thème minimal. L'arbre de vues, les
-//! widgets, le parseur d'entrée et la couche MVC ne sont **pas** écrits — voir
-//! `docs/etat-avancement.md`.
+//! **Utilisable, incomplet.** Ce qui existe : la géométrie, la cellule, la surface
+//! différentielle, le terminal en RAII, le décodeur d'entrée et le protocole clavier
+//! Kitty, les tables Unicode, l'arbre de vues à découpage réel, le moteur de thèmes et
+//! huit widgets. L'exemple `frame` en fait une application qui répond.
+//!
+//! Ce qui n'existe **pas** encore : `AirApplication`, `AirScreen` et `AirDesktop` —
+//! l'application monte sa boucle et son arbre à la main —, le journal de changements de
+//! la couche MVC, l'éditeur de texte, et les listes. Voir `docs/etat-avancement.md`.
 //!
 //! # Architecture
 //!
@@ -44,7 +48,9 @@ pub mod unicode;
 pub mod view;
 pub mod widgets;
 
-pub use air_tui_platform::{InputReadiness, PlatformError, PlatformErrorKind, TerminalDevice};
+pub use air_tui_platform::{
+    Decoder, Encoder, InputReadiness, PlatformError, PlatformErrorKind, TerminalDevice,
+};
 pub use cell::{AirAttributes, AirCell, AirColor};
 pub use codec::{AirCellPresentation, AirSgrEncoder};
 pub use command::{AirCommand, AirCommandSet};
@@ -65,4 +71,7 @@ pub use view::{
     AirBorderStyle, AirContext, AirEvent, AirGroup, AirOutcome, AirPainter, AirPhase, AirView,
     AirViewId, AirViewState, dispatch_event, draw_view,
 };
-pub use widgets::{AirPanel, AirStaticText};
+pub use widgets::{
+    AirButton, AirInputLine, AirMenu, AirMenuBar, AirMenuItem, AirPanel, AirStaticText,
+    AirStatusItem, AirStatusLine, AirWindow,
+};

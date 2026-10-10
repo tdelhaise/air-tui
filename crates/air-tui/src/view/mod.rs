@@ -225,6 +225,37 @@ impl AirEvent {
     }
 }
 
+/// Ce qu'une vue peut consulter pendant qu'elle se dessine.
+///
+/// Le jeu de commandes en fait partie, et ce n'est pas un détail : l'ADR-007 fonde le
+/// grisage sur du *pull* — « chaque vue interroge le jeu au moment où elle se dessine ».
+/// Sans le jeu dans le chemin de dessin, cette phrase serait fausse et un item de menu ne
+/// pourrait pas se griser tout seul.
+#[derive(Debug, Clone, Copy)]
+pub struct AirDrawContext<'draw> {
+    /// Le thème en vigueur.
+    pub theme: &'draw AirTheme,
+    /// Le jeu d'activation des commandes, en lecture seule.
+    pub commands: &'draw AirCommandSet,
+}
+
+impl<'draw> AirDrawContext<'draw> {
+    /// Un contexte de dessin.
+    #[must_use]
+    pub const fn new(theme: &'draw AirTheme, commands: &'draw AirCommandSet) -> Self {
+        Self { theme, commands }
+    }
+
+    /// Vrai si la commande est active.
+    ///
+    /// Raccourci du geste que fait tout widget grisable, pour qu'il ne traverse pas la
+    /// structure à la main.
+    #[must_use]
+    pub fn is_command_enabled(&self, command: AirCommand) -> bool {
+        self.commands.is_enabled(command)
+    }
+}
+
 /// Ce qu'une vue peut consulter et modifier pendant le traitement d'un événement.
 #[derive(Debug)]
 pub struct AirContext<'commands> {
@@ -407,7 +438,7 @@ pub trait AirView {
     ///
     /// Le peintre reçu est déjà découpé à l'intérieur de la bordure : une vue ne peut pas
     /// écrire sur son propre cadre, même en essayant.
-    fn draw_content(&self, painter: &mut AirPainter<'_>, theme: &AirTheme);
+    fn draw_content(&self, painter: &mut AirPainter<'_>, context: &AirDrawContext<'_>);
 
     /// Traite un événement. Par défaut, la vue n'est concernée par rien.
     fn handle_event(&mut self, event: &mut AirEvent, context: &mut AirContext<'_>) -> AirOutcome {
@@ -430,8 +461,18 @@ pub trait AirView {
     /// explicite. Une case de fermeture est sur le cadre par définition ; la lui interdire
     /// obligerait à la dessiner depuis le propriétaire, qui n'a aucune raison de la
     /// connaître.
-    fn draw_frame_decorations(&self, painter: &mut AirPainter<'_>, theme: &AirTheme) {
-        let _ = (painter, theme);
+    fn draw_frame_decorations(&self, painter: &mut AirPainter<'_>, context: &AirDrawContext<'_>) {
+        let _ = (painter, context);
+    }
+
+    /// La position du curseur dans la **zone de contenu**, s'il y en a un.
+    ///
+    /// Seule une vue **focalisée** voit son curseur retenu : c'est la traversée qui
+    /// applique cette règle, pas la vue. Un champ de saisie peut donc répondre sans
+    /// savoir s'il a le focus, et deux champs ne peuvent pas revendiquer le curseur en
+    /// même temps.
+    fn cursor(&self) -> Option<AirPoint> {
+        None
     }
 
     /// Les vues contenues, de l'arrière vers l'avant. Vide par défaut.
@@ -445,44 +486,60 @@ pub trait AirView {
     }
 }
 
-/// Dessine une vue et sa descendance.
+/// Dessine une vue et sa descendance, et rend la position **absolue** du curseur.
 ///
 /// `painter` doit être déjà borné aux limites de `view`. L'ordre est celui de Turbo
 /// Vision : la bordure, le contenu, puis les enfants de l'arrière vers l'avant — ce qui
 /// fait qu'une fenêtre au premier plan recouvre celles d'en dessous sans rien savoir
 /// d'elles.
-pub fn draw_view(view: &dyn AirView, painter: &mut AirPainter<'_>, theme: &AirTheme) {
+///
+/// Le curseur rendu est celui de la vue focalisée **la plus profonde** : la descente
+/// retient le dernier trouvé. Une vue non focalisée n'en publie pas, et un curseur qui
+/// n'a pas passé le découpage n'en est pas un — il serait allé s'afficher sur la vue qui
+/// recouvre.
+pub fn draw_view(
+    view: &dyn AirView,
+    painter: &mut AirPainter<'_>,
+    context: &AirDrawContext<'_>,
+) -> Option<AirPoint> {
     if !view.state().is_visible() {
-        return;
+        return None;
     }
     if view.state().has_border() {
-        draw_border(view.state(), painter, theme);
+        draw_border(view.state(), painter, context.theme);
         if let Some(title) = view.title() {
-            draw_title(painter, theme, title);
+            draw_title(painter, context.theme, title);
         }
-        view.draw_frame_decorations(painter, theme);
+        view.draw_frame_decorations(painter, context);
     }
     let own_size = painter.size();
     let whole = AirRectangle::new(AirPoint::ORIGIN, own_size);
-    let content = if view.state().has_border() {
+    let interior = if view.state().has_border() {
         whole.inset(1)
     } else {
         Some(whole)
     };
-    let Some(content) = content else {
+    let Some(interior) = interior else {
         // Bordée et trop petite pour avoir un intérieur : le cadre est dessiné, le
         // contenu n'a nulle part où aller.
-        return;
+        return None;
     };
-    let Some(mut content_painter) = painter.child(content) else {
-        return;
+    let mut interior_painter = painter.child(interior)?;
+    view.draw_content(&mut interior_painter, context);
+    let mut cursor = if view.state().is_focused() {
+        view.cursor()
+            .and_then(|point| interior_painter.absolute_position(point))
+    } else {
+        None
     };
-    view.draw_content(&mut content_painter, theme);
     for child in view.children() {
-        if let Some(mut child_painter) = content_painter.child(child.state().bounds()) {
-            draw_view(child.as_ref(), &mut child_painter, theme);
+        if let Some(mut child_painter) = interior_painter.child(child.state().bounds())
+            && let Some(found) = draw_view(child.as_ref(), &mut child_painter, context)
+        {
+            cursor = Some(found);
         }
     }
+    cursor
 }
 
 /// Trace la bordure d'une vue avec les glyphes et les couleurs du thème.
@@ -709,8 +766,9 @@ mod tests {
     use std::rc::Rc;
 
     use super::{
-        AirBorderStyle, AirContext, AirEvent, AirGroup, AirOutcome, AirPainter, AirPhase, AirView,
-        AirViewId, AirViewState, dispatch_event, draw_view, frame_glyphs, minimum_bordered_size,
+        AirBorderStyle, AirContext, AirDrawContext, AirEvent, AirGroup, AirOutcome, AirPainter,
+        AirPhase, AirView, AirViewId, AirViewState, dispatch_event, draw_view, frame_glyphs,
+        minimum_bordered_size,
     };
     use crate::cell::{AirAttributes, AirCell, AirColor};
     use crate::command::{AirCommandSet, SAVE};
@@ -761,6 +819,8 @@ mod tests {
         consumes: bool,
         /// Ce qu'elle rend.
         outcome: AirOutcome,
+        /// Le curseur qu'elle réclame, en coordonnées de son contenu.
+        cursor: Option<AirPoint>,
     }
 
     impl Spy {
@@ -772,11 +832,17 @@ mod tests {
                 positions: Vec::new(),
                 consumes: false,
                 outcome: AirOutcome::Ignored,
+                cursor: None,
             }
         }
 
         fn without_border(mut self) -> Self {
             self.state.set_border(false);
+            self
+        }
+
+        fn with_cursor(mut self, column: u16, row: u16) -> Self {
+            self.cursor = Some(AirPoint::new(AirColumn::new(column), AirRow::new(row)));
             self
         }
     }
@@ -790,7 +856,11 @@ mod tests {
             &mut self.state
         }
 
-        fn draw_content(&self, painter: &mut AirPainter<'_>, _theme: &AirTheme) {
+        fn cursor(&self) -> Option<AirPoint> {
+            self.cursor
+        }
+
+        fn draw_content(&self, painter: &mut AirPainter<'_>, _context: &AirDrawContext<'_>) {
             let size = painter.size();
             painter.fill_rectangle(
                 AirRectangle::new(AirPoint::ORIGIN, size),
@@ -926,6 +996,65 @@ mod tests {
 
     // ------------------------------------------------------- dessin
 
+    /// Dessine une vue sur une surface neuve et rend le curseur absolu.
+    fn cursor_of(view: &dyn AirView, size: AirSize) -> Option<AirPoint> {
+        let theme = AirTheme::turbo_vision();
+        let mut surface = AirSurface::new(size);
+        let mut painter = AirPainter::new(&mut surface);
+        draw_view(
+            view,
+            &mut painter,
+            &AirDrawContext::new(&theme, &AirCommandSet::new()),
+        )
+    }
+
+    #[test]
+    fn seule_une_vue_focalisee_publie_son_curseur() {
+        // La règle est appliquée par la traversée : la vue répond toujours, et deux vues
+        // ne peuvent donc pas revendiquer le curseur en même temps.
+        let size = AirSize::new(10, 4);
+        let mut view =
+            Spy::new(1, AirRectangle::new(AirPoint::ORIGIN, size), '.').with_cursor(2, 1);
+        assert_eq!(cursor_of(&view, size), None);
+        view.state.set_focused(true);
+        // La vue est bordée : son contenu commence en (1, 1), le curseur est donc en (3, 2).
+        assert_eq!(cursor_of(&view, size), Some(point(3, 2)));
+    }
+
+    #[test]
+    fn le_curseur_retenu_est_celui_du_descendant_le_plus_profond() {
+        let size = AirSize::new(20, 10);
+        let mut group = AirGroup::new(state(1, AirRectangle::new(AirPoint::ORIGIN, size)));
+        group.state_mut().set_focused(true);
+        let mut child = Spy::new(2, AirRectangle::from_parts(3, 2, 8, 3), '.');
+        child.state.set_focused(true);
+        child.cursor = Some(point(1, 0));
+        group.insert(Box::new(child));
+        // Le groupe est bordé — contenu en (1, 1) ; l'enfant est bordé aussi — contenu en
+        // (1, 1) de lui-même. Soit 1 + 3 + 1 + 1 en colonne et 1 + 2 + 1 + 0 en ligne.
+        assert_eq!(cursor_of(&group, size), Some(point(6, 4)));
+    }
+
+    #[test]
+    fn un_curseur_hors_du_decoupage_n_est_pas_rendu() {
+        // Sinon il irait clignoter sur la vue qui recouvre.
+        let size = AirSize::new(10, 4);
+        let mut view =
+            Spy::new(1, AirRectangle::new(AirPoint::ORIGIN, size), '.').with_cursor(50, 0);
+        view.state.set_focused(true);
+        assert_eq!(cursor_of(&view, size), None);
+    }
+
+    #[test]
+    fn une_vue_invisible_ne_publie_pas_de_curseur() {
+        let size = AirSize::new(10, 4);
+        let mut view =
+            Spy::new(1, AirRectangle::new(AirPoint::ORIGIN, size), '.').with_cursor(2, 1);
+        view.state.set_focused(true);
+        view.state.set_visible(false);
+        assert_eq!(cursor_of(&view, size), None);
+    }
+
     #[test]
     fn une_vue_bordee_dessine_son_cadre_avec_les_glyphes_du_theme() {
         let theme = AirTheme::turbo_vision();
@@ -934,7 +1063,11 @@ mod tests {
         let view = Spy::new(1, AirRectangle::new(AirPoint::ORIGIN, size), '.');
         {
             let mut painter = AirPainter::new(&mut surface);
-            draw_view(&view, &mut painter, &theme);
+            draw_view(
+                &view,
+                &mut painter,
+                &AirDrawContext::new(&theme, &AirCommandSet::new()),
+            );
         }
         assert_eq!(
             rendered(&surface, size),
@@ -957,7 +1090,11 @@ mod tests {
         let view = Spy::new(1, AirRectangle::new(AirPoint::ORIGIN, size), '#');
         {
             let mut painter = AirPainter::new(&mut surface);
-            draw_view(&view, &mut painter, &theme);
+            draw_view(
+                &view,
+                &mut painter,
+                &AirDrawContext::new(&theme, &AirCommandSet::new()),
+            );
         }
         let lines = rendered(&surface, size);
         assert_eq!(lines.get(1).map(String::as_str), Some("│####│"));
@@ -971,7 +1108,11 @@ mod tests {
         let view = Spy::new(1, AirRectangle::new(AirPoint::ORIGIN, size), '*').without_border();
         {
             let mut painter = AirPainter::new(&mut surface);
-            draw_view(&view, &mut painter, &theme);
+            draw_view(
+                &view,
+                &mut painter,
+                &AirDrawContext::new(&theme, &AirCommandSet::new()),
+            );
         }
         assert_eq!(
             rendered(&surface, size),
@@ -988,7 +1129,11 @@ mod tests {
         view.state.set_visible(false);
         {
             let mut painter = AirPainter::new(&mut surface);
-            draw_view(&view, &mut painter, &theme);
+            draw_view(
+                &view,
+                &mut painter,
+                &AirDrawContext::new(&theme, &AirCommandSet::new()),
+            );
         }
         assert_eq!(
             rendered(&surface, size),
@@ -1004,7 +1149,11 @@ mod tests {
         let view = Spy::new(1, AirRectangle::new(AirPoint::ORIGIN, size), '#');
         {
             let mut painter = AirPainter::new(&mut surface);
-            draw_view(&view, &mut painter, &theme);
+            draw_view(
+                &view,
+                &mut painter,
+                &AirDrawContext::new(&theme, &AirCommandSet::new()),
+            );
         }
         assert_eq!(
             rendered(&surface, size),
@@ -1020,7 +1169,11 @@ mod tests {
         let view = Spy::new(1, AirRectangle::new(AirPoint::ORIGIN, size), '#');
         {
             let mut painter = AirPainter::new(&mut surface);
-            draw_view(&view, &mut painter, &theme);
+            draw_view(
+                &view,
+                &mut painter,
+                &AirDrawContext::new(&theme, &AirCommandSet::new()),
+            );
         }
         assert_eq!(rendered(&surface, size), vec![" ".to_owned()]);
     }
@@ -1037,7 +1190,11 @@ mod tests {
         ));
         {
             let mut painter = AirPainter::new(&mut surface);
-            draw_view(&group, &mut painter, &theme);
+            draw_view(
+                &group,
+                &mut painter,
+                &AirDrawContext::new(&theme, &AirCommandSet::new()),
+            );
         }
         let lines = rendered(&surface, size);
         assert_eq!(lines.get(1).map(String::as_str), Some("│xx  │"));
@@ -1055,7 +1212,11 @@ mod tests {
         ));
         {
             let mut painter = AirPainter::new(&mut surface);
-            draw_view(&group, &mut painter, &theme);
+            draw_view(
+                &group,
+                &mut painter,
+                &AirDrawContext::new(&theme, &AirCommandSet::new()),
+            );
         }
         let lines = rendered(&surface, size);
         assert_eq!(lines.get(1).map(String::as_str), Some("│xxxx│"));
@@ -1071,7 +1232,7 @@ mod tests {
             fn state_mut(&mut self) -> &mut AirViewState {
                 &mut self.0
             }
-            fn draw_content(&self, _painter: &mut AirPainter<'_>, _theme: &AirTheme) {}
+            fn draw_content(&self, _painter: &mut AirPainter<'_>, _context: &AirDrawContext<'_>) {}
             fn title(&self) -> Option<&str> {
                 Some("Air")
             }
@@ -1082,7 +1243,11 @@ mod tests {
         let view = Titled(state(1, AirRectangle::new(AirPoint::ORIGIN, size)));
         {
             let mut painter = AirPainter::new(&mut surface);
-            draw_view(&view, &mut painter, &theme);
+            draw_view(
+                &view,
+                &mut painter,
+                &AirDrawContext::new(&theme, &AirCommandSet::new()),
+            );
         }
         let lines = rendered(&surface, size);
         assert_eq!(lines.first().map(String::as_str), Some("┌── Air ───┐"));
@@ -1104,7 +1269,11 @@ mod tests {
         view.state.set_border_style(AirBorderStyle::Double);
         {
             let mut painter = AirPainter::new(&mut surface);
-            draw_view(&view, &mut painter, &theme);
+            draw_view(
+                &view,
+                &mut painter,
+                &AirDrawContext::new(&theme, &AirCommandSet::new()),
+            );
         }
         let lines = rendered(&surface, size);
         assert_eq!(lines.first().map(String::as_str), Some("╔══╗"));
@@ -1236,7 +1405,7 @@ mod tests {
             fn state_mut(&mut self) -> &mut AirViewState {
                 &mut self.state
             }
-            fn draw_content(&self, _painter: &mut AirPainter<'_>, _theme: &AirTheme) {}
+            fn draw_content(&self, _painter: &mut AirPainter<'_>, _context: &AirDrawContext<'_>) {}
             fn handle_event(
                 &mut self,
                 event: &mut AirEvent,
@@ -1358,7 +1527,11 @@ mod tests {
         outer.insert(Box::new(inner));
         {
             let mut painter = AirPainter::new(&mut surface);
-            draw_view(&outer, &mut painter, &theme);
+            draw_view(
+                &outer,
+                &mut painter,
+                &AirDrawContext::new(&theme, &AirCommandSet::new()),
+            );
         }
         // Bordure externe (1,1), bordure interne (2,2), enfant en (2,2).
         assert_eq!(
@@ -1379,7 +1552,11 @@ mod tests {
         ));
         {
             let mut painter = AirPainter::new(&mut surface);
-            draw_view(&group, &mut painter, &theme);
+            draw_view(
+                &group,
+                &mut painter,
+                &AirDrawContext::new(&theme, &AirCommandSet::new()),
+            );
             let mut direct = AirPainter::new(&mut surface);
             direct.draw_text(
                 point(3, 0),

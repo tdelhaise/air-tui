@@ -3,7 +3,8 @@
 Document de suivi **vivant** : où en est-on, quelle est la prochaine tâche. Il se met à
 jour à chaque session. L'historique figé est dans [`JOURNAL.md`](JOURNAL.md).
 
-**Dernière mise à jour : 2026-10-10** (jalon M5 — thèmes et premiers widgets).
+**Dernière mise à jour : 2026-10-10** (jalon M5b — barre de menu, barre de statut, champ
+de saisie, et le curseur du terminal).
 
 ## Dépôt
 
@@ -16,9 +17,14 @@ vérifications de `CLAUDE.md` sont à exécuter en local avant d'ouvrir une PR.
 
 ## Où en est-on
 
-Jalons **M0 à M5 terminés**. Le dépôt porte ses conventions, ses
-ADR fondateurs, le socle de rendu et le décodeur d'entrée. Ce n'est pas encore utilisable
-comme framework : il n'y a ni arbre de vues, ni widget.
+Jalons **M0 à M5b terminés**. Le dépôt porte ses conventions, ses ADR fondateurs, le
+socle de rendu, le décodeur d'entrée, l'arbre de vues et huit widgets. L'exemple `frame`
+est désormais une **vraie boucle d'événements** : les menus s'ouvrent, le champ de saisie
+saisit, les raccourcis de la barre de statut agissent.
+
+Ce qui manque pour que ce soit un framework utilisable : l'éditeur de texte, et donc
+`redit` (M6). Il n'y a encore ni `AirApplication`, ni `AirScreen`, ni `AirDesktop` : la
+boucle et l'arbre sont montés à la main par l'application, comme le fait l'exemple.
 
 ### Fait
 
@@ -57,9 +63,38 @@ comme framework : il n'y a ni arbre de vues, ni widget.
   alignées aux mêmes colonnes sur toutes les lignes, texte accentué compris.
 - **`AirCommandSet`** : le mécanisme 3 de l'ADR-007, en *pull*. Griser une commande grise
   d'un coup tout ce qui la porte, sans que personne soit notifié.
-- **Deux widgets, pour prouver l'arbre** : `AirPanel`, conteneur bordé à titre, et
-  `AirStaticText`, qui retire la bordure dans son constructeur comme le veut le corollaire
-  d'ADR-010. Le jeu complet vient avec M5.
+- **M5b — les trois widgets qui demandaient une mécanique de plus** :
+  - **`AirMenuBar`** à menus déroulants, avec `AirMenu` et `AirMenuItem`, séparateurs
+    compris. Ouverture par `Alt`+lettre ou au clic, flèches verticales qui **sautent les
+    séparateurs**, flèches horizontales qui changent de menu en anneau, `Échap` qui
+    referme, `Entrée` qui émet. En **pré-traitement**.
+  - **`AirStatusLine`** et ses `AirStatusItem` : des raccourcis publiés, activables à la
+    touche et au clic. En **post-traitement**, pour ne pas voler une touche de fonction à
+    la vue qui a le focus.
+  - **`AirInputLine`** : saisie, suppression et déplacement **par grappes de graphème** —
+    un `é` décomposé ou un émoji à jointures s'effacent d'une touche. Défilement
+    horizontal à invariant « le curseur est toujours visible », clic qui positionne le
+    curseur en tenant compte des glyphes larges et du défilement.
+- **La surimpression annoncée pour M5b n'était pas nécessaire**, et c'est la découverte du
+  jalon. Le dessin parcourt les enfants de l'arrière vers l'avant et le routage positionnel
+  de l'avant vers l'arrière : une vue au premier plan recouvre déjà ses sœurs et reçoit
+  déjà les clics avant elles. La barre de menu **grandit** quand elle s'ouvre, son menu
+  reste dans ses propres limites, et le découpage par vue ne souffre aucune exception. La
+  contrainte qui en découle est réelle et documentée : la barre doit être insérée **en
+  dernier**.
+- **Le curseur matériel**, qui manquait et sans lequel aucun champ de saisie n'est
+  utilisable. `AirView::cursor` répond en coordonnées de contenu, `draw_view` rend la
+  position **absolue** du curseur de la vue focalisée la plus profonde, et
+  `AirTerminal::set_cursor` le pose après les cellules. Une vue non focalisée n'en publie
+  pas, et un curseur hors du découpage n'en est pas un.
+- **`AirDrawContext`**, qui corrige un défaut de fond de M5 : `ARCHITECTURE-fr.md`
+  affirmait que chaque vue interroge le jeu de commandes **au moment où elle se dessine**,
+  or le chemin de dessin ne recevait que le thème. Le grisage d'un item de menu reposait
+  sur une fonction qui rendait toujours `true`. Le contexte de dessin porte désormais le
+  thème **et** le jeu de commandes, et le grisage comme le refus d'activer lisent la même
+  source — ils ne peuvent plus diverger.
+- **Deux widgets de base** : `AirPanel`, conteneur bordé à titre, et `AirStaticText`, qui
+  retire la bordure dans son constructeur comme le veut le corollaire d'ADR-010.
 - **Une duplication supprimée** : le dessin de texte existait en deux endroits, sur la
   surface et dans le peintre. `AirSurface::draw_text` délègue désormais au peintre — deux
   implémentations de la même règle garantissaient qu'elles divergent.
@@ -129,6 +164,15 @@ comme framework : il n'y a ni arbre de vues, ni widget.
   le compte rendu par `poll` — qui l'a révélée au premier lancement. Les deux
   comportements sont couverts par un test sous `cfg`.
 
+### Défauts ouverts
+
+- ⛔ **macOS : `poll` sur `/dev/tty` rend `POLLNVAL`.** `PosixTerminal::open` ouvre
+  `/dev/tty`, donc `wait_for_input` échoue d'emblée et toute application sort aussitôt.
+  Mesuré hors d'air-tui : `poll` sur le descripteur 0 du même terminal fonctionne, `select`
+  sur `/dev/tty` fonctionne, et sur Linux les trois fonctionnent. Correctif prévu : se
+  servir des descripteurs standards quand ce sont des terminaux. **Bloquant sur une cible
+  tier-1.**
+
 ### Pas fait — et à ne pas annoncer comme fait
 
 - Le double clic : il demande une horloge, donc il n'a pas sa place dans un décodeur pur.
@@ -136,12 +180,15 @@ comme framework : il n'y a ni arbre de vues, ni widget.
   numérique, touches multimédia, touches modificatrices seules. Hors table, donc consommées
   sans événement — et la table a été écrite d'après la spécification, **pas vérifiée contre
   un terminal réel**.
-- Tables Unicode (largeur d'affichage, segmentation en graphèmes).
-- Arbre de vues, routage en trois phases, focus, ordre de profondeur, découpage.
-- Tout widget au-delà du cadre dessiné par l'exemple.
-- Moteur de thèmes complet, quantificateur de couleurs, thème Midnight Commander.
-- Couche MVC.
 - `redit`, `rmc`.
+- Le **thème Midnight Commander** et l'importeur de skins (M7).
+- `AirApplication`, `AirScreen`, `AirDesktop` : la hiérarchie de `ARCHITECTURE-fr.md`
+  s'arrête pour l'instant à `AirGroup`. L'exemple monte la boucle et l'arbre à la main.
+- Les **listes, ascenseurs, cases à cocher et boutons radio**, et l'éditeur de texte.
+- La **sélection** dans le champ de saisie : `Maj`+flèche, le copier-coller interne. Le
+  champ n'a qu'un curseur, pas d'étendue sélectionnée.
+- Couverture de tests : **100 % tenu sur les codecs** (ADR-012) et élevé sur `air-tui`,
+  mais `air-tui-platform-posix` demande un vrai terminal et reste bas.
 - La couche MVC d'ADR-007 au-delà du mécanisme 3 : le journal de changements et les
   compteurs de génération attendent l'éditeur du jalon M6.
 - Les gates `check-naming` (ADR-004), `check-versions` (ADR-009) et
@@ -155,26 +202,18 @@ comme framework : il n'y a ni arbre de vues, ni widget.
 - Toute CI. `main` n'exige donc aucun contrôle à la fusion, faute d'en avoir un à exiger.
 - `air-tui-platform-air`, l'implémentation pour la cible `linux-air`.
 - Les cibles `cargo-fuzz` des décodeurs à venir (Kitty, graphèmes Unicode).
-- Le découpage par vue : `draw_text` découpe sur le bord de la **surface**, pas sur celui
-  d'une fenêtre. Un texte trop long écrase donc le cadre — constaté sur l'exemple, à
-  traiter avec l'arbre de vues (M4).
-- La bordure par défaut des vues (ADR-010) : décidée, pas implémentée.
-- Couverture de tests : loin de l'objectif de 100 %. Quelques tests unitaires seulement.
 - *(plus rien ici : la dette de vérification Linux est soldée, voir ci-dessous)*
 
 ## Prochaine tâche
 
-**M5b — les widgets qui demandent une mécanique de plus.** Trois manquent, et chacun pour
-une raison précise :
+**M6 — `redit`, l'équivalent de `tvedit`.** C'est le jalon qui demande la couche MVC de
+l'ADR-007 pour de vrai : un tampon de texte comme modèle, un journal de changements rendu
+à l'appelant plutôt qu'un observateur, et une vue d'édition qui s'y abonne par
+identifiant. Il demande aussi ce que l'exemple monte encore à la main : `AirApplication`,
+`AirScreen` et `AirDesktop`.
 
-- la **barre de menu** à menus déroulants a besoin d'une **surimpression** : un menu ouvert
-  se dessine par-dessus ce qui est déjà là, hors des limites de son propriétaire. C'est le
-  seul endroit où le découpage par vue doit être contourné délibérément, et ça demande un
-  mécanisme explicite plutôt qu'une exception ;
-- le **champ de saisie** a besoin d'un curseur visible et de la segmentation par graphèmes
-  pour se déplacer dedans — les tables de M3 sont là, l'intégration reste à faire ;
-- la **barre de statut** est triviale une fois la barre de menu faite : elles partagent
-  leur structure d'items et leur routage par lettre d'accès rapide.
+Deux pièces de M3 attendent ce jalon : la **segmentation en mots** (annexe 29), pour
+`Ctrl`+flèche et le double-clic, et les **compteurs de génération** du modèle.
 
 Une dette restante : remonter la couverture de `air-tui-platform-posix` par des tests sous
 pty. Et deux vérifications encore absentes : la **console Linux native**, inaccessible par
@@ -182,10 +221,6 @@ SSH et dont dépend tout l'étage natif du jalon M8 ; et le protocole Kitty **co
 terminal** — il est décodé et négocié d'après la spécification, et les tests le pilotent
 avec un périphérique en mémoire, ce qui prouve le code mais pas la table des numéros de
 touches fonctionnelles.
-
-Ensuite M1 : le parseur ANSI incrémental, avec sa cible `cargo-fuzz` dès le premier commit
-du module (Principe 1 d'Air : fuzzing systématique sur toute API qui accepte des données
-externes).
 
 ## Jalons
 
@@ -197,7 +232,7 @@ externes).
 | M3 | tables Unicode : largeur et graphèmes | **fait** |
 | M4 | arbre de vues, trois phases, focus, découpage | **fait** |
 | M5 | moteur de thèmes, quantificateur, fenêtre et bouton | **fait** |
-| M5b | barre de menu à menus déroulants, barre de statut, champ de saisie | à faire |
+| M5b | barre de menu à menus déroulants, barre de statut, champ de saisie, curseur | **fait** |
 | M6 | `redit` — équivalent de `tvedit` | à faire |
 | M7 | thème et coquille Midnight Commander, importeur de skins | à faire |
 | M8 | étage natif Linux : evdev, `TIOCLINUX`, gpm | à faire |
