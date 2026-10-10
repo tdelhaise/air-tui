@@ -3,8 +3,8 @@
 Document de suivi **vivant** : où en est-on, quelle est la prochaine tâche. Il se met à
 jour à chaque session. L'historique figé est dans [`JOURNAL.md`](JOURNAL.md).
 
-**Dernière mise à jour : 2026-10-10** (jalon M7b — les listes et la coquille `rmc` à deux
-panneaux ; jalon M7a — le thème Midnight Commander et son importeur de skins).
+**Dernière mise à jour : 2026-10-10** (jalon M7c — le type d'événement de touche, décodé
+puis écarté au bon endroit ; jalon M7b — les listes et la coquille `rmc` à deux panneaux).
 
 ## Dépôt
 
@@ -27,7 +27,7 @@ contrôle, donc **aucun essai en pseudo-terminal** n'y tourne, et le fuzzing exi
 
 ## Où en est-on
 
-Jalons **M0 à M7b terminés**. Le dépôt porte ses conventions, ses ADR fondateurs, le socle
+Jalons **M0 à M7c terminés**. Le dépôt porte ses conventions, ses ADR fondateurs, le socle
 de rendu, le décodeur d'entrée, l'arbre de vues, douze widgets, la **couche MVC** de
 l'ADR-007, la hiérarchie d'objets complète, deux thèmes dont un **compilé**, et deux
 **applications** : `redit` ouvre un fichier, l'édite et l'enregistre ; `rmc` parcourt deux
@@ -336,6 +336,57 @@ Linux (M8).
   le compte rendu par `poll` — qui l'a révélée au premier lancement. Les deux
   comportements sont couverts par un test sous `cfg`.
 
+### Fait au jalon M7c — le type d'événement de touche
+
+Le jalon M7b avait consigné un défaut : « le filtrage des relâchements de touche n'est fait
+que par `AirListBox` ». En l'instruisant, il s'est avéré **plus large que décrit**, et deux
+affirmations de M7b se sont révélées fausses. Elles sont corrigées ici plutôt que tues.
+
+- **Le décodeur ignorait le type d'événement sur l'encodage historique.** Le protocole
+  Kitty place le type en sous-paramètre du champ des modificateurs, et cette règle vaut
+  pour *toutes* les formes. Le décodeur ne la lisait que sur la forme `CSI … u` : le type
+  était donc décodé là où il ne sert qu'aux caractères, et **ignoré là où il désigne les
+  touches dont les widgets vivent** — flèches, `Début`, `Fin`, `Inser`, `Suppr`, `F1` à
+  `F20`. Mesuré avant correction : `\x1b[;1:3B` — un relâchement de flèche bas — ressortait
+  en **enfoncement**.
+- **Donc le filtre que portait `AirListBox` ne protégeait presque rien**, et son
+  commentaire — « les traiter ferait descendre le curseur de deux items par appui sur la
+  flèche » — décrivait un effet qu'il ne prévenait pas : la flèche relâchée descendait le
+  curseur malgré lui, puisqu'elle n'arrivait jamais marquée comme un relâchement. Le
+  commentaire a été réécrit, et le filtre retiré du widget.
+- **La forme réellement émise omet le numéro de touche.** `kitty` écrit `CSI ; 1 : 3 B`, le
+  champ vide, parce que la spécification autorise à taire le numéro quand il vaut un.
+  Vérifié dans `kitty/key_encoding.py`, qui n'écrit le numéro que s'il diffère de un ; la
+  page du protocole ne donne que la règle générale et **aucun exemple de flèche**, ce qui
+  aurait laissé une inférence là où il fallait une source.
+- **Les relâchements sont écartés à la distribution**, en un seul endroit
+  (`view::dispatch_event`), avant la descente dans l'arbre — et non dans chaque widget.
+  Douze widgets qui répètent une règle sont douze endroits où elle peut manquer, et c'est
+  exactement ce que M7b avait livré. L'information n'est pas détruite : une boucle
+  d'application tient l'événement d'entrée avant de le distribuer, donc qui a besoin des
+  relâchements les a encore.
+- **Une répétition passe, et c'est éprouvé.** Maintenir une flèche doit répéter le
+  déplacement : un filtre qui écarterait « tout ce qui n'est pas un enfoncement » serait le
+  défaut symétrique, moins visible et plus pénible. Les deux moitiés de la règle portent
+  chacune leur essai, dans le décodeur et dans la distribution, parce qu'un filtre trop
+  large passerait l'un et casserait l'autre.
+- **L'essai en pseudo-terminal est possible**, contre ce que M7b avait écrit (« aucun essai
+  ne le voit, il faut un terminal Kitty réel pour le constater »). Il suffit d'**émettre
+  les octets** du relâchement : le décodeur décode ce qu'il reçoit, sans égard pour ce que
+  le programme a négocié. Les deux essais exigés par `CLAUDE.md` ont été faits, et ils sont
+  décisifs : avant correction, quatre repeints, la marque apparue au troisième et
+  **disparue au quatrième**, avec `4 o` au titre — la flèche relâchée avait descendu le
+  curseur et le relâchement d'`Inser` avait démarqué. Après, trois repeints, la marque dans
+  le dernier, `2 o` au titre.
+- **1064 essais** (dix de plus), les **7 codecs toujours à 100 %** de régions, de fonctions
+  et de lignes, et le fuzzing rejoué sur le décodeur touché : **282 946 exécutions en
+  61 secondes, aucun plantage**.
+- Une leçon d'outillage, sur la couverture : l'aide d'essai écrite d'abord portait un bras
+  `panic!` jamais pris, soit **deux régions non couvertes** et un codec en défaut d'ADR-012.
+  Réécrite en aide **constructrice** — elle fabrique l'événement attendu au lieu
+  d'extraire celui qu'on a reçu —, elle n'a plus de branche morte. Le code d'essai compte
+  dans la mesure, et c'est voulu.
+
 ### Défauts ouverts
 
 *(aucun à ce jour)*
@@ -356,11 +407,6 @@ Linux (M8).
 - Les **colonnes multiples** d'une liste : `mc` sait afficher un répertoire sur deux ou
   trois colonnes, et `TListViewer` portait un `numCols`. Une colonne suffit à un panneau de
   fichiers, et la seconde demande de décider ce que `Page bas` veut dire.
-- Le **filtrage des relâchements de touche** n'est fait que par `AirListBox`. Le protocole
-  clavier Kitty les rapporte (`\x1b[>23u` demande le type d'événement), et aucun autre
-  widget ne les écarte. L'essai en pseudo-terminal ne peut pas le voir, puisqu'un pty nu ne
-  négocie pas le protocole. **C'est un défaut à trancher** : le bon endroit est
-  probablement la distribution, pas chaque widget.
 - **`AirDecorations`**, la troisième assiette du triplet de l'ADR-008. `AirTheme` est un
   couple. Le style de trait vit déjà dans les glyphes ; l'**ombre portée** ne peut pas être
   dessinée, parce qu'elle tombe hors des limites de la vue qui la projette et que le
@@ -410,22 +456,16 @@ Linux (M8).
 demandent une console physique, inaccessible par SSH. Écrire du code qu'on ne peut pas
 vérifier est exactement ce que ce dépôt refuse. Les candidats, du plus petit au plus gros :
 
-1. **Le filtrage des relâchements de touche**, défaut trouvé au jalon M7b. Le protocole
-   clavier Kitty rapporte le type d'événement, et seul `AirListBox` l'écarte : les autres
-   widgets traitent un appui et son relâchement comme deux frappes. Un pty nu ne négocie
-   pas le protocole, donc aucun essai ne le voit — il faut un terminal Kitty réel pour le
-   constater. Petit à écrire, mais il demande de décider **où** : la distribution plutôt
-   que chaque widget.
-2. **Les deux limites du thème** : un attribut par rôle dans la palette, une couleur
+1. **Les deux limites du thème** : un attribut par rôle dans la palette, une couleur
    « défaut du terminal » dans `AirColor`. Chiffré : les vingt-neuf skins refusés sur
    trente-neuf deviendraient importables. C'est de la donnée, pas de l'architecture.
-3. **Les cases à cocher et les boutons radio**, qui complètent les contrôles de dialogue
+2. **Les cases à cocher et les boutons radio**, qui complètent les contrôles de dialogue
    avec `AirPromptDialog`.
-4. **La sélection de texte** — la plus grosse absence de `redit`. Elle débloque d'un coup
+3. **La sélection de texte** — la plus grosse absence de `redit`. Elle débloque d'un coup
    `Maj`+flèche, le copier-coller interne, la surbrillance et le double-clic, et elle
    touche la vue d'édition comme le champ de saisie. C'est le plus gros chantier de la
    liste, et le plus visible à l'usage.
-5. **La peinture hors des limites d'une vue**, décision d'architecture dont dépendent
+4. **La peinture hors des limites d'une vue**, décision d'architecture dont dépendent
    `AirDecorations` et l'ombre portée. À trancher avant d'écrire la troisième assiette du
    triplet de l'ADR-008, pas après.
 
@@ -451,4 +491,5 @@ des numéros de touches fonctionnelles.
 | M6b | les trois contrôles de conventions, et l'intégration continue | **fait** |
 | M7a | thème Midnight Commander et importeur de skins | **fait** |
 | M7b | la coquille `rmc` à deux panneaux, et les listes | **fait** |
+| M7c | le type d'événement de touche : décodé partout, écarté à la distribution | **fait** |
 | M8 | étage natif Linux : evdev, `TIOCLINUX`, gpm | à faire |

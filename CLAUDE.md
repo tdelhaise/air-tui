@@ -176,6 +176,33 @@ rien alors que l'écran les porte. Ce qui se vérifie sur les octets, c'est la *
 `38;5;11;48;5;6` est l'item marqué sous le curseur du skin de `mc`, et son absence après
 un `Inser` dirait que le marquage ne traverse pas le modèle.
 
+Deux pièges à la lecture d'une sortie de `rmc`, tous deux payés au jalon M7c :
+
+- **le chemin doit être court.** Le titre d'un panneau est tronqué à la moitié de la
+  largeur : sous un chemin de bloc-notes temporaire, `[1 marqué — 2 o]` n'est jamais
+  émis, et son absence ressemble à un défaut alors que c'est un titre coupé ;
+- **un motif trouvé n'est pas l'état final.** Chaque frappe produit un repeint, et la
+  sortie les porte tous. Un `[1 marqué — 2 o]` au troisième repeint sur quatre dit que la
+  marque a existé puis **disparu** — c'est exactement la signature du défaut. Compter les
+  repeints et situer le motif dans le dernier, sinon le verdict s'inverse.
+
+Et, pour les relâchements de touche : un pty nu ne négocie pas le protocole clavier, mais
+il n'a pas à le faire — **il suffit d'émettre les octets**, le décodeur décode ce qu'il
+reçoit. `1b5b3b313a3342` est `\x1b[;1:3B`, un relâchement de flèche bas dans la forme que
+`kitty` émet réellement (numéro de touche omis), et `1b5b323b313a337e` est `\x1b[2;1:3~`,
+un relâchement d'`Inser` :
+
+```sh
+mkdir -p /tmp/rmc-essai/sous-repertoire
+printf 'ab' > /tmp/rmc-essai/deux.txt && printf 'abcd' > /tmp/rmc-essai/quatre.txt
+# bas, bas, bas RELÂCHÉE, Inser, Inser RELÂCHÉ, F10 : le titre doit finir sur « 1 marqué — 2 o »
+tools/pty-drive.py ./target/debug/rmc /tmp/rmc-essai -- \
+    500 1b5b42 200 1b5b42 300 1b5b3b313a3342 300 1b5b327e 300 1b5b323b313a337e 700 1b5b32317e
+```
+
+« 4 o » dirait que la flèche relâchée a descendu le curseur ; aucune marque au dernier
+repeint, que le relâchement d'`Inser` a démarqué. Les deux étaient vrais avant M7c.
+
 Attention aux codes : `1b5b31327e` est `F2`, `1b5b31337e` est `F3`, `1b5b32317e` est
 `F10`. Se tromper de touche donne un faux négatif — `F3` ouvre un dialogue modal qui
 consomme le `F10` qui suit, et le verdict devient `timeout` alors que tout fonctionne.
