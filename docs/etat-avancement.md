@@ -171,6 +171,14 @@ la coquille `rmc` (M7), et l'étage d'entrée natif Linux (M8).
   `cargo build --locked` OK, et l'exemple `frame` exécuté dans un pty rend bien le bureau
   hachuré, la barre de menu, la fenêtre à case `[■]` et la barre de statut, puis restaure
   le terminal (code de sortie 0).
+- **M6 vérifié sur les trois machines** : macOS `aarch64`, hydrogen (`x86_64`, Ubuntu
+  26.04, noyau 7.0) et neon (`aarch64`, Ubuntu 26.04, Raspberry Pi). Sur chacune :
+  `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`,
+  **845 tests** au vert, `cargo deny check`, `generate-unicode-tables --check` octet pour
+  octet, `check-segmentation` sans écart, et les **quatre essais en pseudo-terminal** —
+  `frame` et `redit`, chacun avec son essai de contrôle. L'enregistrement de `redit` est
+  vérifié sur le contenu du fichier, pas sur le code de sortie : les trois machines
+  rendent `ABCorigine`.
 - Couverture mesurée au 2026-10-10, après M6 : **95,35 %** de régions sur tout l'espace de
   travail. Les six modules d'entrée et de codec restent à **100 %** de régions, de
   fonctions et de lignes (`input/ansi.rs`, `input/event.rs`, `input/scanning.rs`,
