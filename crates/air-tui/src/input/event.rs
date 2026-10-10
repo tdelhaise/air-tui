@@ -235,6 +235,19 @@ pub enum AirMouseEventKind {
     Released(Option<AirMouseButton>),
     /// Déplacement, un bouton éventuellement maintenu.
     Moved(Option<AirMouseButton>),
+    /// Le deuxième enfoncement d'une suite rapide, au même endroit.
+    ///
+    /// **Jamais produit par le décodeur** : un double clic n'est pas une séquence d'octets
+    /// mais deux séquences et un délai, et le décodeur est pur. Il est synthétisé par la
+    /// boucle d'application, qui l'ajoute **après** le [`AirMouseEventKind::Pressed`]
+    /// correspondant — un widget qui l'ignore garde donc le comportement du simple clic
+    /// au lieu de ne plus rien recevoir. Voir [`crate::input::clicks`].
+    DoubleClicked(AirMouseButton),
+    /// Le troisième enfoncement d'une suite rapide, au même endroit.
+    ///
+    /// Synthétisé comme le double, et il le remplace : un triple clic produit `Pressed`
+    /// puis `TripleClicked`, jamais `DoubleClicked` en plus.
+    TripleClicked(AirMouseButton),
     /// Molette vers le haut.
     WheelUp,
     /// Molette vers le bas.

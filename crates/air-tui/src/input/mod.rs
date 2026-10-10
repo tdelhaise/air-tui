@@ -14,11 +14,13 @@
 //! codes matériels — viendra au jalon M8, derrière la même forme d'événement.
 
 pub mod ansi;
+pub mod clicks;
 pub mod event;
 pub mod kitty;
 pub mod scanning;
 
 pub use ansi::{AirAnsiDecoder, AirDecodeError};
+pub use clicks::{AirClickCount, AirClickTracker, DEFAULT_MULTIPLE_CLICK_DELAY};
 pub use event::{
     AirInputEvent, AirKey, AirKeyEvent, AirKeyState, AirModifiers, AirMouseButton, AirMouseEvent,
     AirMouseEventKind, AirScanCode,
