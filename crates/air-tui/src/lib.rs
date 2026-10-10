@@ -41,6 +41,7 @@ pub mod codec;
 pub mod command;
 pub mod geometry;
 pub mod input;
+pub mod model;
 pub mod surface;
 pub mod terminal;
 pub mod theme;
@@ -58,6 +59,10 @@ pub use geometry::{AirColumn, AirPoint, AirRectangle, AirRow, AirSize};
 pub use input::{
     AirAnsiDecoder, AirDecodeError, AirInputEvent, AirKey, AirKeyEvent, AirKeyState, AirModifiers,
     AirMouseButton, AirMouseEvent, AirMouseEventKind, AirScanCode,
+};
+pub use model::{
+    AirChangeSet, AirGeneration, AirModel, AirTextAction, AirTextBuffer, AirTextChange,
+    AirTextPosition,
 };
 pub use surface::AirSurface;
 pub use terminal::AirTerminal;

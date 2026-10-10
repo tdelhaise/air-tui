@@ -35,7 +35,9 @@ use crate::cell::{AirAttributes, AirCell};
 use crate::geometry::{AirColumn, AirPoint, AirRectangle, AirRow};
 use crate::input::event::{AirInputEvent, AirKey, AirMouseButton, AirMouseEventKind};
 use crate::theme::AirRole;
-use crate::unicode::{grapheme_width, graphemes};
+use crate::unicode::{
+    grapheme_width, graphemes, next_grapheme_boundary, previous_grapheme_boundary, width_between,
+};
 use crate::view::painter::AirPainter;
 use crate::view::{AirContext, AirDrawContext, AirEvent, AirOutcome, AirView, AirViewState};
 
@@ -144,39 +146,21 @@ impl AirInputLine {
     }
 
     /// Le décalage de la frontière de grappe qui précède `offset`.
+    ///
+    /// Délégué à [`crate::unicode`] : l'éditeur du jalon M6 a besoin du même pas, et deux
+    /// implémentations de la même règle garantissent qu'elles divergent.
     fn previous_boundary(&self, offset: usize) -> usize {
-        let mut boundary: usize = 0;
-        let mut walked: usize = 0;
-        for cluster in graphemes(&self.text) {
-            let next = walked.saturating_add(cluster.len());
-            if next >= offset {
-                return walked;
-            }
-            boundary = next;
-            walked = next;
-        }
-        boundary
+        previous_grapheme_boundary(&self.text, offset)
     }
 
     /// Le décalage de la frontière de grappe qui suit `offset`.
     fn next_boundary(&self, offset: usize) -> usize {
-        let mut walked: usize = 0;
-        for cluster in graphemes(&self.text) {
-            let next = walked.saturating_add(cluster.len());
-            if next > offset {
-                return next;
-            }
-            walked = next;
-        }
-        self.text.len()
+        next_grapheme_boundary(&self.text, offset)
     }
 
     /// La largeur affichée de la tranche de texte comprise entre deux décalages.
     fn width_between(&self, first: usize, last: usize) -> usize {
-        let Some(slice) = self.text.get(first..last) else {
-            return 0;
-        };
-        graphemes(slice).map(grapheme_width).sum()
+        width_between(&self.text, first, last)
     }
 
     /// La colonne du curseur dans la zone de contenu, défilement compris.

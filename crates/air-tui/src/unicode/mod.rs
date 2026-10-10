@@ -423,12 +423,61 @@ pub fn graphemes(text: &str) -> AirGraphemes<'_> {
     AirGraphemes { remaining: text }
 }
 
+/// Le décalage de la frontière de grappe qui **précède** `offset`.
+///
+/// Un décalage déjà sur une frontière recule d'une grappe ; un décalage à zéro y reste.
+/// C'est le pas de `Retour arrière` et de la flèche gauche : il porte à lui seul la
+/// garantie qu'aucune touche ne coupe un `é` décomposé ni un émoji à jointures.
+#[must_use]
+pub fn previous_grapheme_boundary(text: &str, offset: usize) -> usize {
+    let mut boundary: usize = 0;
+    let mut walked: usize = 0;
+    for cluster in graphemes(text) {
+        let next = walked.saturating_add(cluster.len());
+        if next >= offset {
+            return walked;
+        }
+        boundary = next;
+        walked = next;
+    }
+    boundary
+}
+
+/// Le décalage de la frontière de grappe qui **suit** `offset`.
+///
+/// Un décalage à la fin du texte y reste.
+#[must_use]
+pub fn next_grapheme_boundary(text: &str, offset: usize) -> usize {
+    let mut walked: usize = 0;
+    for cluster in graphemes(text) {
+        let next = walked.saturating_add(cluster.len());
+        if next > offset {
+            return next;
+        }
+        walked = next;
+    }
+    text.len()
+}
+
+/// La largeur affichée de la tranche de texte comprise entre deux décalages.
+///
+/// Une tranche hors du texte, ou à l'envers, vaut zéro colonne : le calcul d'une colonne
+/// de curseur ne doit pas pouvoir échouer.
+#[must_use]
+pub fn width_between(text: &str, first: usize, last: usize) -> usize {
+    match text.get(first..last) {
+        Some(slice) => text_width(slice),
+        None => 0,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         AirGraphemeBreak, AirIndicConjunctBreak, UNICODE_VERSION, display_width, grapheme_break,
         grapheme_width, graphemes, indic_conjunct_break, is_extended_pictographic, is_in_ranges,
-        split_first_cluster, text_width, value_in_table,
+        next_grapheme_boundary, previous_grapheme_boundary, split_first_cluster, text_width,
+        value_in_table, width_between,
     };
 
     fn clusters(text: &str) -> Vec<&str> {
@@ -762,6 +811,36 @@ mod tests {
             value_in_table(&[], 0x41, AirGraphemeBreak::Other),
             AirGraphemeBreak::Other
         );
+    }
+
+    #[test]
+    fn les_frontieres_de_grappe_encadrent_un_decalage() {
+        // `a`, `e` + accent combinant, émoji : 1 + 3 + 4 octets.
+        let text = "ae\u{301}\u{1F468}";
+        assert_eq!(next_grapheme_boundary(text, 0), 1);
+        assert_eq!(next_grapheme_boundary(text, 1), 4);
+        assert_eq!(next_grapheme_boundary(text, 4), 8);
+        assert_eq!(next_grapheme_boundary(text, 8), 8);
+        assert_eq!(previous_grapheme_boundary(text, 8), 4);
+        assert_eq!(previous_grapheme_boundary(text, 4), 1);
+        assert_eq!(previous_grapheme_boundary(text, 1), 0);
+        assert_eq!(previous_grapheme_boundary(text, 0), 0);
+    }
+
+    #[test]
+    fn la_largeur_entre_deux_decalages_compte_les_colonnes() {
+        let text = "a\u{6F22}b";
+        // L'idéogramme occupe deux colonnes à lui seul.
+        assert_eq!(width_between(text, 0, text.len()), 4);
+        assert_eq!(width_between(text, 1, 4), 2);
+    }
+
+    #[test]
+    fn une_tranche_impossible_vaut_zero_colonne() {
+        // Un décalage hors du texte, et un intervalle à l'envers : ni l'un ni l'autre ne
+        // doit faire échouer le calcul d'une colonne de curseur.
+        assert_eq!(width_between("abc", 0, 99), 0);
+        assert_eq!(width_between("abc", 2, 1), 0);
     }
 
     #[test]
