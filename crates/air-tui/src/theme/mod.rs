@@ -16,9 +16,11 @@
 
 pub mod glyphs;
 pub mod palette;
+pub mod quantize;
 
 pub use glyphs::{AirFrameGlyphs, AirGlyphSet};
 pub use palette::{AirColorPair, AirPalette, AirRole};
+pub use quantize::{AirColorDepth, quantize};
 
 /// Un thème complet.
 ///
