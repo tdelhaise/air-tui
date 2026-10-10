@@ -1,0 +1,22 @@
+[package]
+name = "air-tui"
+description = "Framework d'interface en mode texte, sans dépendance, à thèmes graphiques (Turbo Vision, Midnight Commander)."
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+keywords = ["tui", "terminal", "turbo-vision", "widgets", "theme"]
+categories = ["command-line-interface"]
+
+# ADR-005 : aucune dépendance tierce. `air-tui-sys` est la couche 0 du même projet.
+[dependencies]
+air-tui-sys = { path = "../air-tui-sys", version = "0.1.0" }
+
+[lints]
+workspace = true
+
+[[example]]
+name = "frame"
+path = "examples/frame.rs"
