@@ -21,16 +21,30 @@
 //! d'elle. Une dérivation nommée se discute ; une dérivation silencieuse se découvre des
 //! mois plus tard devant un écran qui ne ressemble pas au skin.
 //!
-//! # Ce que la compilation refuse
+//! # Les attributs, et la couleur qu'on ne remplace pas
 //!
-//! - un **attribut** (`bold`, `underline`…) sur un rôle que air-tui emploie : la palette
-//!   d'air-tui porte deux couleurs par rôle et aucun attribut, donc l'attribut serait
-//!   perdu en silence et le thème ne ressemblerait pas au skin ;
-//! - la couleur `default`, le fond transparent de `mc`, qu'`AirColor` ne sait pas
-//!   exprimer.
+//! Jusqu'au jalon M7g, deux choses faisaient refuser un skin, et c'étaient les deux
+//! limites du modèle d'air-tui plutôt que des défauts du skin : un **attribut**
+//! (`bold`, `underline`, `italic`) sur un rôle employé, et la couleur `default` — le fond
+//! transparent de `mc`. L'ADR-008 les chiffrait depuis M7a : vingt skins pour le premier,
+//! neuf pour le second, sur les trente-neuf livrés.
 //!
-//! Les deux refusent à la compilation, ce qui est le seul moment où un humain lit le
-//! message.
+//! Les deux sont levées. `AirColorPair` porte des attributs, `AirColor::TerminalDefault`
+//! exprime la couleur du terminal, et la compilation les **transcrit** au lieu de refuser.
+//!
+//! Une règle a demandé un choix, et elle est écrite ici parce qu'elle ne va pas de soi :
+//! pour un rôle **composé** de deux clefs, les attributs retenus sont ceux de la clef qui
+//! donne l'**avant-plan**. Les trois attributs que les skins emploient portent sur le
+//! dessin du caractère, et c'est l'avant-plan qui le décrit ; prendre ceux du fond mettrait
+//! en gras un texte dont le skin ne dit rien.
+//!
+//! # Ce que la compilation refuse encore
+//!
+//! Une clef employée **absente** du skin — `gotar.ini` ne définit pas `[core] inputmark`
+//! —, un glyphe de cadre qui n'est pas un caractère unique, et un attribut que `mc`
+//! accepte sans qu'`AirAttributes` sache l'exprimer. Ce dernier cas ne peut pas se produire
+//! aujourd'hui, et ce n'est pas une supposition : un test confronte les cinq noms
+//! d'attributs de l'analyseur aux cinq champs que cette table sait écrire.
 
 use crate::mc_skin::{Color, ColorPair, Skin};
 use std::collections::BTreeSet;
@@ -52,6 +66,49 @@ enum Source {
         /// La clef dont on prend le fond.
         background: (&'static str, &'static str),
     },
+}
+
+/// Les cinq attributs que `mc` sait écrire, et le champ d'`AirAttributes` qui les exprime.
+///
+/// Les cinq noms coïncident de part et d'autre, et cette table existe pour que la
+/// coïncidence soit **vérifiée** plutôt qu'exploitée en silence : un test la confronte à
+/// `mc_skin::ATTRIBUTE_NAMES`, de sorte qu'un nom ajouté d'un côté et pas de l'autre
+/// échoue à l'essai au lieu de disparaître à la compilation d'un skin.
+const ATTRIBUTE_FIELDS: &[(&str, &str)] = &[
+    ("bold", "bold"),
+    ("italic", "italic"),
+    ("underline", "underline"),
+    ("reverse", "reverse"),
+    ("blink", "blink"),
+];
+
+/// Ce qu'un rôle vaut une fois le skin résolu : deux couleurs et des attributs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Presentation {
+    /// L'avant-plan.
+    foreground: Color,
+    /// Le fond.
+    background: Color,
+    /// Les attributs, dans l'ordre où le skin les écrit.
+    attributes: Vec<String>,
+}
+
+impl Presentation {
+    /// Vrai si le couple s'écrit sous la forme courte `pair(f, b)`.
+    ///
+    /// C'est-à-dire : deux index et aucun attribut. C'est le cas de l'immense majorité des
+    /// rôles, et la forme courte garde l'artefact lisible — trente-huit lignes de
+    /// `AirColorPair::new(index(7), index(4))` ne se relisent pas.
+    fn is_short_form(&self) -> bool {
+        self.attributes.is_empty()
+            && matches!(self.foreground, Color::Indexed(_))
+            && matches!(self.background, Color::Indexed(_))
+    }
+
+    /// Les deux couleurs, pour les parcours qui ne regardent pas les attributs.
+    fn colors(&self) -> [Color; 2] {
+        [self.foreground, self.background]
+    }
 }
 
 /// Un rôle d'air-tui, sa provenance, et ce que cette provenance doit au jugement.
@@ -438,6 +495,10 @@ pub struct Compilation {
     pub composed: usize,
     /// Le nombre de correspondances qui ont demandé un choix, et qui le portent écrit.
     pub noted: usize,
+    /// Le nombre de rôles qui portent un attribut du skin.
+    pub attributed: usize,
+    /// Le nombre de rôles dont une couleur est laissée au terminal.
+    pub terminal_colors: usize,
     /// Le nombre de clefs du skin que ce modèle n'emploie pas.
     pub unused_keys: usize,
 }
@@ -446,17 +507,25 @@ pub struct Compilation {
 ///
 /// # Errors
 ///
-/// Si une clef employée est absente, si elle porte un attribut, si elle emploie la
-/// couleur `default`, ou si un glyphe de cadre n'est pas un caractère unique.
+/// Si une clef employée est absente, si un glyphe de cadre n'est pas un caractère unique,
+/// ou si une clef porte un attribut que `mc` accepte et qu'`AirAttributes` n'exprime pas.
 pub fn compile(skin: &Skin, origin: &str, fingerprint: u64) -> Result<Compilation, String> {
     let mut pairs = Vec::new();
     let mut transcribed = 0usize;
     let mut composed = 0usize;
+    let mut attributed = 0usize;
+    let mut terminal_colors = 0usize;
     for entry in ROLE_SOURCES {
         let pair = resolve(skin, &entry.source)?;
         match entry.source {
             Source::Direct { .. } => transcribed = transcribed.saturating_add(1),
             Source::Composed { .. } => composed = composed.saturating_add(1),
+        }
+        if !pair.attributes.is_empty() {
+            attributed = attributed.saturating_add(1);
+        }
+        if pair.colors().contains(&Color::Terminal) {
+            terminal_colors = terminal_colors.saturating_add(1);
         }
         pairs.push((entry, pair));
     }
@@ -478,6 +547,8 @@ pub fn compile(skin: &Skin, origin: &str, fingerprint: u64) -> Result<Compilatio
         origin,
         transcribed,
         composed,
+        attributed,
+        terminal_colors,
     });
     Ok(Compilation {
         source,
@@ -487,6 +558,8 @@ pub fn compile(skin: &Skin, origin: &str, fingerprint: u64) -> Result<Compilatio
             .iter()
             .filter(|entry| !entry.note.is_empty())
             .count(),
+        attributed,
+        terminal_colors,
         unused_keys: skin.key_count().saturating_sub(used_key_count()),
     })
 }
@@ -521,55 +594,74 @@ fn used_key_count() -> usize {
     used.len()
 }
 
-/// Résout la provenance d'un rôle en un couple de couleurs.
-fn resolve(skin: &Skin, source: &Source) -> Result<(Color, Color), String> {
+/// Résout la provenance d'un rôle en une présentation.
+///
+/// Pour un rôle **composé**, les attributs retenus sont ceux de la clef qui donne
+/// l'avant-plan : les trois attributs que les skins emploient portent sur le dessin du
+/// caractère, et c'est l'avant-plan qui le décrit.
+fn resolve(skin: &Skin, source: &Source) -> Result<Presentation, String> {
     match *source {
         Source::Direct { section, key } => {
             let pair = skin.color_pair(section, key)?;
-            refuse_attributes(&pair, section, key)?;
-            Ok((
-                expressible(pair.foreground, section, key)?,
-                expressible(pair.background, section, key)?,
-            ))
+            expressible_attributes(&pair, section, key)?;
+            Ok(Presentation {
+                foreground: pair.foreground,
+                background: pair.background,
+                attributes: pair.attributes,
+            })
         }
         Source::Composed {
             foreground: (foreground_section, foreground_key),
             background: (background_section, background_key),
         } => {
             let first = skin.color_pair(foreground_section, foreground_key)?;
-            refuse_attributes(&first, foreground_section, foreground_key)?;
+            expressible_attributes(&first, foreground_section, foreground_key)?;
             let second = skin.color_pair(background_section, background_key)?;
-            refuse_attributes(&second, background_section, background_key)?;
-            Ok((
-                expressible(first.foreground, foreground_section, foreground_key)?,
-                expressible(second.background, background_section, background_key)?,
-            ))
+            expressible_attributes(&second, background_section, background_key)?;
+            Ok(Presentation {
+                foreground: first.foreground,
+                background: second.background,
+                attributes: first.attributes,
+            })
         }
     }
 }
 
-/// Refuse un couple qui porte un attribut.
-fn refuse_attributes(pair: &ColorPair, section: &str, key: &str) -> Result<(), String> {
-    if pair.attributes.is_empty() {
-        return Ok(());
+/// Vérifie que chaque attribut du couple a un champ dans `AirAttributes`.
+///
+/// # Errors
+///
+/// Si `mc` accepte un attribut qu'air-tui ne sait pas exprimer. Le cas ne peut pas se
+/// produire tant que les deux tables portent les mêmes cinq noms, ce qu'un test vérifie —
+/// mais il **refuse** plutôt que d'ignorer, parce qu'un attribut perdu en silence donne un
+/// thème qui ne ressemble pas au skin, et que personne ne va le chercher là.
+fn expressible_attributes(pair: &ColorPair, section: &str, key: &str) -> Result<(), String> {
+    for attribute in &pair.attributes {
+        if !ATTRIBUTE_FIELDS
+            .iter()
+            .any(|(name, _)| name == &attribute.as_str())
+        {
+            return Err(format!(
+                "[{section}] {key} porte l'attribut « {attribute} », que mc accepte et \
+                 qu'AirAttributes n'exprime pas : ce skin n'est pas importable en l'état."
+            ));
+        }
     }
-    Err(format!(
-        "[{section}] {key} porte l'attribut « {} », et la palette d'air-tui ne porte que \
-         deux couleurs par rôle (ADR-008). L'ignorer produirait un thème qui ne ressemble \
-         pas au skin : ce skin n'est pas importable en l'état.",
-        pair.attributes.join("+")
-    ))
+    Ok(())
 }
 
-/// Une couleur qu'`AirColor` sait exprimer, ou un refus.
-fn expressible(color: Color, section: &str, key: &str) -> Result<Color, String> {
-    match color {
-        Color::Indexed(_) | Color::Rgb { .. } => Ok(color),
-        Color::Terminal => Err(format!(
-            "[{section}] {key} emploie « default », le fond transparent de mc, qu'AirColor \
-             ne sait pas exprimer : ce skin n'est pas importable en l'état."
-        )),
+/// L'expression Rust des attributs d'une présentation, ou `None` s'il n'y en a pas.
+fn attributes_expression(attributes: &[String]) -> Option<String> {
+    let mut fields = String::new();
+    for (name, field) in ATTRIBUTE_FIELDS {
+        if attributes.iter().any(|posed| posed == name) {
+            let _ = write!(fields, "{field}: true, ");
+        }
     }
+    if fields.is_empty() {
+        return None;
+    }
+    Some(format!("AirAttributes {{ {fields}..AirAttributes::NONE }}"))
 }
 
 /// Les six glyphes d'un cadre.
@@ -651,8 +743,8 @@ fn emit_glyphs(single: [char; 6], double: [char; 6], close_mark: char) -> String
 struct Emission<'compilation> {
     /// L'empreinte du skin d'origine.
     fingerprint: u64,
-    /// Les rôles et leurs couleurs, dans l'ordre de la table.
-    pairs: &'compilation [(&'compilation RoleSource, (Color, Color))],
+    /// Les rôles et leurs présentations, dans l'ordre de la table.
+    pairs: &'compilation [(&'compilation RoleSource, Presentation)],
     /// Les six glyphes du cadre simple.
     single: [char; 6],
     /// Les six glyphes du cadre double.
@@ -667,6 +759,10 @@ struct Emission<'compilation> {
     transcribed: usize,
     /// Le nombre de rôles composés de deux clefs.
     composed: usize,
+    /// Le nombre de rôles qui portent un attribut du skin.
+    attributed: usize,
+    /// Le nombre de rôles dont une couleur est celle du terminal.
+    terminal_colors: usize,
 }
 
 /// Produit le source Rust de l'artefact.
@@ -681,6 +777,8 @@ fn emit(emission: &Emission) -> String {
         origin,
         transcribed,
         composed,
+        attributed,
+        terminal_colors,
     } = *emission;
     let mut output = String::new();
     output.push_str(
@@ -719,34 +817,35 @@ fn emit(emission: &Emission) -> String {
         }
         let _ = write!(output, "{}", comment_block(entry.role, entry.note));
     }
-    output.push_str(
-        "\nuse crate::cell::AirColor;\n\
-         use crate::theme::glyphs::{AirClusterGlyphs, AirFrameGlyphs, AirGlyphSet};\n\
-         use crate::theme::palette::{AirColorPair, AirPalette, AirPaletteParts};\n\n",
+    if attributed > 0 || terminal_colors > 0 {
+        let _ = write!(
+            output,
+            "//! # Ce que ce skin demande au-delà de deux couleurs\n\
+             //!\n\
+             //! {attributed} rôles portent un attribut du skin, et {terminal_colors} ont une\n\
+             //! couleur laissée au terminal. Les deux étaient des motifs de refus avant le\n\
+             //! jalon M7g ; ils sont désormais transcrits. Pour un rôle composé de deux clefs,\n\
+             //! les attributs retenus sont ceux de la clef qui donne l'avant-plan.\n\
+             //!\n"
+        );
+    }
+    let attributes_import = if attributed > 0 {
+        "{AirAttributes, AirColor}"
+    } else {
+        "AirColor"
+    };
+    let _ = write!(
+        output,
+        "\nuse crate::cell::{attributes_import};\n\
+         use crate::theme::glyphs::{{AirClusterGlyphs, AirFrameGlyphs, AirGlyphSet}};\n\
+         use crate::theme::palette::{{AirColorPair, AirPalette, AirPaletteParts}};\n\n"
     );
     let _ = write!(
         output,
         "/// La description que porte la section `[skin]` du fichier d'origine.\n\
          pub(crate) const DESCRIPTION: &str = \"{description}\";\n\n"
     );
-    // N'émettre que les fonctions d'aide employées : une fonction d'aide inemployée dans
-    // un fichier généré est du code mort, que `clippy -D warnings` refuse à juste titre.
-    let indexed_only = pairs.iter().any(|(_, (foreground, background))| {
-        matches!(foreground, Color::Indexed(_)) && matches!(background, Color::Indexed(_))
-    });
-    let any_true_color = pairs.iter().any(|(_, (foreground, background))| {
-        matches!(foreground, Color::Rgb { .. }) || matches!(background, Color::Rgb { .. })
-    });
-    if indexed_only {
-        output.push_str(
-            "/// Un couple de couleurs de la palette du terminal.\n             const fn pair(foreground: u8, background: u8) -> AirColorPair {\n                 AirColorPair::new(AirColor::Indexed(foreground), AirColor::Indexed(background))\n             }\n\n",
-        );
-    }
-    if any_true_color {
-        output.push_str(
-            "/// Une couleur de la palette du terminal.\n             const fn index(value: u8) -> AirColor {\n                 AirColor::Indexed(value)\n             }\n\n             /// Une vraie couleur, telle que le skin l'écrit en `#rrggbb`.\n             const fn rgb(red: u8, green: u8, blue: u8) -> AirColor {\n                 AirColor::Rgb { red, green, blue }\n             }\n\n",
-        );
-    }
+    output.push_str(&emit_helpers(pairs));
     output.push_str(
         "/// La palette, compilée depuis le skin.\n         pub(crate) const fn palette() -> AirPalette {\n             AirPalette::from_parts(&AirPaletteParts {\n",
     );
@@ -756,7 +855,7 @@ fn emit(emission: &Emission) -> String {
         let _ = writeln!(
             output,
             "        desktop_background: {}, // {}",
-            expression(*colors),
+            expression(colors),
             origin_of(entry)
         );
         index = 1;
@@ -768,7 +867,7 @@ fn emit(emission: &Emission) -> String {
                 let _ = writeln!(
                     output,
                     "            {}, // {}",
-                    expression(*colors),
+                    expression(colors),
                     origin_of(entry)
                 );
             }
@@ -783,21 +882,69 @@ fn emit(emission: &Emission) -> String {
     output
 }
 
-/// L'expression Rust d'un couple de couleurs.
+/// Émet les fonctions d'aide que l'artefact emploie, et **seulement** celles-là.
 ///
-/// La forme courte `pair(7, 4)` sert quand les deux couleurs sont des index — le cas de
-/// tous les skins à seize ou deux cent cinquante-six couleurs. Les skins en vraies
-/// couleurs passent par la forme longue.
-fn expression(colors: (Color, Color)) -> String {
-    let (foreground, background) = colors;
-    if let (Color::Indexed(first), Color::Indexed(second)) = (foreground, background) {
+/// Une fonction d'aide inemployée dans un fichier généré est du code mort, que
+/// `clippy -D warnings` refuse à juste titre. Les quatre se décident séparément depuis le
+/// jalon M7g : un attribut suffit à envoyer un couple d'index sur la forme longue, qui
+/// emploie `index` sans qu'aucune vraie couleur paraisse.
+fn emit_helpers(pairs: &[(&RoleSource, Presentation)]) -> String {
+    let uses = |wanted: fn(&Color) -> bool| {
+        pairs
+            .iter()
+            .any(|(_, pair)| pair.colors().iter().any(wanted))
+    };
+    let mut output = String::new();
+    if pairs.iter().any(|(_, pair)| pair.is_short_form()) {
+        output.push_str(
+            "/// Un couple de couleurs de la palette du terminal.\n             const fn pair(foreground: u8, background: u8) -> AirColorPair {\n                 AirColorPair::new(AirColor::Indexed(foreground), AirColor::Indexed(background))\n             }\n\n",
+        );
+    }
+    let long_form_index = pairs.iter().any(|(_, pair)| {
+        !pair.is_short_form()
+            && pair
+                .colors()
+                .iter()
+                .any(|color| matches!(color, Color::Indexed(_)))
+    });
+    if long_form_index {
+        output.push_str(
+            "/// Une couleur de la palette du terminal.\n             const fn index(value: u8) -> AirColor {\n                 AirColor::Indexed(value)\n             }\n\n",
+        );
+    }
+    if uses(|color| matches!(color, Color::Rgb { .. })) {
+        output.push_str(
+            "/// Une vraie couleur, telle que le skin l'écrit en `#rrggbb`.\n             const fn rgb(red: u8, green: u8, blue: u8) -> AirColor {\n                 AirColor::Rgb { red, green, blue }\n             }\n\n",
+        );
+    }
+    if uses(|color| matches!(color, Color::Terminal)) {
+        output.push_str(
+            "/// La couleur que le terminal emploie déjà — le `default` de mc.\n             const fn terminal() -> AirColor {\n                 AirColor::TerminalDefault\n             }\n\n",
+        );
+    }
+    output
+}
+
+/// L'expression Rust d'une présentation.
+///
+/// La forme courte `pair(7, 4)` sert quand les deux couleurs sont des index et qu'aucun
+/// attribut n'est posé — le cas de l'immense majorité des rôles. Une vraie couleur, la
+/// couleur du terminal ou un attribut envoient sur la forme longue.
+fn expression(pair: &Presentation) -> String {
+    if let (Color::Indexed(first), Color::Indexed(second)) = (pair.foreground, pair.background)
+        && pair.attributes.is_empty()
+    {
         return format!("pair({first}, {second})");
     }
-    format!(
+    let colors = format!(
         "AirColorPair::new({}, {})",
-        color_expression(foreground),
-        color_expression(background)
-    )
+        color_expression(pair.foreground),
+        color_expression(pair.background)
+    );
+    match attributes_expression(&pair.attributes) {
+        Some(attributes) => format!("{colors}.with_attributes({attributes})"),
+        None => colors,
+    }
 }
 
 /// L'expression Rust d'une couleur.
@@ -807,9 +954,7 @@ fn color_expression(color: Color) -> String {
         Color::Rgb { red, green, blue } => {
             format!("rgb(0x{red:02x}, 0x{green:02x}, 0x{blue:02x})")
         }
-        // `Terminal` est refusé par `expressible` avant d'arriver ici : une couleur
-        // transparente n'a pas d'expression dans `AirColor`.
-        Color::Terminal => "index(0)".to_owned(),
+        Color::Terminal => "terminal()".to_owned(),
     }
 }
 
@@ -869,8 +1014,8 @@ fn emit_frame(field: &str, glyphs: [char; 6]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{GROUPS, ROLE_SOURCES, Source, compile};
-    use crate::mc_skin::parse;
+    use super::{ATTRIBUTE_FIELDS, GROUPS, ROLE_SOURCES, Source, compile};
+    use crate::mc_skin::{ColorPair, parse};
 
     /// Un skin complet : toutes les clefs que la table de correspondance emploie.
     fn complete_skin(foreground: &str, background: &str) -> String {
@@ -1013,16 +1158,113 @@ mod tests {
     }
 
     #[test]
-    fn un_attribut_sur_un_role_employe_est_refuse() {
+    fn les_cinq_attributs_de_mc_ont_tous_un_champ_dans_air_attributes() {
+        // C'est ce test qui rend le refus d'`expressible_attributes` inatteignable, et
+        // c'est pour cela qu'il existe : la correspondance est vérifiée, pas supposée. Un
+        // nom ajouté à l'analyseur sans champ ici échoue ici, pas devant un skin.
+        for name in crate::mc_skin::ATTRIBUTE_NAMES {
+            assert!(
+                ATTRIBUTE_FIELDS
+                    .iter()
+                    .any(|(candidate, _)| candidate == name),
+                "l'attribut « {name} » de mc n'a pas de champ dans AirAttributes"
+            );
+        }
+        assert_eq!(
+            ATTRIBUTE_FIELDS.len(),
+            crate::mc_skin::ATTRIBUTE_NAMES.len(),
+            "une des deux tables porte un nom que l'autre ignore"
+        );
+    }
+
+    #[test]
+    fn un_attribut_sur_un_role_employe_est_transcrit() {
+        // C'était un refus jusqu'au jalon M7g, et c'est la raison pour laquelle vingt des
+        // trente-neuf skins livrés n'étaient pas importables.
         let text = complete_skin("lightgray", "blue").replace(
             "    menusel = white;black",
-            "    menusel = white;black;bold",
+            "    menusel = white;black;bold+underline",
         );
         let skin = parse(&text).expect("skin lisible");
+        let compiled = compile(&skin, "essai.ini", 0x1234_5678_9abc_def0).expect("compilation");
+        assert_eq!(compiled.attributed, 1, "seul MenuSelected en porte un");
+        assert!(
+            compiled.source.contains(
+                "AirColorPair::new(index(15), index(0)).with_attributes(AirAttributes { \
+                 bold: true, underline: true, ..AirAttributes::NONE })"
+            ),
+            "{}",
+            compiled.source
+        );
+        assert!(
+            compiled
+                .source
+                .contains("use crate::cell::{AirAttributes, AirColor};"),
+            "l'artefact doit importer AirAttributes quand il en pose"
+        );
+    }
+
+    #[test]
+    fn un_attribut_envoie_un_couple_d_index_sur_la_forme_longue_sans_appeler_rgb() {
+        // Les quatre fonctions d'aide se décident séparément : un attribut suffit à
+        // employer `index` sans qu'aucune vraie couleur paraisse. Les émettre ensemble
+        // laisserait `rgb` inemployée, et `clippy -D warnings` refuse le code mort.
+        let text = complete_skin("lightgray", "blue").replace(
+            "    menusel = white;black",
+            "    menusel = white;black;italic",
+        );
+        let skin = parse(&text).expect("skin lisible");
+        let compiled = compile(&skin, "essai.ini", 0x1234_5678_9abc_def0).expect("compilation");
+        assert!(
+            compiled.source.contains("const fn index("),
+            "index attendue"
+        );
+        assert!(!compiled.source.contains("const fn rgb("), "rgb inemployée");
+        assert!(
+            !compiled.source.contains("const fn terminal("),
+            "terminal inemployée"
+        );
+    }
+
+    #[test]
+    fn un_role_compose_prend_les_attributs_de_la_clef_d_avant_plan() {
+        // MenuSelectedDisabled prend l'avant-plan de [core] disabled et le fond de [menu]
+        // menusel. Un attribut porte sur le dessin du caractère : c'est l'avant-plan qui
+        // le décrit, donc `bold` sur `menusel` ne doit **pas** l'atteindre.
+        let text = complete_skin("lightgray", "blue")
+            .replace(
+                "    menusel = white;black",
+                "    menusel = white;black;bold",
+            )
+            .replace(
+                "    disabled = gray;lightgray",
+                "    disabled = gray;lightgray;italic",
+            );
+        let skin = parse(&text).expect("skin lisible");
+        let compiled = compile(&skin, "essai.ini", 0x1234_5678_9abc_def0).expect("compilation");
+        let line = compiled
+            .source
+            .lines()
+            .find(|line| line.contains("// MenuSelectedDisabled"))
+            .unwrap_or_default();
+        assert!(line.contains("italic: true"), "{line}");
+        assert!(!line.contains("bold: true"), "{line}");
+    }
+
+    #[test]
+    fn un_attribut_qu_air_attributes_n_exprime_pas_est_refuse() {
+        // Inatteignable depuis un skin — l'analyseur refuse les noms inconnus avant — et
+        // couvert directement : le refus doit exister, parce qu'un attribut perdu en
+        // silence donne un thème qui ne ressemble pas au skin.
+        let pair = ColorPair {
+            foreground: crate::mc_skin::Color::Indexed(7),
+            background: crate::mc_skin::Color::Indexed(4),
+            attributes: vec!["clignotant".to_owned()],
+        };
         let refusal =
-            compile(&skin, "essai.ini", 0x1234_5678_9abc_def0).expect_err("refus attendu");
-        assert!(refusal.contains("bold"), "{refusal}");
-        assert!(refusal.contains("ADR-008"), "{refusal}");
+            super::expressible_attributes(&pair, "core", "_default_").expect_err("refus attendu");
+        assert!(refusal.contains("clignotant"), "{refusal}");
+        assert!(refusal.contains("AirAttributes"), "{refusal}");
     }
 
     #[test]
@@ -1038,20 +1280,49 @@ mod tests {
     }
 
     #[test]
-    fn la_couleur_du_terminal_est_refusee() {
+    fn la_couleur_du_terminal_est_transcrite() {
+        // `_default_ = lightgray;default` : le fond de l'application est celui du
+        // terminal, et il se propage par héritage à tout ce qui ne nomme pas de fond.
+        // C'était un refus jusqu'au jalon M7g — neuf skins sur trente-neuf.
         let text = complete_skin("lightgray", "default");
         let skin = parse(&text).expect("skin lisible");
-        let refusal =
-            compile(&skin, "essai.ini", 0x1234_5678_9abc_def0).expect_err("refus attendu");
-        assert!(refusal.contains("default"), "{refusal}");
-        assert!(refusal.contains("AirColor"), "{refusal}");
+        let compiled = compile(&skin, "essai.ini", 0x1234_5678_9abc_def0).expect("compilation");
+        assert!(compiled.terminal_colors > 0, "au moins le fond du bureau");
+        assert!(compiled.source.contains("const fn terminal("), "l'aide");
+        assert!(
+            compiled
+                .source
+                .contains("desktop_background: AirColorPair::new(index(7), terminal())"),
+            "{}",
+            compiled.source
+        );
     }
 
     #[test]
-    fn une_clef_employee_absente_est_refusee() {
+    fn une_clef_employee_absente_herite_au_lieu_d_etre_refusee() {
+        // C'était un refus jusqu'au jalon M7g, et c'est ce qui écartait vingt-trois des
+        // trente-neuf skins livrés — pas une limite du modèle d'air-tui, un défaut de
+        // l'analyseur : `mc` les affiche tous, en appliquant la cascade de son manuel.
         let text = complete_skin("lightgray", "blue").replace("    menusel = white;black\n", "");
         let skin = parse(&text).expect("skin lisible");
-        assert!(compile(&skin, "essai.ini", 0x1234_5678_9abc_def0).is_err());
+        let compiled = compile(&skin, "essai.ini", 0x1234_5678_9abc_def0).expect("compilation");
+        // [menu] _default_ = white;cyan, soit pair(15, 6).
+        assert!(
+            compiled.source.contains("pair(15, 6), // MenuSelected"),
+            "{}",
+            compiled.source
+        );
+    }
+
+    #[test]
+    fn un_skin_sans_defaut_de_section_ni_de_core_est_refuse() {
+        let text = complete_skin("lightgray", "blue")
+            .replace("    _default_ = lightgray;blue\n", "")
+            .replace("    _default_ = white;cyan\n", "");
+        let skin = parse(&text).expect("skin lisible");
+        let refusal =
+            compile(&skin, "essai.ini", 0x1234_5678_9abc_def0).expect_err("refus attendu");
+        assert!(refusal.contains("absent"), "{refusal}");
     }
 
     #[test]

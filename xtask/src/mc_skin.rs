@@ -104,7 +104,11 @@ const HEXADECIMAL_DIGITS: &[(char, u8)] = &[
 ];
 
 /// Les attributs qu'un couple de couleurs peut porter.
-const ATTRIBUTE_NAMES: &[&str] = &["bold", "italic", "underline", "reverse", "blink"];
+///
+/// Publique pour que la table de correspondance de `mc_theme` se confronte à elle : les
+/// cinq noms doivent tous avoir un champ dans `AirAttributes`, et un test le vérifie
+/// plutôt que de le supposer.
+pub const ATTRIBUTE_NAMES: &[&str] = &["bold", "italic", "underline", "reverse", "blink"];
 
 /// Une couleur de skin.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -171,15 +175,26 @@ impl Skin {
 
     /// Le couple de couleurs d'une clef, héritage et alias résolus.
     ///
+    /// Une clef **absente** vaut la valeur vide, et hérite donc comme un champ vide : le
+    /// `_default_` de sa section d'abord, celui de `[core]` ensuite. C'est la cascade que
+    /// le manuel de `mc` décrit en deux endroits — `[core] _default_` est « used in all
+    /// other sections if they not contain color definitions », et le `_default_` de chaque
+    /// section est « used [core]._default_ if not specified ».
+    ///
+    /// Ce n'était pas le cas avant le jalon M7g : une clef absente était un refus, et
+    /// c'est ce qui écartait vingt-trois des trente-neuf skins livrés avec `mc` 4.8.33 —
+    /// dix-huit n'écrivent pas `[editor] editframeactive`, quatre n'ont pas de
+    /// `[editor] _default_`, `gotar.ini` n'a pas de `[core] inputmark`. Aucun n'est mal
+    /// formé : `mc` les affiche tous. C'était un défaut de cet analyseur, et non une
+    /// limite du modèle d'air-tui.
+    ///
     /// # Errors
     ///
-    /// Si la clef est absente, si un champ reste vide après héritage, si un nom de
-    /// couleur est inconnu, ou si un alias boucle.
+    /// Si un champ reste vide après toute la cascade, si un nom de couleur est inconnu, ou
+    /// si un alias boucle.
     pub fn color_pair(&self, section: &str, key: &str) -> Result<ColorPair, String> {
         let aliases = self.aliases();
-        let value = self
-            .raw(section, key)
-            .ok_or_else(|| format!("[{section}] {key} est absent du skin"))?;
+        let value = self.raw(section, key).unwrap_or_default();
         let fields = self.inherited_fields(section, key, value)?;
         let (foreground, background, attributes) = fields;
         Ok(ColorPair {
@@ -219,13 +234,14 @@ impl Skin {
         }
         if fields.0.is_empty() {
             return Err(format!(
-                "[{section}] {key} : avant-plan vide, et ni la section ni [core] n'en \
-                 fournissent"
+                "[{section}] {key} : avant-plan vide ou absent, et ni le _default_ de la \
+                 section ni celui de [core] n'en fournissent"
             ));
         }
         if fields.1.is_empty() {
             return Err(format!(
-                "[{section}] {key} : fond vide, et ni la section ni [core] n'en fournissent"
+                "[{section}] {key} : fond vide ou absent, et ni le _default_ de la section \
+                 ni celui de [core] n'en fournissent"
             ));
         }
         Ok(fields)
@@ -635,9 +651,38 @@ mod tests {
     }
 
     #[test]
-    fn une_clef_absente_est_refusee() {
+    fn une_clef_absente_herite_du_defaut_de_sa_section() {
+        // La cascade du manuel : la clef n'existe pas, donc elle vaut la valeur vide, donc
+        // elle hérite de `[editor] _default_` — ici blanc sur noir. Dix-huit des
+        // trente-neuf skins livrés dépendent de ce chemin pour `editframeactive`.
         let skin = parse(SKIN).expect("skin lisible");
-        assert!(skin.color_pair("core", "inexistante").is_err());
+        let pair = skin
+            .color_pair("editor", "editmarked")
+            .expect("la clef absente hérite");
+        assert_eq!(pair.foreground, Color::Indexed(15));
+        assert_eq!(pair.background, Color::Indexed(0));
+    }
+
+    #[test]
+    fn une_clef_absente_d_une_section_sans_defaut_herite_de_core() {
+        // Le cas des quatre skins « seasons » : leur `[editor]` n'a pas de `_default_`.
+        let skin = parse(SKIN).expect("skin lisible");
+        let pair = skin
+            .color_pair("dialog", "dfocus")
+            .expect("la section n'existe pas, [core] fournit");
+        assert_eq!(pair.foreground, Color::Indexed(7), "lightgray de [core]");
+        assert_eq!(pair.background, Color::Indexed(4), "blue de [core]");
+    }
+
+    #[test]
+    fn une_clef_absente_sans_aucun_defaut_reste_refusee() {
+        // La cascade s'arrête quelque part : un skin sans `[core] _default_` ne fournit
+        // rien, et deviner une couleur donnerait un thème qui ne ressemble à rien.
+        let skin = parse("[menu]\n    menusel = white;black\n").expect("skin lisible");
+        let refusal = skin
+            .color_pair("menu", "menuhot")
+            .expect_err("refus attendu");
+        assert!(refusal.contains("absent"), "{refusal}");
     }
 
     #[test]
