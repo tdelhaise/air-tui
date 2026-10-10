@@ -3,8 +3,8 @@
 Document de suivi **vivant** : où en est-on, quelle est la prochaine tâche. Il se met à
 jour à chaque session. L'historique figé est dans [`JOURNAL.md`](JOURNAL.md).
 
-**Dernière mise à jour : 2026-10-10** (jalon M7i — plusieurs skins compilés ; les deux
-derniers gates de conventions ; jalon M7h — l'annulation dans `redit`).
+**Dernière mise à jour : 2026-10-10** (jalon M7j — la peinture hors des limites et
+l'ombre portée ; jalon M7i — plusieurs skins compilés ; les deux derniers gates).
 
 ## Dépôt
 
@@ -27,7 +27,7 @@ contrôle, donc **aucun essai en pseudo-terminal** n'y tourne, et le fuzzing exi
 
 ## Où en est-on
 
-Jalons **M0 à M7i terminés**. Le dépôt porte ses conventions, ses ADR fondateurs, le socle
+Jalons **M0 à M7j terminés**. Le dépôt porte ses conventions, ses ADR fondateurs, le socle
 de rendu, le décodeur d'entrée, l'arbre de vues, treize widgets, la **couche MVC** de
 l'ADR-007, la hiérarchie d'objets complète, deux thèmes dont un **compilé**, et deux
 **applications** : `redit` ouvre un fichier, l'édite et l'enregistre ; `rmc` parcourt deux
@@ -616,6 +616,46 @@ affirmations de M7b se sont révélées fausses. Elles sont corrigées ici plut�
   annonçait le quantificateur « prévu au jalon M5 et **n'est pas écrit** », celui
   d'`AirCell` les tables UCD de même. Les deux existent depuis M5 et M3.
 
+### Fait au jalon M7j — la peinture hors des limites, et l'ombre portée
+
+- **La question était « une vue peut-elle peindre hors de ses limites ? ». La réponse est
+  non**, et c'est le meilleur résultat du jalon. Ce qui dépasse d'une vue est peint par le
+  **propriétaire de la surface où cela dépasse** (ADR-015). Le découpage du peintre reste
+  sans exception, donc rien de ce que M4 et M5b garantissent n'est à revérifier.
+- **Le dépôt employait déjà une solution de cette famille sans l'avoir nommée** : la barre
+  de menu agrandit ses propres limites à l'ouverture d'un menu, depuis M5b. C'est ce qui a
+  convaincu qu'affaiblir le découpage n'était pas nécessaire.
+- **Agrandir ne convenait pas à l'ombre** : la zone d'ombre entrerait dans les limites de la
+  fenêtre, donc dans sa détection de clic et dans le calcul de son intérieur. Cliquer sur
+  l'ombre activerait la fenêtre.
+- **`AirTheme` est enfin le triplet que l'ADR-008 décrit** — palette, glyphes,
+  décorations —, après quatre jalons d'écart assumé. L'assiette décrit maintenant quelque
+  chose que l'on dessine, et deux champs n'y sont **pas** : le style de trait vit déjà dans
+  les glyphes, et le marqueur `~X~` est le même dans les deux thèmes.
+- **Une convergence qui s'est mesurée toute seule.** La couleur de l'ombre de Turbo Vision
+  n'est pas transcriptible d'une chaîne de palette — l'ombre d'une fenêtre n'a pas d'entrée
+  dans `cpAppColor`. L'attribut VGA `0x08` a donc été retenu en écrivant que ce n'était
+  **pas** une transcription ; puis l'importeur a compilé `[core] shadow` du skin par défaut
+  de `mc` : `gray;black`, soit `pair(8, 0)`, exactement la même valeur.
+- **L'ombre recolore ce qui est dessous en gardant le caractère.** Vérifié de la façon la
+  plus directe : le **seul** caractère que l'exemple `frame` peint à la couleur d'ombre est
+  `░`, le motif du bureau. Les deux thèmes émettent `38;5;8;48;5;0` douze fois chacun.
+- **Un essai corrigé parce que sa prémisse était fausse** : « l'ombre garde le caractère »
+  avait été écrit en remplissant la surface d'un motif, que le panneau conteneur repeint
+  d'espaces. Le seul conteneur qui montre l'effet est le **vrai bureau**. L'essai éprouve
+  donc le cas réel au lieu d'un montage.
+- **Trois choses déclarent une ombre, et c'est voulu** : la vue
+  (`AirViewState::casts_shadow`, faux par défaut), le thème (`AirDecorations`, qui les
+  éteint toutes d'un seul endroit) et la palette (`AirRole::WindowShadow`, trente-neuvième
+  rôle).
+- **Ni `redit` ni `rmc` n'émettent d'ombre, et c'est juste** : leurs fenêtres occupent tout
+  le bureau, donc l'ombre tombe hors de lui et le découpage l'écarte — pour `rmc`, celle du
+  panneau de gauche tombe sur celui de droite, dessiné après, qui la recouvre. Une ombre ne
+  paraît que là où il y a quelque chose derrière.
+- **1307 essais**, dont sept pour l'ombre : les deux bandes, le non-recouvrement de la
+  fenêtre, le caractère conservé, le thème sans ombre, la vue sans ombre, le découpage au
+  bord du bureau, et l'ordre à deux temps entre deux fenêtres superposées.
+
 ### Fait au jalon M7i — plusieurs skins compilés, et le choix par un nom
 
 - **La limite que M7g avait laissée est levée.** Les trente-neuf skins étaient importables,
@@ -812,12 +852,10 @@ affirmations de M7b se sont révélées fausses. Elles sont corrigées ici plut�
 - Les **colonnes multiples** d'une liste : `mc` sait afficher un répertoire sur deux ou
   trois colonnes, et `TListViewer` portait un `numCols`. Une colonne suffit à un panneau de
   fichiers, et la seconde demande de décider ce que `Page bas` veut dire.
-- **`AirDecorations`**, la troisième assiette du triplet de l'ADR-008. `AirTheme` est un
-  couple. Le style de trait vit déjà dans les glyphes ; l'**ombre portée** ne peut pas être
-  dessinée, parce qu'elle tombe hors des limites de la vue qui la projette et que le
-  découpage du peintre ne souffre aucune exception. `AirRole::ButtonShadow` est dans la
-  palette, transcrit de Borland comme de `mc`, et **aucun widget ne le lit**. Une assiette
-  qui décrirait une ombre que rien ne dessine annoncerait une capacité absente.
+- L'ombre portée d'un **bouton**. Les fenêtres en projettent une depuis M7j, et le
+  mécanisme de l'ADR-015 suffirait aux boutons — un bouton est l'enfant d'une fenêtre, qui
+  possède donc la zone où son ombre tomberait. `AirRole::ButtonShadow`, transcrit de Borland
+  au jalon M5, est toujours **lu par personne**.
 - L'échange avec le **presse-papiers du système** : `AirClipboard` est interne au
   processus. Il ne parle ni à `pbcopy`, ni à `wl-clipboard`, ni à OSC 52 — trois mécanismes
   différents, dont le dernier est refusé par défaut par la plupart des terminaux et les
@@ -857,13 +895,19 @@ affirmations de M7b se sont révélées fausses. Elles sont corrigées ici plut�
 demandent une console physique, inaccessible par SSH. Écrire du code qu'on ne peut pas
 vérifier est exactement ce que ce dépôt refuse. Les candidats, du plus petit au plus gros :
 
-1. **La peinture hors des limites d'une vue**, décision d'architecture dont dépendent
-   `AirDecorations` et l'ombre portée. À trancher avant d'écrire la troisième assiette du
-   triplet de l'ADR-008, pas après. C'est le dernier des candidats qui restaient après M7g.
-2. **Reprendre plus de trois skins**, si l'auteur du dépôt le décide : le mécanisme est en
+Les trois candidats qui restaient après M7g sont faits. Ce qui reste est plus petit, ou
+demande une décision qui n'est pas technique :
+
+1. **Reprendre plus de trois skins**, si l'auteur du dépôt le décide : le mécanisme est en
    place et le coût est chiffré — 395 Kio et deux dixièmes de seconde pour les trente-neuf.
    Ce qui reste à trancher n'est pas technique : c'est la place que prend la donnée d'un
    projet sous GPLv3 dans un dépôt sous MPL-2.0.
+2. **L'ombre portée des boutons**, qui achèverait la fidélité de l'ADR-015 et donnerait
+   enfin un lecteur à `AirRole::ButtonShadow`.
+3. **La recherche dans `redit`** — `Ctrl`+`F` —, qui demande de décider ce qu'on cherche
+   (texte brut, respect de la casse) et comment on le montre.
+4. **Une liste à plusieurs colonnes**, et le **défilement d'un groupe** plus long que sa
+   place : les deux absences mesurées du catalogue de widgets.
 
 Dettes plus anciennes : remonter la couverture de `air-tui-platform-posix` par des tests
 sous pty ; la **console Linux native**, dont dépend tout M8 ; et le protocole Kitty
@@ -893,4 +937,5 @@ des numéros de touches fonctionnelles.
 | M7g | les attributs par rôle, la couleur du terminal, la clef absente héritée | **fait** |
 | M7h | l'annulation par journal de remplacements, et la mutation unique | **fait** |
 | M7i | plusieurs skins compilés, et le choix par un nom | **fait** |
+| M7j | la peinture hors des limites, l'ombre portée, la troisième assiette | **fait** |
 | M8 | étage natif Linux : evdev, `TIOCLINUX`, gpm | à faire |

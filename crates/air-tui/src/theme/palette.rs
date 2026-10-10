@@ -159,6 +159,19 @@ pub enum AirRole {
     ClusterSelected,
     /// La lettre d'accès rapide d'un item.
     ClusterHotkey,
+
+    /// L'ombre portée d'une fenêtre ou d'un dialogue.
+    ///
+    /// Distincte d'[`AirRole::ButtonShadow`], qui est l'ombre d'un **bouton** —
+    /// `cpButton[8]`, transcrite au jalon M5 et que personne ne lit encore.
+    ///
+    /// La valeur du thème Midnight Commander vient de `[core] shadow`, que trente et un
+    /// des trente-neuf skins livrés définissent. Celle de Turbo Vision **n'est pas une
+    /// transcription de chaîne de palette** : l'ombre d'une fenêtre n'a pas d'entrée dans
+    /// `cpAppColor`. C'est l'attribut VGA `0x08`, gris sombre sur noir, c'est-à-dire
+    /// exactement ce que `mc` nomme de son côté — deux apparences qui concordent ne font
+    /// pas une source, mais elles font un repère (ADR-015).
+    WindowShadow,
 }
 
 /// Ce qu'un rôle décrit : deux couleurs et des attributs.
@@ -261,7 +274,7 @@ pub const fn pair_from_vga_attribute(attribute: u8) -> AirColorPair {
 
 /// Les assiettes d'une palette, nommées.
 ///
-/// Elle existe pour que l'artefact généré nomme ce qu'il pose : onze assiettes passées à
+/// Elle existe pour que l'artefact généré nomme ce qu'il pose : douze assiettes passées à
 /// la file se relisent mal, et un groupe échangé avec son voisin ne se verrait pas. Les
 /// longueurs fixes gardent le décompte au compilateur — un groupe de cinq couples là où
 /// il en faut six ne compile pas.
@@ -289,6 +302,8 @@ pub(crate) struct AirPaletteParts {
     pub input_line: [AirColorPair; 2],
     /// Les cases à cocher et les boutons radio.
     pub cluster: [AirColorPair; 3],
+    /// L'ombre portée d'une fenêtre.
+    pub shadow: AirColorPair,
 }
 
 /// La palette d'un thème.
@@ -316,15 +331,17 @@ pub struct AirPalette {
     input_line: [AirColorPair; 2],
     /// Les cases et les boutons radio : repos, sous le curseur, accès rapide.
     cluster: [AirColorPair; 3],
+    /// L'ombre portée d'une fenêtre.
+    shadow: AirColorPair,
 }
 
 impl AirPalette {
-    /// Assemble une palette à partir de ses onze assiettes.
+    /// Assemble une palette à partir de ses douze assiettes.
     ///
     /// Ce constructeur existe pour les thèmes **compilés** : l'artefact que produit
     /// `cargo xtask import-mc-skin` vit dans `theme/skins/` et n'a pas accès aux champs
     /// privés. Il est `pub(crate)` pour que l'assemblage reste une affaire interne — un
-    /// thème s'obtient par son nom, jamais en posant trente-huit couples à la main.
+    /// thème s'obtient par son nom, jamais en posant trente-neuf couples à la main.
     pub(crate) const fn from_parts(parts: &AirPaletteParts) -> Self {
         Self {
             desktop_background: parts.desktop_background,
@@ -338,6 +355,7 @@ impl AirPalette {
             editor: parts.editor,
             input_line: parts.input_line,
             cluster: parts.cluster,
+            shadow: parts.shadow,
         }
     }
 
@@ -425,6 +443,10 @@ impl AirPalette {
                 pair_from_vga_attribute(0x3F), // cpCluster[2] → cpAppColor[48]
                 pair_from_vga_attribute(0x3E), // cpCluster[3] → cpAppColor[49]
             ],
+            // Pas une transcription de chaîne : l'ombre d'une fenêtre n'a pas d'entrée
+            // dans `cpAppColor`. Gris sombre sur noir, ce que `mc` nomme aussi par
+            // `[core] shadow` — le repère est écrit dans l'ADR-015.
+            shadow: pair_from_vga_attribute(0x08),
         }
     }
 
@@ -492,6 +514,7 @@ impl AirPalette {
             AirRole::ClusterNormal => self.at(&self.cluster, 0),
             AirRole::ClusterSelected => self.at(&self.cluster, 1),
             AirRole::ClusterHotkey => self.at(&self.cluster, 2),
+            AirRole::WindowShadow => self.shadow,
         }
     }
 }
@@ -508,7 +531,7 @@ mod tests {
     use crate::cell::AirColor;
 
     /// Tous les rôles, pour les parcours exhaustifs.
-    const ALL_ROLES: [AirRole; 38] = [
+    const ALL_ROLES: [AirRole; 39] = [
         AirRole::DesktopBackground,
         AirRole::MenuBar,
         AirRole::MenuDisabled,
@@ -547,6 +570,7 @@ mod tests {
         AirRole::ClusterNormal,
         AirRole::ClusterSelected,
         AirRole::ClusterHotkey,
+        AirRole::WindowShadow,
     ];
 
     #[test]

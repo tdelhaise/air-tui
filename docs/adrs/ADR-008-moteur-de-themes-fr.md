@@ -187,23 +187,32 @@ dont les trente-huit rôles sont gras en refusant la moindre cellule qui ne l'es
 test a été vérifié par son contrôle : rétabli sur un seul site, il échoue en nommant le
 widget, la cellule et sa position.
 
-**Pas fait : la troisième assiette.** Cet ADR décrit un triplet, et `AirTheme` est un
-**couple** `palette` + `glyphs`. `AirDecorations` n'existe pas, et l'écart est assumé
-plutôt que comblé par une structure vide :
+**Fait au jalon M7j : la troisième assiette, et `AirTheme` est enfin le triplet que cet
+ADR décrit.** L'écart a été assumé pendant quatre jalons, et pour une raison qui n'était pas
+de la paresse : la seule décoration que l'assiette aurait portée est l'**ombre portée**, qui
+tombe hors des limites de la vue qui la projette — ce que le découpage du peintre refusait
+sans exception (M4, M5b). Une assiette qui aurait décrit une ombre que rien ne dessine
+aurait annoncé une capacité absente.
+
+L'**ADR-015** a tranché la question sans toucher à l'invariant : ce qui dépasse d'une vue
+est peint par le propriétaire de la surface où cela dépasse. `AirDecorations` porte donc la
+taille de l'ombre, la palette sa couleur par le rôle `AirRole::WindowShadow` — trente-neuf
+rôles —, et `AirViewState::casts_shadow` dit quelles vues en projettent une.
+
+Deux champs n'y sont **pas**, et c'est délibéré :
 
 - le **style de trait** vit déjà dans le jeu de glyphes, qui porte un cadre de fenêtre et
   un cadre de dialogue distincts — et c'est par là que le skin par défaut de `mc` se
   distingue de Turbo Vision, ses dialogues étant en trait simple ;
-- l'**ombre portée** ne peut pas être dessinée aujourd'hui : elle tombe hors des limites de
-  la vue qui la projette, et le découpage du peintre ne souffre aucune exception (M4, M5b).
-  Le rôle `AirRole::ButtonShadow` est dans la palette, transcrit de Borland comme de `mc`,
-  et aucun widget ne le lit ;
 - le **style des touches rapides** est le marqueur `~X~`, en dur dans `widgets/hotkey.rs`.
   Les deux thèmes emploient le même, donc une assiette qui le porterait ne prouverait rien.
 
-Une assiette qui décrirait une ombre que rien ne dessine annoncerait une capacité absente.
-La trancher demande de décider si une vue peut peindre hors de ses limites — ce qui est une
-décision d'architecture, pas de thème.
+Une assiette ne gagne un champ que le jour où deux thèmes le remplissent différemment.
+
+Reste que les **boutons** ne projettent pas d'ombre, et que `AirRole::ButtonShadow` —
+`cpButton[8]`, transcrit au jalon M5 — est toujours **lu par personne**. Le mécanisme de
+l'ADR-015 y suffirait : un bouton est l'enfant d'une fenêtre, qui possède donc la zone où
+son ombre tomberait.
 
 **Fait au jalon M7b : `rmc`.** Cet ADR prévient que « ce qui fait reconnaître Midnight
 Commander est sa coquille, pas sa palette ». Les deux moitiés existent désormais

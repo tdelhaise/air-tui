@@ -36,12 +36,12 @@ L'**avancement** vit dans [`etat-avancement.md`](etat-avancement.md), l'**histor
 |---|---|---|
 | `crates/air-tui-platform` | le contrat : traits, types portables | 0.1.0 |
 | `crates/air-tui-platform-posix` | implémentation POSIX — le seul `unsafe`, le seul C | 0.2.0 |
-| `crates/air-tui` | le cœur, dépend uniquement du contrat | 0.13.0 |
-| `crates/redit` | l'éditeur de texte — le seul endroit qui choisit une plateforme | 0.4.0 |
-| `crates/rmc` | la coquille à deux panneaux — même règle pour la plateforme | 0.2.0 |
+| `crates/air-tui` | le cœur, dépend uniquement du contrat | 0.14.0 |
+| `crates/redit` | l'éditeur de texte — le seul endroit qui choisit une plateforme | 0.4.1 |
+| `crates/rmc` | la coquille à deux panneaux — même règle pour la plateforme | 0.2.1 |
 | `crates/air-tui-platform-air` | implémentation `linux-air` | **à écrire** |
 | `fuzz/` | cibles `cargo-fuzz`, espace de travail séparé (nightly) | `ansi_decoder` |
-| `xtask/` | outillage du dépôt, en Rust | 0.7.0 — tables Unicode, conformité des segmentations, **les six contrôles de conventions**, le DCO, et l'importeur de skins MC avec son registre |
+| `xtask/` | outillage du dépôt, en Rust | 0.8.0 — tables Unicode, conformité des segmentations, **les six contrôles de conventions**, le DCO, et l'importeur de skins MC avec son registre |
 | `tools/` | outillage qui ne peut pas être en Rust sans un appel C de plus | `pty-drive.py` |
 
 ## Les modules d'`air-tui`
@@ -59,7 +59,7 @@ L'**avancement** vit dans [`etat-avancement.md`](etat-avancement.md), l'**histor
 | `command` | `AirCommandSet` — le grisage en *pull* | M4 |
 | `model::history` | le journal de remplacements : fusion par geste, borne, point d'enregistrement | M7h |
 | `clipboard` | `AirClipboard` — le presse-papiers interne, possédé par le contrôleur | M7d |
-| `theme` | palette par rôles (trente-huit, **avec attributs**), glyphes, quantificateur, **deux thèmes** | M5, M7, M7g |
+| `theme` | palette par rôles (trente-neuf, **avec attributs**), glyphes, **décorations**, quantificateur | M5, M7, M7g, M7j |
 | `theme::skins` | les thèmes compilés depuis un skin de Midnight Commander, et leur **registre** — **générés** | M7, M7i |
 | `widgets` | panneau, étiquette, fenêtre, bouton, barre de menu, barre de statut, champ de saisie, ascenseur, vue d'édition, dialogue de saisie, liste, **cases à cocher et boutons radio** | M5, M5b, M6, M7b, M7f |
 | `model` | `AirModel`, `AirChangeSet`, `AirGeneration`, `AirTextBuffer`, sa **sélection** et son **historique d'annulation** — la couche MVC | M6, M7d, M7h |
@@ -102,9 +102,8 @@ L'**avancement** vit dans [`etat-avancement.md`](etat-avancement.md), l'**histor
 ## Ce qui reste à produire
 
 Les modules annoncés dans l'architecture et **non encore écrits** : `input/evdev` et
-`input/vt` (M8), `AirDecorations` — la troisième assiette du triplet de l'ADR-008, que
-l'ombre portée demande et que le découpage du peintre interdit aujourd'hui —, et la crate
-`air-tui-platform-air`.
+`input/vt` (M8), et la crate `air-tui-platform-air`. `AirDecorations`, la troisième
+assiette du triplet de l'ADR-008, existe depuis le jalon M7j.
 
 Côté widgets, les absences mesurées : une **liste à plusieurs colonnes**, et le
 **défilement d'un groupe** d'items plus long que sa place. Les cases à cocher, les boutons

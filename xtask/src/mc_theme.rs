@@ -127,8 +127,9 @@ struct RoleSource {
 
 /// La table de correspondance, dans l'ordre des champs d'`AirPalette`.
 ///
-/// L'ordre compte : l'émetteur produit les onze groupes de la structure en suivant cette
-/// table, et un test vérifie que les trente-huit rôles y sont, une fois chacun.
+/// L'ordre compte : l'émetteur produit les dix groupes de la structure en suivant cette
+/// table, et un test vérifie que les trente-neuf rôles y sont, une fois chacun. Deux rôles
+/// sont seuls dans leur champ : le fond du bureau en tête, l'ombre en queue.
 const ROLE_SOURCES: &[RoleSource] = &[
     RoleSource {
         role: "DesktopBackground",
@@ -444,6 +445,16 @@ const ROLE_SOURCES: &[RoleSource] = &[
         },
         note: "",
     },
+    RoleSource {
+        role: "WindowShadow",
+        source: Source::Direct {
+            section: "core",
+            key: "shadow",
+        },
+        note: "mc nomme l'ombre, et trente et un des trente-neuf skins livrés la \
+                     définissent. Les huit autres l'héritent de [core] _default_, ce qui \
+                     la rend invisible — c'est ce que mc fait aussi",
+    },
 ];
 
 /// Les bornes des dix groupes d'`AirPalette` qui vont par assiettes, dans l'ordre de
@@ -463,6 +474,12 @@ const GROUPS: &[(&str, usize)] = &[
     ("input_line", 2),
     ("cluster", 3),
 ];
+
+/// Le rôle qui n'appartient à aucune assiette, posé seul après les groupes.
+///
+/// Comme le fond du bureau, qui est seul en tête : une assiette d'un élément ne nommerait
+/// rien de plus que le champ lui-même.
+const TRAILING_ROLE: &str = "shadow";
 
 /// Les six clefs de la section `[Lines]` d'un cadre simple, dans l'ordre d'`AirFrameGlyphs`.
 const SINGLE_LINE_KEYS: [&str; 6] = [
@@ -875,6 +892,15 @@ fn emit(emission: &Emission) -> String {
         }
         output.push_str("        ],\n");
     }
+    // Le dernier rôle est seul dans son champ, comme le fond du bureau est seul en tête.
+    if let Some((entry, colors)) = pairs.get(index) {
+        let _ = writeln!(
+            output,
+            "        {TRAILING_ROLE}: {}, // {}",
+            expression(colors),
+            origin_of(entry)
+        );
+    }
     output.push_str("    })\n}\n\n");
 
     let _ = write!(output, "{}", emit_glyphs(single, double, close_mark));
@@ -1069,23 +1095,24 @@ mod tests {
     }
 
     #[test]
-    fn la_table_couvre_les_trente_huit_roles_une_fois_chacun() {
+    fn la_table_couvre_les_trente_neuf_roles_une_fois_chacun() {
         let mut roles: Vec<&str> = ROLE_SOURCES.iter().map(|entry| entry.role).collect();
         let before = roles.len();
         roles.sort_unstable();
         roles.dedup();
         assert_eq!(roles.len(), before, "un rôle apparaît deux fois");
-        assert_eq!(before, 38, "AirPalette porte trente-huit rôles");
+        assert_eq!(before, 39, "AirPalette porte trente-neuf rôles");
     }
 
     #[test]
     fn les_groupes_couvrent_la_table() {
-        // Le premier rôle est seul dans son champ ; les suivants vont par groupes.
+        // Deux rôles sont seuls dans leur champ — le fond du bureau en tête, l'ombre en
+        // queue — et les autres vont par groupes.
         let grouped = GROUPS
             .iter()
             .map(|(_, count)| *count)
             .fold(0usize, usize::saturating_add);
-        assert_eq!(grouped.saturating_add(1), ROLE_SOURCES.len());
+        assert_eq!(grouped.saturating_add(2), ROLE_SOURCES.len());
     }
 
     #[test]
@@ -1106,7 +1133,7 @@ mod tests {
         let text = complete_skin("lightgray", "blue");
         let skin = parse(&text).expect("skin lisible");
         let compiled = compile(&skin, "essai.ini", 0x1234_5678_9abc_def0).expect("compilation");
-        assert_eq!(compiled.transcribed, 35);
+        assert_eq!(compiled.transcribed, 36);
         assert_eq!(compiled.composed, 3);
         assert_eq!(
             compiled.transcribed.saturating_add(compiled.composed),

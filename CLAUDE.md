@@ -73,6 +73,24 @@ paramètres et les variables locales.
 de plateforme (ADR-011). Tout bloc `unsafe` porte un commentaire `// SAFETY:` qui justifie
 ses préconditions.
 
+## L'invariant du découpage
+
+Une vue **ne peint pas hors de ses limites**, sans exception (M4, M5b). Ce qui dépasse
+d'une vue est peint par le **propriétaire de la surface où cela dépasse** : c'est l'ADR-015,
+et c'est ainsi que l'ombre portée est dessinée — par le parent, dans la boucle où il
+dessine ses enfants.
+
+Deux stratégies coexistent, et le choix entre elles n'est pas affaire de goût :
+
+- **agrandir la vue**, ce que la barre de menu fait depuis M5b pour contenir son déroulant.
+  Vaut quand la vue possède la zone où elle grandit ;
+- **faire peindre le propriétaire**, pour l'ombre. Agrandir une fenêtre de la taille de son
+  ombre ferait entrer celle-ci dans sa détection de clic et dans le calcul de son
+  intérieur.
+
+Ne pas proposer une troisième : une marge de débordement déclarée par la vue rendrait
+l'invariant **conditionnel**, donc à vérifier à chaque lecture de code.
+
 ## Ce qui n'existe pas encore
 
 `cargo xtask` porte **neuf** commandes de vérification — `generate-unicode-tables
@@ -160,7 +178,19 @@ fois en écrivant M7i.
 cargo build --example frame
 tools/pty-drive.py ./target/debug/examples/frame mc -- 800 1b5b32317e   # doit sortir
 tools/pty-drive.py ./target/debug/examples/frame mc -- 600 1b66         # doit tenir
+
+# L'ombre portée du jalon M7j : gris sombre sur noir, et le `░` du bureau en dessous.
+tools/pty-drive.py ./target/debug/examples/frame -- 800 1b5b32317e \
+    | grep -oE '38;5;8;48;5;0' | wc -l
+# doit donner 12, et autant avec `frame mc` : mc nomme son ombre `gray;black` dans
+# `[core] shadow`, soit exactement l'attribut VGA 0x08 de Turbo Vision.
 ```
+
+`redit` et `rmc` n'en émettent **aucune**, et ce n'est pas un défaut : leurs fenêtres
+occupent tout le bureau, donc l'ombre tombe hors de lui et le découpage l'écarte — pour
+`rmc`, celle du panneau de gauche tombe sur le panneau de droite, qui est dessiné après et
+la recouvre. Une ombre ne paraît que là où il y a quelque chose derrière, et l'exemple
+`frame` est le seul des trois à porter une fenêtre centrée.
 
 Le chemin du skin dépend de l'installation : `/usr/local/share/mc/skins/` sous Homebrew,
 `/usr/share/mc/skins/` sous Debian et Ubuntu. Le thème se vérifie sur les **octets émis**

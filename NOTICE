@@ -57,11 +57,11 @@ le registre en accepte autant qu'on lui en donne. N'en reprendre que trois est u
 de l'auteur du dépôt et non une limite de l'outil : le coût mesuré des trente-neuf est de
 395 Kio de source générée et de deux dixièmes de seconde de compilation.
 
-Ce qui en est repris, pour chacun, est la **donnée de configuration** du fichier : trente-huit
-couples de couleurs — vingt-huit depuis le jalon M7a, quatre de plus pour les listes à
-M7b, trois pour le texte sélectionné à M7d, trois pour les cases à cocher à M7f — et douze
-caractères de dessin de cadre, plus la marque de la case de fermeture, transposés dans le
-modèle de rôles sémantiques d'air-tui. Les caractères des cases à cocher, des boutons
+Ce qui en est repris, pour chacun, est la **donnée de configuration** du fichier :
+trente-neuf couples de couleurs — vingt-huit depuis le jalon M7a, quatre de plus pour les
+listes à M7b, trois pour le texte sélectionné à M7d, trois pour les cases à cocher à M7f, un
+pour l'ombre portée à M7j — et douze caractères de dessin de cadre, plus la marque de la
+case de fermeture, transposés dans le modèle de rôles sémantiques d'air-tui. Les caractères des cases à cocher, des boutons
 radio et du curseur d'ascenseur n'en viennent **pas** : aucun skin ne les décrit. Aucune ligne de code de Midnight Commander n'est reprise, et
 air-tui n'embarque ni son analyseur de skins ni aucune de ses sources.
 
