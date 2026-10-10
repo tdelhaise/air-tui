@@ -43,6 +43,23 @@
 //! verticaux lisent sans la changer et que tous les autres remettent à la colonne réelle.
 //! Sans elle, un aller-retour vertical à travers une ligne vide ramène le curseur en
 //! colonne zéro — ce que tout éditeur sérieux évite.
+//!
+//! # La sélection est une **ancre**, pas deux bornes
+//!
+//! Faite au jalon M7d. Le tampon garde l'ancre, et la sélection est l'intervalle entre
+//! elle et le curseur, *dans l'ordre où ils se trouvent*. Garder deux bornes déjà
+//! ordonnées ferait perdre le sens du geste : sélectionner trois caractères vers la droite
+//! puis remonter vers la gauche doit **réduire** la sélection, et non en commencer une
+//! autre.
+//!
+//! La sélection a sa propre génération, distincte de celle du curseur : l'abandonner ne
+//! déplace pas le curseur, et la vue doit pourtant repeindre. Les confondre laisserait une
+//! surbrillance orpheline à l'écran.
+//!
+//! Un déplacement porte son mode — [`AirTextAction::move_by`] efface la sélection,
+//! [`AirTextAction::select_by`] l'étend —, et les deux partagent le même
+//! [`AirTextMotion`]. Les décliner en deux familles de variantes aurait obligé à ajouter
+//! chaque déplacement futur à deux endroits.
 
 use crate::model::{AirChangeSet, AirGeneration, AirModel};
 use crate::unicode::{

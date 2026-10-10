@@ -25,8 +25,23 @@
 //! - [`AirPromptDialog`], une question et sa réponse, à poser en modal par
 //!   [`crate::application::AirScreen::set_modal`].
 //!
-//! Ce qui manque encore : les cases à cocher et les boutons radio, et la sélection dans
-//! l'éditeur comme dans le champ de saisie.
+//! Ce qui manque encore : les cases à cocher et les boutons radio, et le **double clic**,
+//! qui demande une horloge — le décodeur est pur, et l'horloge n'y a pas sa place.
+//!
+//! # La sélection, et qui la tient
+//!
+//! Faite au jalon M7d, et pas au même endroit dans les deux widgets :
+//!
+//! - [`AirEditorView`] la lit dans son [`crate::model::AirTextBuffer`], parce que le
+//!   texte est au modèle et que la sélection en fait partie ;
+//! - [`AirInputLine`] la tient **elle-même**, parce qu'elle tient déjà son texte. Lui
+//!   donner un modèle pour une ligne serait payer l'ADR-007 sans rien en retirer.
+//!
+//! Les deux partagent la même ancre plutôt que deux bornes ordonnées — c'est ce qui
+//! permet de réduire une sélection en revenant en arrière —, les mêmes gestes
+//! (`Maj`+flèches, `Maj`+clic, glisser, `Ctrl`+`A`) et les mêmes trois commandes de
+//! presse-papiers, qu'elles **demandent** sans jamais le toucher : il est au contrôleur
+//! (voir [`crate::clipboard::AirClipboard`]).
 //!
 //! # La bordure, et qui la retire
 //!

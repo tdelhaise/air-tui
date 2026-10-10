@@ -59,6 +59,17 @@ pub const CLOSE: AirCommand = AirCommand::new(4);
 pub const SAVE: AirCommand = AirCommand::new(5);
 /// Ouvrir.
 pub const OPEN: AirCommand = AirCommand::new(6);
+/// Copier la sélection dans le presse-papiers.
+///
+/// Les trois commandes du presse-papiers sont ici et non dans un widget, parce que le
+/// presse-papiers n'appartient à aucune vue : il est partagé, et c'est le contrôleur qui
+/// le tient (ADR-007). Un widget qui copierait lui-même aurait besoin d'une référence
+/// mutable vers un état qu'il ne possède pas.
+pub const COPY: AirCommand = AirCommand::new(7);
+/// Couper la sélection vers le presse-papiers.
+pub const CUT: AirCommand = AirCommand::new(8);
+/// Coller le presse-papiers au curseur.
+pub const PASTE: AirCommand = AirCommand::new(9);
 /// Le premier numéro laissé aux applications.
 pub const FIRST_APPLICATION_COMMAND: AirCommand = AirCommand::new(256);
 

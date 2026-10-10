@@ -40,6 +40,7 @@
 
 pub mod application;
 pub mod cell;
+pub mod clipboard;
 pub mod codec;
 pub mod command;
 pub mod geometry;
@@ -57,6 +58,7 @@ pub use air_tui_platform::{
 };
 pub use application::{AirApplication, AirDesktop, AirPumpOutcome, AirScreen};
 pub use cell::{AirAttributes, AirCell, AirColor};
+pub use clipboard::AirClipboard;
 pub use codec::{AirCellPresentation, AirSgrEncoder};
 pub use command::{AirCommand, AirCommandSet};
 pub use geometry::{AirColumn, AirPoint, AirRectangle, AirRow, AirSize};

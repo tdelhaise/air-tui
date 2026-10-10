@@ -35,10 +35,21 @@
 //! deux donnerait soit un curseur qu'on perd en tapant, soit une molette qui ne sert à
 //! rien.
 //!
+//! # La sélection, et où elle vit
+//!
+//! Faite au jalon M7d. La sélection est **dans le tampon**, pas ici : le texte est au
+//! modèle, et son étendue sélectionnée en fait partie. La vue n'en garde que ce qu'elle
+//! dessine — l'intervalle de colonnes de chaque ligne visible, capturé au moment du
+//! reflet, seul instant où elle voit le tampon. Les bornes sont des décalages en octets,
+//! et les convertir en colonnes demande le début de la ligne, que le reflet ne garde pas.
+//!
+//! Le copier-coller **sort par le canal des commandes** et non par celui des intentions :
+//! le presse-papiers n'appartient pas à cette vue, et c'est le contrôleur qui le tient.
+//!
 //! # Ce qui n'est pas là
 //!
-//! La **sélection** : la vue n'a qu'un curseur, pas d'étendue. `Maj`+flèche, le
-//! copier-coller interne et la surbrillance attendent, et avec eux le double-clic.
+//! Le **double clic**, qui sélectionnerait un mot : il demande une horloge, et le
+//! décodeur est pur. Tant que personne ne décide où l'horloge vit, le geste n'existe pas.
 //!
 //! La **tabulation** : insérer un `\t` demande de choisir des taquets et de les appliquer
 //! au rendu comme au calcul de colonne. Tant que ce choix n'est pas fait, `Tab` n'est pas
@@ -46,6 +57,7 @@
 //! caractère dont l'affichage serait faux.
 
 use crate::cell::{AirAttributes, AirCell};
+use crate::command::AirCommand;
 use crate::geometry::{AirColumn, AirPoint, AirRectangle, AirRow, AirSize};
 use crate::input::event::{AirInputEvent, AirKey, AirMouseButton, AirMouseEventKind};
 use crate::model::{AirGeneration, AirTextAction, AirTextBuffer, AirTextMotion, AirTextPosition};
@@ -438,6 +450,24 @@ impl AirEditorView {
         }
     }
 
+    /// La commande de presse-papiers qu'une frappe demande, s'il y en a une.
+    ///
+    /// `Ctrl`+`C`, `Ctrl`+`X` et `Ctrl`+`V` : les gestes que tout le monde connaît.
+    /// Turbo Vision employait `Ctrl`+`Inser` et `Maj`+`Suppr`, que les terminaux ne
+    /// transmettent pas tous — ils demandent le protocole Kitty pour être distingués de
+    /// `Inser` et `Suppr` nus.
+    fn clipboard_command(key: &crate::input::event::AirKeyEvent) -> Option<AirCommand> {
+        if !key.modifiers.control {
+            return None;
+        }
+        match key.logical {
+            AirKey::Character('c' | 'C') => Some(crate::command::COPY),
+            AirKey::Character('x' | 'X') => Some(crate::command::CUT),
+            AirKey::Character('v' | 'V') => Some(crate::command::PASTE),
+            _ => None,
+        }
+    }
+
     /// Le déplacement correspondant à une touche, s'il y en a un.
     ///
     /// Séparé de l'édition parce que **`Maj` ne décide qu'une chose** : étendre la
@@ -574,10 +604,25 @@ impl AirView for AirEditorView {
                 AirOutcome::Consumed
             }
             AirInputEvent::Key(key) => {
+                // Les trois gestes du presse-papiers sortent par le canal des commandes
+                // et non par celui des intentions : le presse-papiers n'appartient pas à
+                // cette vue, et c'est le contrôleur qui le tient.
+                if let Some(command) = Self::clipboard_command(key) {
+                    event.consume();
+                    return AirOutcome::Command(command);
+                }
                 let Some(action) = self.action_for_key(key) else {
                     return AirOutcome::Ignored;
                 };
                 self.pending_actions.push(action);
+                event.consume();
+                AirOutcome::Consumed
+            }
+            // Le collage encadré du terminal. Le décodeur le produit depuis le jalon M1 et
+            // personne ne le consommait : la séquence était décodée, puis jetée.
+            AirInputEvent::Paste(pasted) => {
+                self.pending_actions
+                    .push(AirTextAction::InsertText(pasted.clone()));
                 event.consume();
                 AirOutcome::Consumed
             }
@@ -1364,5 +1409,70 @@ mod tests {
         assert_eq!(outcome, AirOutcome::Ignored);
         turn(&mut view, &mut buffer);
         assert_eq!(buffer.selection(), None);
+    }
+
+    // --------------------------------------- le presse-papiers et le collage
+
+    fn control() -> AirModifiers {
+        AirModifiers {
+            control: true,
+            ..AirModifiers::default()
+        }
+    }
+
+    #[test]
+    fn les_trois_gestes_du_presse_papiers_sortent_en_commandes() {
+        // Par le canal des commandes et non celui des intentions : le presse-papiers
+        // n'appartient pas à la vue.
+        for (character, expected) in [
+            ('c', crate::command::COPY),
+            ('x', crate::command::CUT),
+            ('v', crate::command::PASTE),
+        ] {
+            let mut view = editor(10, 3);
+            let outcome = press_with(&mut view, AirKey::Character(character), control());
+            assert_eq!(outcome, AirOutcome::Command(expected));
+            assert!(
+                !view.has_pending_actions(),
+                "la vue a aussi produit une intention pour {character}"
+            );
+        }
+    }
+
+    #[test]
+    fn un_collage_encadre_est_insere_d_un_coup() {
+        // Le décodeur produit cet événement depuis le jalon M1, et jusqu'au jalon M7d
+        // personne ne le consommait : la séquence était décodée, puis jetée.
+        let mut buffer = AirTextBuffer::new();
+        let mut view = editor(10, 3);
+        view.synchronize(&buffer);
+        let mut commands = AirCommandSet::new();
+        let mut context = AirContext {
+            commands: &mut commands,
+        };
+        let mut event = AirEvent::new(AirInputEvent::Paste("ab\ncd".to_owned()));
+        let outcome = view.handle_event(&mut event, &mut context);
+        assert_eq!(outcome, AirOutcome::Consumed);
+        turn(&mut view, &mut buffer);
+        assert_eq!(buffer.lines(), ["ab", "cd"]);
+    }
+
+    #[test]
+    fn un_collage_encadre_remplace_la_selection() {
+        let mut buffer = AirTextBuffer::from_text("abcd");
+        let mut view = editor(10, 3);
+        view.synchronize(&buffer);
+        press_with_shift(&mut view, AirKey::Right);
+        press_with_shift(&mut view, AirKey::Right);
+        turn(&mut view, &mut buffer);
+
+        let mut commands = AirCommandSet::new();
+        let mut context = AirContext {
+            commands: &mut commands,
+        };
+        let mut event = AirEvent::new(AirInputEvent::Paste("XY".to_owned()));
+        view.handle_event(&mut event, &mut context);
+        turn(&mut view, &mut buffer);
+        assert_eq!(buffer.lines(), ["XYcd"]);
     }
 }
