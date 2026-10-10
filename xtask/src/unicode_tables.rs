@@ -14,12 +14,14 @@ use std::path::Path;
 
 use crate::ucd::{self, PropertyRange, UcdError};
 
-/// Les noms des quatre fichiers du référentiel dont les tables dérivent.
+/// Les noms des cinq fichiers du référentiel dont les tables dérivent.
 const EAST_ASIAN_WIDTH_FILE: &str = "EastAsianWidth.txt";
 /// Le fichier des propriétés dérivées, d'où vient `Grapheme_Extend`.
 const DERIVED_CORE_PROPERTIES_FILE: &str = "DerivedCoreProperties.txt";
 /// Le fichier de la propriété de coupure de graphème.
 const GRAPHEME_BREAK_FILE: &str = "GraphemeBreakProperty.txt";
+/// Le fichier de la propriété de coupure de mot.
+const WORD_BREAK_FILE: &str = "WordBreakProperty.txt";
 /// Le fichier des propriétés d'emoji.
 const EMOJI_DATA_FILE: &str = "emoji-data.txt";
 
@@ -43,6 +45,32 @@ const GRAPHEME_BREAK_NAMES: &[(&str, &str)] = &[
     ("LVT", "HangulLeadingVowelTrailing"),
 ];
 
+/// La correspondance entre les noms de coupure de mot de l'UCD et ceux d'air-tui.
+///
+/// Même règle que ci-dessus : la norme écrit `ALetter`, `MidNumLet` et `WSegSpace`, qui
+/// sont des abréviations ; air-tui les écrit en entier (ADR-004). `Other` n'y figure pas —
+/// c'est la valeur par défaut, et le référentiel ne l'énumère pas.
+const WORD_BREAK_NAMES: &[(&str, &str)] = &[
+    ("CR", "CarriageReturn"),
+    ("LF", "LineFeed"),
+    ("Newline", "Newline"),
+    ("Extend", "Extend"),
+    ("ZWJ", "ZeroWidthJoiner"),
+    ("Regional_Indicator", "RegionalIndicator"),
+    ("Format", "Format"),
+    ("Katakana", "Katakana"),
+    ("Hebrew_Letter", "HebrewLetter"),
+    ("ALetter", "AlphabeticLetter"),
+    ("Single_Quote", "SingleQuote"),
+    ("Double_Quote", "DoubleQuote"),
+    ("MidNumLet", "MiddleNumericOrLetter"),
+    ("MidLetter", "MiddleLetter"),
+    ("MidNum", "MiddleNumeric"),
+    ("Numeric", "Numeric"),
+    ("ExtendNumLet", "ExtendNumericOrLetter"),
+    ("WSegSpace", "WordSegmentationSpace"),
+];
+
 /// Produit le contenu du fichier de tables depuis un répertoire du référentiel.
 ///
 /// # Errors
@@ -56,6 +84,7 @@ pub fn generate(ucd_directory: &Path) -> Result<String, UcdError> {
     let east_asian = ucd::read_property_file(&east_asian_path)?;
     let derived = ucd::read_property_file(&ucd_directory.join(DERIVED_CORE_PROPERTIES_FILE))?;
     let grapheme = ucd::read_property_file(&ucd_directory.join(GRAPHEME_BREAK_FILE))?;
+    let word = ucd::read_property_file(&ucd_directory.join(WORD_BREAK_FILE))?;
     let emoji = ucd::read_property_file(&ucd_directory.join(EMOJI_DATA_FILE))?;
 
     // Largeur deux : les caractères est-asiatiques larges ou pleine chasse, et les emoji
@@ -68,7 +97,8 @@ pub fn generate(ucd_directory: &Path) -> Result<String, UcdError> {
 
     let zero_width = ucd::select(&derived, &["Grapheme_Extend"]);
     let extended_pictographic = ucd::select(&emoji, &["Extended_Pictographic"]);
-    let grapheme_break = select_grapheme_break(&grapheme)?;
+    let grapheme_break = select_named(&grapheme, GRAPHEME_BREAK_NAMES, GRAPHEME_BREAK_FILE)?;
+    let word_break = select_named(&word, WORD_BREAK_NAMES, WORD_BREAK_FILE)?;
 
     // La coupure conjointe indienne porte la règle GB9c de l'annexe 29 : sans elle, le
     // curseur coupe au milieu d'une conjointe en devanagari.
@@ -114,28 +144,47 @@ pub fn generate(ucd_directory: &Path) -> Result<String, UcdError> {
         "Les lieurs de la coupure conjointe indienne, pour la règle `GB9c`.",
         &indic_linker,
     );
-    write_grapheme_break_table(&mut output, &grapheme_break);
+    write_named_table(
+        &mut output,
+        "GRAPHEME_BREAK",
+        "AirGraphemeBreak",
+        "La propriété de coupure de graphème, par plage.",
+        &grapheme_break,
+    );
+    write_named_table(
+        &mut output,
+        "WORD_BREAK",
+        "AirWordBreak",
+        "La propriété de coupure de mot, par plage — l'annexe 29 encore, autre segmentation.",
+        &word_break,
+    );
     Ok(output)
 }
 
-/// Les plages de propriété de coupure de graphème, nommées et fusionnées.
-fn select_grapheme_break(ranges: &[PropertyRange]) -> Result<Vec<(u32, u32, &str)>, UcdError> {
-    let mut named: Vec<(u32, u32, &str)> = Vec::with_capacity(ranges.len());
+/// Les plages d'une propriété énumérée, traduites par une table de noms et fusionnées.
+///
+/// Une valeur absente de la table est une **erreur** et non une plage ignorée : une
+/// nouvelle édition d'Unicode qui ajouterait une valeur de coupure doit arrêter la
+/// génération, pas produire une table silencieusement incomplète.
+fn select_named<'names>(
+    ranges: &[PropertyRange],
+    names: &'names [(&str, &str)],
+    file: &str,
+) -> Result<Vec<(u32, u32, &'names str)>, UcdError> {
+    let mut translated: Vec<(u32, u32, &str)> = Vec::with_capacity(ranges.len());
     for range in ranges {
-        let Some((_, air_name)) = GRAPHEME_BREAK_NAMES
-            .iter()
-            .find(|(ucd_name, _)| *ucd_name == range.value)
+        let Some((_, air_name)) = names.iter().find(|(ucd_name, _)| *ucd_name == range.value)
         else {
             return Err(UcdError::MalformedLine {
-                path: GRAPHEME_BREAK_FILE.to_owned(),
+                path: file.to_owned(),
                 line_number: 0,
                 content: format!("valeur de coupure inconnue : {}", range.value),
             });
         };
-        named.push((range.first, range.last, *air_name));
+        translated.push((range.first, range.last, *air_name));
     }
-    named.sort_unstable();
-    Ok(merge_named(named))
+    translated.sort_unstable();
+    Ok(merge_named(translated))
 }
 
 /// Fusionne les plages contiguës qui portent la même valeur nommée.
@@ -169,7 +218,7 @@ fn write_header(output: &mut String, version: &str) {
          //! Les données appartiennent au Consortium Unicode et sont distribuées sous la\n\
          //! licence `Unicode-3.0`, admise par `deny.toml`.\n\
          \n\
-         use crate::unicode::AirGraphemeBreak;\n\
+         use crate::unicode::{AirGraphemeBreak, AirWordBreak};\n\
          \n",
     );
     let _ = writeln!(
@@ -193,34 +242,56 @@ fn write_range_table(output: &mut String, name: &str, description: &str, ranges:
     output.push_str("];\n\n");
 }
 
-/// Écrit la table de propriété de coupure de graphème.
-fn write_grapheme_break_table(output: &mut String, ranges: &[(u32, u32, &str)]) {
-    output.push_str("/// La propriété de coupure de graphème, par plage.\n");
+/// Écrit une table de propriété énumérée, par plage.
+fn write_named_table(
+    output: &mut String,
+    table: &str,
+    type_name: &str,
+    description: &str,
+    ranges: &[(u32, u32, &str)],
+) {
+    let _ = writeln!(output, "/// {description}");
     let _ = writeln!(
         output,
         "///\n/// {} plages, triées et fusionnées. Les points de code absents valent\n\
-         /// [`AirGraphemeBreak::Other`].",
+         /// [`{type_name}::Other`].",
         ranges.len()
     );
-    output.push_str("pub(crate) static GRAPHEME_BREAK: &[(u32, u32, AirGraphemeBreak)] = &[\n");
+    let _ = writeln!(
+        output,
+        "pub(crate) static {table}: &[(u32, u32, {type_name})] = &["
+    );
     for (first, last, name) in ranges {
         let _ = writeln!(
             output,
-            "    ({first:#07X}, {last:#07X}, AirGraphemeBreak::{name}),"
+            "    ({first:#07X}, {last:#07X}, {type_name}::{name}),"
         );
     }
-    output.push_str("];\n");
+    output.push_str("];\n\n");
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{GRAPHEME_BREAK_NAMES, merge_named, write_range_table};
+    use super::{GRAPHEME_BREAK_NAMES, WORD_BREAK_NAMES, merge_named, write_range_table};
 
     #[test]
     fn les_treize_valeurs_de_coupure_sont_nommees_sans_abreviation() {
         // La norme abrège `L`, `LV`, `ZWJ` ; la règle de nommage d'air-tui ne l'admet pas.
         assert_eq!(GRAPHEME_BREAK_NAMES.len(), 13);
         for (_, air_name) in GRAPHEME_BREAK_NAMES {
+            assert!(
+                air_name.len() > 2,
+                "{air_name} est trop court pour ne pas être une abréviation"
+            );
+        }
+    }
+
+    #[test]
+    fn les_dix_huit_valeurs_de_coupure_de_mot_sont_nommees_sans_abreviation() {
+        // Le référentiel énumère dix-huit valeurs ; `Other` est le défaut et n'y figure
+        // pas. En manquer une arrêterait la génération, ce qui est voulu.
+        assert_eq!(WORD_BREAK_NAMES.len(), 18);
+        for (_, air_name) in WORD_BREAK_NAMES {
             assert!(
                 air_name.len() > 2,
                 "{air_name} est trop court pour ne pas être une abréviation"

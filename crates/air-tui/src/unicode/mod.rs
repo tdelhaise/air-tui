@@ -31,10 +31,14 @@
 //! garde le curseur et le rendu d'accord entre eux.
 
 mod tables;
+mod words;
 
 use core::cmp::Ordering;
 
 pub use tables::UNICODE_VERSION;
+pub use words::{
+    AirWordBreak, AirWords, is_word, next_word_start, previous_word_start, word_break, words,
+};
 
 use tables::{
     EXTENDED_PICTOGRAPHIC, GRAPHEME_BREAK, INDIC_CONSONANT, INDIC_EXTEND, INDIC_LINKER, WIDE,
@@ -95,22 +99,30 @@ fn is_in_ranges(ranges: &[(u32, u32)], code: u32) -> bool {
         .is_ok()
 }
 
-/// La propriété de coupure inscrite dans une table, ou [`AirGraphemeBreak::Other`].
-fn break_in_table(table: &[(u32, u32, AirGraphemeBreak)], code: u32) -> AirGraphemeBreak {
+/// La valeur inscrite dans une table de propriété énumérée, ou `default` hors des plages.
+///
+/// Générique sur la valeur : les deux segmentations de l'annexe 29 — graphèmes et mots —
+/// ont la même forme de table et la même recherche binaire. L'écrire deux fois
+/// garantirait qu'elles divergent.
+fn value_in_table<Value: Copy>(table: &[(u32, u32, Value)], code: u32, default: Value) -> Value {
     let found = table
         .binary_search_by(|(first, last, _)| compare_range(*first, *last, code))
         .ok()
         .and_then(|index| table.get(index));
     match found {
         Some((_, _, value)) => *value,
-        None => AirGraphemeBreak::Other,
+        None => default,
     }
 }
 
 /// La propriété de coupure de graphème d'un caractère.
 #[must_use]
 pub fn grapheme_break(character: char) -> AirGraphemeBreak {
-    break_in_table(GRAPHEME_BREAK, u32::from(character))
+    value_in_table(
+        GRAPHEME_BREAK,
+        u32::from(character),
+        AirGraphemeBreak::Other,
+    )
 }
 
 /// Vrai si le caractère est pictographique au sens étendu.
@@ -125,9 +137,16 @@ pub fn is_extended_pictographic(character: char) -> bool {
 /// La classe d'un caractère pour la coupure conjointe indienne.
 ///
 /// Elle porte la règle `GB9c` de l'annexe 29 : en devanagari et dans les écritures
-/// voisines, une consonne, un lieur et une seconde consonne forment une **conjointe** —
-/// un seul signe à l'écran, donc une seule grappe. Sans cette règle, le curseur coupe au
-/// milieu d'un `क्ष`.
+/// voisines, un lieur soude ce qui le suit à ce qui le précède — `क्ष` est un seul signe à
+/// l'écran, donc une seule grappe. Sans cette règle, le curseur coupe en son milieu.
+///
+/// # La règle a changé en Unicode 18.0.0
+///
+/// La révision 49 de l'annexe l'a réécrite en
+/// `\p{InCB=Linker} \p{InCB=Extend}* × \p{InCB=Consonant}` : l'exigence d'une consonne
+/// **avant** le lieur a disparu. Un virama en tête de texte soude donc désormais la
+/// consonne qui le suit. Ce dépôt portait la formulation antérieure, et dix cas du fichier
+/// d'essais officiel l'ont montré — voir `cargo xtask check-segmentation`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AirIndicConjunctBreak {
     /// Aucun rôle dans une conjointe.
@@ -200,15 +219,13 @@ enum PictographicState {
     PictographicThenJoiner,
 }
 
-/// L'état de la règle `GB9c` : a-t-on vu une consonne, puis un lieur ?
+/// L'état de la règle `GB9c` : a-t-on vu un lieur, puis des prolongements ?
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ConjunctState {
     /// Rien de conjoint en cours.
     None,
-    /// Une consonne, éventuellement suivie de marques de prolongement.
-    Consonant,
-    /// Une consonne, des marques, puis un lieur.
-    ConsonantThenLinker,
+    /// Un lieur, éventuellement suivi de marques de prolongement conjointes.
+    LinkerThenExtenders,
 }
 
 /// L'état accumulé pendant le parcours d'une grappe.
@@ -250,17 +267,14 @@ impl ClusterState {
                 _ => PictographicState::None,
             }
         };
-        // L'ordre compte : une consonne rouvre toujours une conjointe, et une marque de
-        // prolongement conserve l'état au lieu de le perdre.
+        // Un lieur ouvre toujours la conjointe, une marque de prolongement la conserve, et
+        // tout le reste — une consonne comprise — la referme. Une consonne qui conserverait
+        // l'état ferait souder deux consonnes séparées par un lieur **déjà consommé** deux
+        // fois de suite.
         self.conjunct = match (self.conjunct, indic_conjunct_break(character)) {
-            (_, AirIndicConjunctBreak::Consonant)
-            | (ConjunctState::Consonant, AirIndicConjunctBreak::Extend) => ConjunctState::Consonant,
-            (
-                ConjunctState::Consonant | ConjunctState::ConsonantThenLinker,
-                AirIndicConjunctBreak::Linker,
-            )
-            | (ConjunctState::ConsonantThenLinker, AirIndicConjunctBreak::Extend) => {
-                ConjunctState::ConsonantThenLinker
+            (_, AirIndicConjunctBreak::Linker)
+            | (ConjunctState::LinkerThenExtenders, AirIndicConjunctBreak::Extend) => {
+                ConjunctState::LinkerThenExtenders
             }
             _ => ConjunctState::None,
         };
@@ -337,8 +351,8 @@ fn breaks_between(previous: char, current: char, state: ClusterState) -> bool {
     {
         return false;
     }
-    // `GB9c` : une consonne, un lieur et une seconde consonne forment une conjointe.
-    if state.conjunct == ConjunctState::ConsonantThenLinker
+    // `GB9c` : un lieur, des prolongements, puis une consonne forment une conjointe.
+    if state.conjunct == ConjunctState::LinkerThenExtenders
         && indic_conjunct_break(current) == AirIndicConjunctBreak::Consonant
     {
         return false;
@@ -412,9 +426,9 @@ pub fn graphemes(text: &str) -> AirGraphemes<'_> {
 #[cfg(test)]
 mod tests {
     use super::{
-        AirGraphemeBreak, AirIndicConjunctBreak, UNICODE_VERSION, break_in_table, display_width,
-        grapheme_break, grapheme_width, graphemes, indic_conjunct_break, is_extended_pictographic,
-        is_in_ranges, split_first_cluster, text_width,
+        AirGraphemeBreak, AirIndicConjunctBreak, UNICODE_VERSION, display_width, grapheme_break,
+        grapheme_width, graphemes, indic_conjunct_break, is_extended_pictographic, is_in_ranges,
+        split_first_cluster, text_width, value_in_table,
     };
 
     fn clusters(text: &str) -> Vec<&str> {
@@ -610,6 +624,23 @@ mod tests {
     }
 
     #[test]
+    fn un_lieur_sans_consonne_devant_soude_quand_meme() {
+        // La révision 49 de l'annexe, livrée avec Unicode 18.0.0, a retiré de `GB9c`
+        // l'exigence d'une consonne avant le lieur. Ce cas est le n° 179 du fichier
+        // d'essais officiel, et il échouait avant cette correction.
+        let sequence = "\u{94D}\u{915}";
+        assert_eq!(clusters(sequence), vec![sequence]);
+    }
+
+    #[test]
+    fn un_lieur_precede_d_une_lettre_latine_soude_aussi() {
+        // Cas n° 859 du fichier d'essais : `a`, virama, `त`. La consonne du début n'a plus
+        // à être indienne — elle n'a plus à exister.
+        let sequence = "a\u{94D}\u{924}";
+        assert_eq!(clusters(sequence), vec![sequence]);
+    }
+
+    #[test]
     fn deux_consonnes_devanagari_sans_lieur_font_deux_grappes() {
         // C'est le lieur qui fait la conjointe, pas la proximité.
         assert_eq!(clusters("\u{915}\u{937}"), vec!["\u{915}", "\u{937}"]);
@@ -727,7 +758,10 @@ mod tests {
         // Couvre la branche d'absence, que les tables réelles n'atteignent jamais pour un
         // point de code valide (ADR-012).
         assert!(!is_in_ranges(&[], 0x41));
-        assert_eq!(break_in_table(&[], 0x41), AirGraphemeBreak::Other);
+        assert_eq!(
+            value_in_table(&[], 0x41, AirGraphemeBreak::Other),
+            AirGraphemeBreak::Other
+        );
     }
 
     #[test]

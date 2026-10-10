@@ -63,9 +63,10 @@ pub use surface::AirSurface;
 pub use terminal::AirTerminal;
 pub use theme::AirTheme;
 pub use unicode::{
-    AirGraphemeBreak, AirGraphemes, AirIndicConjunctBreak, UNICODE_VERSION, display_width,
-    grapheme_break, grapheme_width, graphemes, indic_conjunct_break, is_extended_pictographic,
-    text_width,
+    AirGraphemeBreak, AirGraphemes, AirIndicConjunctBreak, AirWordBreak, AirWords, UNICODE_VERSION,
+    display_width, grapheme_break, grapheme_width, graphemes, indic_conjunct_break,
+    is_extended_pictographic, is_word, next_word_start, previous_word_start, text_width,
+    word_break, words,
 };
 pub use view::{
     AirBorderStyle, AirContext, AirEvent, AirGroup, AirOutcome, AirPainter, AirPhase, AirView,
