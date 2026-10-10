@@ -26,6 +26,12 @@ l'état vivant, ce journal est la trace figée, `INDEX.md` est la carte structur
   prend la case du milieu (ADR-009).
 - 212 tests, 100 % de couverture sur les six modules de codec et d'entrée, 371 416
   exécutions de fuzzing sans plantage sur le décodeur étendu.
+- **Vérifié sur les trois plateformes**, et le contrôle `aarch64` était le plus
+  important : sur neon (Raspberry Pi, Ubuntu 26.04, noyau 7.0.0-1020-raspi), 249 tests au
+  vert et l'exemple `frame` rendant une grille identique. La déclaration **variadique**
+  d'`ioctl` est donc juste — sur cette ABI les arguments variadiques passent par la pile,
+  et une déclaration non-variadique aurait fonctionné sur `x86_64` en cassant ici. C'était
+  le défaut latent le plus probable du projet.
 - **Affirmations périmées corrigées** : `CLAUDE.md`, `AGENTS.md`, `README.md` et
   `CONVENTIONS-fr.md` nommaient encore `air-tui-sys`, crate renommée par ADR-011. Les ADR
   antérieurs et le journal ne sont pas réécrits — ce sont des archives — et une note de

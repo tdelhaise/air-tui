@@ -56,6 +56,12 @@ comme framework : il n'y a ni arbre de vues, ni widget.
   **100 %** de régions, de fonctions et de lignes (`input/ansi.rs`, `input/event.rs`,
   `input/scanning.rs`, `codec/sgr.rs`, `codec/decimal.rs`). Le cœur `terminal.rs` est à
   93,8 % — il était à 0 % avant la couture par traits.
+- **Vérifié sur `aarch64`** (neon — Ubuntu 26.04, noyau 7.0.0-1020-raspi, Raspberry Pi) :
+  249 tests au vert et l'exemple `frame` rendant une grille identique à celle des deux
+  autres plateformes. C'était le contrôle décisif : la déclaration **variadique**
+  d'`ioctl` est juste sur l'ABI aarch64, où les arguments variadiques passent par la pile
+  alors que les arguments fixes passent par registre. Un `ioctl` déclaré non-variadique
+  aurait fonctionné sur `x86_64` et cassé silencieusement ici.
 - **Vérifié sur Linux** (hydrogen — Ubuntu 26.04.1 LTS, noyau 7.0.0-38, `x86_64`) :
   `fmt`, `clippy -D warnings`, **188 tests**, `build --locked` et `deny check` propres ;
   couverture globale **95,0 %** de régions, et les cinq modules d'entrée et de codec
@@ -111,10 +117,11 @@ premier idéogramme et le curseur de l'éditeur démembre les emoji composés. C
 où les interfaces texte artisanales se cassent les dents, et il vaut un jalon à lui seul.
 
 Une dette restante : remonter la couverture de `air-tui-platform-posix` par des tests sous
-pty. Et deux vérifications encore absentes, de nature différente : **`aarch64`**, qui n'a
-été ni construit ni exécuté — c'est là que le piège variadique d'`ioctl` se manifesterait
-—, et la **console Linux native**, inaccessible par SSH et dont dépend tout l'étage natif
-du jalon M8.
+pty. Et deux vérifications encore absentes : la **console Linux native**, inaccessible par
+SSH et dont dépend tout l'étage natif du jalon M8 ; et le protocole Kitty **contre un vrai
+terminal** — il est décodé et négocié d'après la spécification, et les tests le pilotent
+avec un périphérique en mémoire, ce qui prouve le code mais pas la table des numéros de
+touches fonctionnelles.
 
 Ensuite M1 : le parseur ANSI incrémental, avec sa cible `cargo-fuzz` dès le premier commit
 du module (Principe 1 d'Air : fuzzing systématique sur toute API qui accepte des données
