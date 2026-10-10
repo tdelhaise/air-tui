@@ -278,6 +278,29 @@ const fn key_for_tilde_parameter(parameter: u32) -> Option<AirKey> {
     }
 }
 
+/// L'événement d'une touche spéciale, **type d'événement compris**.
+///
+/// Le protocole Kitty place le type d'événement en sous-paramètre du champ des
+/// modificateurs, et cette règle vaut aussi pour l'encodage historique des touches
+/// spéciales : `kitty` écrit `CSI ; 1 : 3 B` pour un relâchement de la flèche bas — en
+/// **omettant** le numéro de touche, que la spécification autorise à taire quand il vaut
+/// un. Ne lire ce sous-champ que sur la forme `CSI … u`, comme le décodeur le faisait
+/// jusqu'au jalon M7c, faisait passer tout relâchement de flèche, de touche de fonction,
+/// d'`Inser` ou de `Suppr` pour un enfoncement : le type était décodé là où il ne sert
+/// qu'aux caractères, et ignoré là où il désigne les touches dont les widgets vivent.
+///
+/// Le champ des modificateurs est le même indice dans les deux formes — `CSI 1 ; m B` et
+/// `CSI 2 ; m ~` —, donc une seule lecture suffit aux deux.
+fn functional_key_event(key: AirKey, parameters: &Parameters) -> AirKeyEvent {
+    AirKeyEvent {
+        logical: key,
+        modifiers: modifiers_from_parameter(parameters.value_or(1, 1)),
+        state: key_state_from_event_type(parameters.first_sub_or(1, 1)),
+        physical: None,
+        base_layout: None,
+    }
+}
+
 /// La touche désignée par l'octet final d'une séquence, hors séquences `~`.
 const fn key_for_final_byte(final_byte: u8) -> Option<AirKey> {
     match final_byte {
@@ -484,9 +507,7 @@ impl AirAnsiDecoder {
             b'O' => emit(AirInputEvent::FocusLost),
             other => {
                 if let Some(key) = key_for_final_byte(other) {
-                    emit(AirInputEvent::Key(
-                        AirKeyEvent::press(key).with_modifiers(modifiers),
-                    ));
+                    emit(AirInputEvent::Key(functional_key_event(key, &parameters)));
                 }
                 // Sinon : séquence bien formée, non reconnue. Consommée, sans événement.
             }
@@ -521,9 +542,7 @@ impl AirAnsiDecoder {
             return;
         }
         if let Some(key) = key_for_tilde_parameter(parameter) {
-            emit(AirInputEvent::Key(
-                AirKeyEvent::press(key).with_modifiers(modifiers),
-            ));
+            emit(AirInputEvent::Key(functional_key_event(key, parameters)));
         }
     }
 
@@ -1566,6 +1585,105 @@ mod tests {
         assert_eq!(
             decode(b"\x1b[97;1;3u"),
             (9, vec![key(AirKey::Character('a'))])
+        );
+    }
+
+    // Le type d'événement sur l'encodage historique des touches spéciales. Jusqu'au
+    // jalon M7c, le décodeur ne le lisait que sur la forme `CSI … u` : un relâchement de
+    // flèche ou d'`Inser` ressortait en enfoncement, et le filtre que portait
+    // `AirListBox` ne pouvait donc rien en faire.
+
+    /// L'événement attendu d'une touche spéciale, type d'événement compris.
+    ///
+    /// Une aide **constructrice** et non un extracteur : un `match` sur ce que le
+    /// décodeur a rendu porterait un bras d'échec jamais pris, donc une région non
+    /// couverte, et l'ADR-012 exige 100 % des régions sur un codec.
+    fn key_in_state(logical: AirKey, modifiers: AirModifiers, state: AirKeyState) -> AirInputEvent {
+        AirInputEvent::Key(AirKeyEvent {
+            logical,
+            modifiers,
+            state,
+            physical: None,
+            base_layout: None,
+        })
+    }
+
+    fn released(logical: AirKey) -> AirInputEvent {
+        key_in_state(logical, AirModifiers::NONE, AirKeyState::Release)
+    }
+
+    #[test]
+    fn un_relachement_de_fleche_est_un_relachement() {
+        // `kitty` omet le numéro de touche quand il vaut un : le champ est **vide**, et
+        // c'est la forme réellement émise — vérifiée dans `kitty/key_encoding.py`, qui
+        // n'écrit le numéro que s'il diffère de un.
+        assert_eq!(decode(b"\x1b[;1:3B"), (7, vec![released(AirKey::Down)]));
+    }
+
+    #[test]
+    fn un_relachement_de_fleche_au_numero_explicite_est_un_relachement() {
+        // La même touche avec le numéro écrit : d'autres terminaux le posent, et la
+        // spécification l'autorise.
+        assert_eq!(decode(b"\x1b[1;1:3B"), (8, vec![released(AirKey::Down)]));
+    }
+
+    #[test]
+    fn une_repetition_de_fleche_est_une_repetition() {
+        assert_eq!(
+            decode(b"\x1b[;1:2B"),
+            (
+                7,
+                vec![key_in_state(
+                    AirKey::Down,
+                    AirModifiers::NONE,
+                    AirKeyState::Repeat
+                )]
+            )
+        );
+    }
+
+    #[test]
+    fn un_relachement_de_touche_a_tilde_est_un_relachement() {
+        // `Inser` dans `rmc` marque un fichier : le relâchement pris pour une frappe
+        // marquait puis démarquait aussitôt.
+        assert_eq!(decode(b"\x1b[2;1:3~"), (8, vec![released(AirKey::Insert)]));
+    }
+
+    #[test]
+    fn un_relachement_de_touche_de_fonction_est_un_relachement() {
+        assert_eq!(
+            decode(b"\x1b[;1:3P"),
+            (7, vec![released(AirKey::Function(1))])
+        );
+    }
+
+    #[test]
+    fn modificateurs_et_type_d_evenement_se_lisent_dans_le_meme_champ() {
+        // Le type est un sous-paramètre du champ des modificateurs : les deux doivent
+        // sortir ensemble, sinon l'un mange l'autre.
+        let modifiers = AirModifiers::NONE.with_control();
+        assert_eq!(
+            decode(b"\x1b[1;5:3B"),
+            (
+                8,
+                vec![key_in_state(AirKey::Down, modifiers, AirKeyState::Release)]
+            )
+        );
+    }
+
+    #[test]
+    fn une_touche_speciale_sans_sous_parametre_reste_un_enfoncement() {
+        // Non-régression : un terminal qui ne rapporte pas le type d'événement — tout
+        // terminal qui n'a pas négocié le protocole — ne doit pas voir ses frappes
+        // devenir des relâchements.
+        assert_eq!(decode(b"\x1b[B"), (3, vec![key(AirKey::Down)]));
+        assert_eq!(decode(b"\x1b[2~"), (4, vec![key(AirKey::Insert)]));
+        assert_eq!(
+            decode(b"\x1b[1;5B"),
+            (
+                6,
+                vec![key_with(AirKey::Down, AirModifiers::NONE.with_control())]
+            )
         );
     }
 
