@@ -161,7 +161,20 @@ printf 'origine\n' > /tmp/redit-essai.txt
 tools/pty-drive.py ./target/debug/redit /tmp/redit-essai.txt -- 400 414243 400 1b5b31327e 600 1b5b32317e
 cat /tmp/redit-essai.txt     # doit contenir « ABCorigine »
 tools/pty-drive.py ./target/debug/redit /tmp/redit-essai.txt -- 600 1b66   # doit tenir
+
+cargo build -p rmc
+mkdir -p /tmp/rmc-essai/sous-repertoire && printf 'abcd' > /tmp/rmc-essai/quatre.txt
+tools/pty-drive.py ./target/debug/rmc /tmp/rmc-essai -- 700 1b5b32317e      # doit sortir
+tools/pty-drive.py ./target/debug/rmc /tmp/rmc-essai -- 600 09              # doit tenir
+# Tab, flèche bas, Inser, F10 : le panneau de droite devient actif, un item est marqué
+tools/pty-drive.py ./target/debug/rmc /tmp/rmc-essai -- 500 09 300 1b5b42 300 1b5b327e 700 1b5b32317e
 ```
+
+La sortie de `rmc` se lit en retirant les séquences d'échappement : les noms de fichiers
+sont écrits cellule par cellule, donc `grep quatre.txt` sur la sortie brute ne trouve
+rien alors que l'écran les porte. Ce qui se vérifie sur les octets, c'est la **couleur** :
+`38;5;11;48;5;6` est l'item marqué sous le curseur du skin de `mc`, et son absence après
+un `Inser` dirait que le marquage ne traverse pas le modèle.
 
 Attention aux codes : `1b5b31327e` est `F2`, `1b5b31337e` est `F3`, `1b5b32317e` est
 `F10`. Se tromper de touche donne un faux négatif — `F3` ouvre un dialogue modal qui

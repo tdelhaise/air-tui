@@ -53,7 +53,8 @@ refus à la compilation, jamais un comportement dégradé à l'exécution.
   comparaison se fait contre `tvdemo` de `magiblot/tvision`.
 - L'importeur de skins MC donne accès à des thèmes existants pour le coût d'un analyseur
   `.ini` — mais côté `xtask`, pas côté runtime.
-- Jalons : M5 pour le moteur et le thème Turbo Vision, M7 pour MC et l'importeur.
+- Jalons : M5 pour le moteur et le thème Turbo Vision, M7a pour MC et l'importeur, M7b
+  pour les rôles de liste et la coquille `rmc`.
 
 ## État au jalon M7
 
@@ -63,24 +64,29 @@ le thème. `air-tui` n'embarque aucun analyseur de `.ini` et n'ouvre aucun fichi
 afficher un thème : la décision « compilés, pas analysés au runtime » est tenue par la
 structure, pas par une consigne.
 
-La table de correspondance est explicite et annotée : vingt-cinq rôles sont transcrits
+La table de correspondance est explicite et annotée : vingt-neuf rôles sont transcrits
 d'une seule clef du skin, trois sont composés de deux clefs faute d'être nommés par `mc`,
-et quatorze correspondances portent écrite la règle qui a demandé un choix. Une dérivation
+et quinze correspondances portent écrite la règle qui a demandé un choix. Une dérivation
 nommée se discute ; une dérivation silencieuse se découvre des mois plus tard devant un
 écran qui ne ressemble pas au skin.
 
-**Mesuré sur les trente-neuf skins livrés avec `mc` 4.8.33 : douze sont importables.** Les
-vingt-sept autres sont **refusés**, et pour deux raisons qui sont des limites du modèle
-d'air-tui, non des défauts de l'analyseur :
+**Mesuré sur les trente-neuf skins livrés avec `mc` 4.8.33 : dix sont importables** au
+jalon M7b, contre douze à M7a. Les vingt-neuf autres sont **refusés**, et pour deux raisons
+qui sont des limites du modèle d'air-tui, non des défauts de l'analyseur :
 
-- dix-huit posent un **attribut** (`bold`, `underline`…) sur un rôle employé, et
+- vingt posent un **attribut** (`bold`, `underline`…) sur un rôle employé, et
   `AirColorPair` ne porte que deux couleurs. L'ignorer donnerait un thème qui ne ressemble
   pas au skin ;
 - neuf emploient la couleur `default`, le fond transparent de `mc`, qu'`AirColor` ne sait
   pas exprimer.
 
+Les deux skins perdus entre M7a et M7b — `gray-green-purple256` et `gray-orange-blue256` —
+posent `bold` sur `[core] marked`, une clef que la table n'employait pas avant les rôles de
+liste. Le compte baisse donc **parce que le modèle s'est enrichi** : un rôle de plus est
+une clef de plus à savoir exprimer. C'est le prix de l'exigence, et il est chiffré.
+
 Lever ces deux limites — un attribut par rôle, une couleur « défaut du terminal » — rendrait
-les vingt-sept importables. C'est chiffré, donc décidable ; ce n'est pas fait.
+les vingt-neuf importables. C'est chiffré, donc décidable ; ce n'est pas fait.
 
 **Pas fait : la troisième assiette.** Cet ADR décrit un triplet, et `AirTheme` est un
 **couple** `palette` + `glyphs`. `AirDecorations` n'existe pas, et l'écart est assumé
@@ -100,9 +106,25 @@ Une assiette qui décrirait une ombre que rien ne dessine annoncerait une capaci
 La trancher demande de décider si une vue peut peindre hors de ses limites — ce qui est une
 décision d'architecture, pas de thème.
 
-**Pas fait : `rmc`.** Cet ADR prévient que « ce qui fait reconnaître Midnight Commander est
-sa coquille, pas sa palette », et le thème seul ne contredit pas cet avertissement : il le
-confirme. `redit --theme mc` donne un éditeur aux couleurs de `mc`, pas `mc`.
+**Fait au jalon M7b : `rmc`.** Cet ADR prévient que « ce qui fait reconnaître Midnight
+Commander est sa coquille, pas sa palette ». Les deux moitiés existent désormais
+séparément, et c'est ce qui rend l'avertissement vérifiable : `redit --theme mc` donne un
+éditeur aux couleurs de `mc`, `rmc --theme tv` donne la coquille de `mc` aux couleurs de
+Turbo Vision, et ni l'un ni l'autre n'est `mc`. La séparation n'est plus une affirmation de
+l'ADR : c'est une ligne de commande.
+
+La palette a gagné à cette occasion ses **quatre rôles de liste** — `ListNormal`,
+`ListSelected`, `ListMarked`, `ListMarkedSelected` —, première extension depuis qu'un
+second thème existe. C'est ce qui a éprouvé le moteur plutôt que de le décrire : ajouter un
+rôle demande une valeur dans chacun des deux thèmes, et celle du thème compilé vient d'une
+clef du skin que la table désigne. `mc` nomme les quatre ; Turbo Vision n'en nomme que
+trois, et le quatrième est composé.
+
+Le jeu de glyphes a gagné `scroll_thumb`, pour une raison que seule la coquille pouvait
+faire apparaître : le curseur d'ascenseur empruntait `close_box_mark`. Les deux glyphes
+coïncident dans Turbo Vision — c'est le même `■` —, et le skin de `mc` ferme ses fenêtres
+avec un `X` : la glissière portait donc un `X` en plein milieu. Deux usages sans rapport ne
+peuvent pas partager un glyphe de thème, et un thème unique ne permettait pas de le voir.
 
 ## Alternatives écartées
 

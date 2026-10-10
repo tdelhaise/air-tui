@@ -6,6 +6,70 @@ tête. On ajoute, on ne réécrit jamais une entrée passée.
 Une entrée par campagne, pas par commit. Répartition des rôles : `etat-avancement.md` est
 l'état vivant, ce journal est la trace figée, `INDEX.md` est la carte structurelle.
 
+## 2026-10-10 — Jalon M7b : les listes, et la coquille `rmc` à deux panneaux
+
+- **Les deux moitiés que l'ADR-008 sépare existent maintenant séparément.** M7a avait le
+  thème de `mc` sans sa coquille ; M7b a la coquille, et elle porte le thème de Turbo
+  Vision aussi bien que celui de `mc`. L'avertissement de l'ADR — « ce qui fait reconnaître
+  Midnight Commander est sa coquille, pas sa palette » — n'est plus une affirmation à
+  croire : `redit --theme mc` donne un éditeur aux couleurs de `mc`, `rmc --theme tv` donne
+  la coquille de `mc` aux couleurs de Borland, et ni l'un ni l'autre n'est `mc`.
+- **Les quatre rôles de liste ont éprouvé le moteur de thèmes au lieu de le décrire.**
+  C'est la première extension de la palette depuis qu'un second thème existe, et c'est là
+  que l'on voit si le moteur en est un : ajouter un rôle a demandé une valeur dans chacun
+  des deux thèmes, et celle du thème compilé est venue d'une clef du skin que la table
+  d'`xtask` désigne — pas d'une valeur écrite à la main dans l'artefact, que rien n'aurait
+  rattrapée. `mc` nomme les quatre ; Turbo Vision n'en nomme que trois, et le quatrième est
+  composé.
+- **Un piège de vocabulaire, qui aurait inversé deux couleurs en silence.** Borland appelle
+  *Focused* l'item sous le curseur et *Selected* un item marqué. air-tui emploie `Selected`
+  pour ce qui est sous le curseur, depuis `MenuSelected` au jalon M5. La transcription
+  croise donc les deux noms, et c'est écrit dans l'en-tête de la palette : `ListSelected`
+  vient de `cpListViewer[3]`, `ListMarked` de `cpListViewer[4]`.
+- **Le décompte de `cpAppColor` a été validé par une source indépendante du calcul.**
+  Suivre `cpListViewer` → `cpGrayDialog` → `cpAppColor` donne les indices 57 à 60 ; or
+  `examples/tvdemo/tvdemo2.cpp` nomme lui-même ses entrées, et il donne « List normal » à
+  57, « List focused » à 58, « List selected » à 59. Les six entrées des boutons,
+  transcrites à M5, portent les mêmes numéros que ce fichier leur attribue. Deux chemins
+  qui tombent sur le même résultat valent mieux qu'un décompte soigneux.
+- **Trois défauts trouvés par les essais, aucun par la relecture.**
+  - Le marquage ne faisait pas avancer la génération du modèle : la marque était dans le
+    modèle, le titre du panneau la comptait, et la liste ne la montrait pas. Le contrôleur
+    ne repoussait pas un reflet qu'il croyait à jour.
+  - Poser le curseur sur le répertoire d'où l'on remonte ne peut pas se faire au moment de
+    la commande : à cet instant la liste reflète encore le répertoire précédent, et le nom
+    cherché n'y est pas. C'est devenu une **intention**, que l'étape 3 applique après avoir
+    poussé le reflet — exactement la forme que l'ADR-007 prescrit.
+  - Le curseur d'ascenseur empruntait `close_box_mark`. Les deux glyphes coïncident dans
+    Turbo Vision — c'est le même `■` —, et le skin de `mc` ferme ses fenêtres par un `X` :
+    la glissière portait donc un `X` en plein milieu. **Un thème unique ne permettait pas de
+    le voir.** `AirGlyphSet` a gagné `scroll_thumb`, et un essai refuse désormais que les
+    deux glyphes soient égaux dans le thème de `mc`.
+- **Un défaut découvert et laissé ouvert, écrit comme tel.** Le protocole clavier Kitty
+  rapporte les relâchements de touche — `\x1b[>23u` demande le type d'événement —, et
+  **aucun widget du dépôt ne les écartait**. `AirListBox` est le premier à le faire, parce
+  que sans ce filtre une flèche descendrait de deux items. Les autres widgets restent
+  exposés, et aucun essai ne peut le montrer : un pty nu ne négocie pas le protocole, donc
+  il faut un terminal Kitty réel. Le bon correctif est probablement central — dans la
+  distribution plutôt que dans chaque widget —, ce qui en fait une décision et non une
+  retouche.
+- **Le compte des skins importables a baissé, et c'est le prix de l'exigence.** Dix sur
+  trente-neuf, contre douze à M7a. Les deux perdus posent `bold` sur `[core] marked`, une
+  clef que la table n'employait pas avant les rôles de liste : le modèle s'est enrichi, donc
+  il a une clef de plus à savoir exprimer. Les deux limites restent les mêmes — pas
+  d'attribut par rôle, pas de couleur « défaut du terminal » — et elles sont chiffrées, donc
+  décidables.
+- **Ce que `rmc` ne fait pas est dans son mode d'emploi, et un essai le vérifie.** Il
+  n'exécute aucun programme et ne modifie aucun fichier. Sa barre de touches ne publie que
+  `Tab`, `F5` et `F10` : `mc` en affiche dix, et en annoncer dix dont sept ne feraient rien
+  serait exactement ce que le NO GO n° 2 interdit.
+- **Vérifié sur les octets.** `rmc` sort sur `F10` (`exit:0`) et tient sans elle
+  (`timeout`) ; `Tab`, flèche bas puis `Inser` donnent `38;5;11;48;5;6`, jaune sur cyan,
+  l'item marqué sous le curseur du skin de `mc`, et le titre affiche « 1 marqué ». `redit`
+  et l'exemple `frame` passent les mêmes essais qu'avant le changement de glyphe. 1054
+  essais, sept codecs toujours à 100 %, 8433 noms inspectés dans 72 fichiers sans
+  abréviation.
+
 ## 2026-10-10 — Jalon M7a : le thème Midnight Commander, compilé et non recopié
 
 - **Le moteur de thèmes a cessé d'être un moteur sur parole.** Il avait un thème depuis

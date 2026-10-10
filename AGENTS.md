@@ -68,9 +68,10 @@ paramètres et les variables locales.
 ## Frontière `unsafe`
 
 `unsafe` et les appels C vivent dans **`air-tui-platform-posix`**, et nulle part ailleurs.
-`air-tui-platform` porte le contrat en traits, `air-tui` le cœur et `redit` l'application :
-les trois sont en `#![forbid(unsafe_code)]`, et le cœur n'a même pas de dépendance vers une
-implémentation de plateforme (ADR-011) — c'est `redit` qui en choisit une et l'injecte.
+`air-tui-platform` porte le contrat en traits, `air-tui` le cœur, et `redit` comme `rmc`
+les applications : les quatre sont en `#![forbid(unsafe_code)]`, et le cœur n'a même pas de
+dépendance vers une implémentation de plateforme (ADR-011) — c'est l'application qui en
+choisit une et l'injecte.
 Tout bloc `unsafe` porte un commentaire `// SAFETY:` qui justifie ses préconditions.
 
 ## Ce qui n'existe pas encore
