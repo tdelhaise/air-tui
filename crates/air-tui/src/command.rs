@@ -70,6 +70,16 @@ pub const COPY: AirCommand = AirCommand::new(7);
 pub const CUT: AirCommand = AirCommand::new(8);
 /// Coller le presse-papiers au curseur.
 pub const PASTE: AirCommand = AirCommand::new(9);
+/// Annuler le dernier geste d'édition.
+///
+/// Contrairement aux trois commandes du presse-papiers, l'historique **appartient au
+/// modèle** : seul lui connaît le texte qu'une opération retire, donc seul lui peut
+/// produire l'inverse (ADR-014). Ces deux commandes existent pour la barre de menu, qui
+/// ne sait émettre que des commandes ; au clavier, la vue d'édition produit directement
+/// l'action.
+pub const UNDO: AirCommand = AirCommand::new(10);
+/// Rétablir le dernier geste annulé.
+pub const REDO: AirCommand = AirCommand::new(11);
 /// Le premier numéro laissé aux applications.
 pub const FIRST_APPLICATION_COMMAND: AirCommand = AirCommand::new(256);
 

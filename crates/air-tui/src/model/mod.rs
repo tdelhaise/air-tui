@@ -45,6 +45,7 @@
 //!
 //! Un seul emprunt mutable est vivant à la fois, à chaque étape.
 
+pub(crate) mod history;
 pub mod text;
 
 pub use text::{AirTextAction, AirTextBuffer, AirTextChange, AirTextMotion, AirTextPosition};

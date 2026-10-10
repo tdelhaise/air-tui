@@ -61,6 +61,7 @@
 //! [`AirTextMotion`]. Les décliner en deux familles de variantes aurait obligé à ajouter
 //! chaque déplacement futur à deux endroits.
 
+use crate::model::history::{AirEditHistory, AirTextEdit, position_after};
 use crate::model::{AirChangeSet, AirGeneration, AirModel};
 use crate::unicode::{
     grapheme_width, graphemes, next_grapheme_boundary, next_word_start, previous_grapheme_boundary,
@@ -186,6 +187,17 @@ pub enum AirTextAction {
     Load(Vec<String>),
     /// Déclare le contenu enregistré.
     MarkSaved,
+    /// Annule le dernier geste d'édition, et replace le curseur où il était.
+    ///
+    /// Un **geste**, et non une frappe : taper `abc` s'annule d'un coup, un collage aussi.
+    /// La règle de fusion est dans l'ADR-014, et ses bords sont écrits parce qu'ils sont
+    /// arbitraires.
+    Undo,
+    /// Rétablit le dernier geste annulé.
+    ///
+    /// Toute édition nouvelle vide la pile de rétablissement : rejouer un remplacement sur
+    /// un texte qui n'est plus celui qu'il décrivait n'aurait aucun sens.
+    Redo,
 }
 
 impl AirTextAction {
@@ -254,7 +266,13 @@ pub struct AirTextBuffer {
     /// l'écran après son abandon.
     selection_generation: AirGeneration,
     /// Vrai si le contenu a changé depuis le dernier enregistrement.
+    ///
+    /// Dérivé de l'historique plutôt que posé à la main : annuler jusqu'au point
+    /// d'enregistrement doit l'éteindre, et un drapeau que seule une édition allume y
+    /// resterait allumé (ADR-014).
     modified: bool,
+    /// Le journal d'annulation.
+    history: AirEditHistory,
 }
 
 impl Default for AirTextBuffer {
@@ -276,6 +294,7 @@ impl AirTextBuffer {
             cursor_generation: AirGeneration::new(),
             selection_generation: AirGeneration::new(),
             modified: false,
+            history: AirEditHistory::new(),
         }
     }
 
@@ -485,6 +504,125 @@ impl AirTextBuffer {
         false
     }
 
+    /// Le texte entre deux positions, sauts de ligne compris.
+    ///
+    /// Les deux positions sont supposées ordonnées et valides ; une position hors du
+    /// tampon rend ce qui s'y trouve, c'est-à-dire rien, plutôt que de paniquer.
+    fn text_between(&self, start: AirTextPosition, end: AirTextPosition) -> String {
+        if start.line == end.line {
+            return self
+                .line(start.line)
+                .and_then(|line| line.get(start.offset..end.offset))
+                .unwrap_or_default()
+                .to_owned();
+        }
+        let mut collected = String::new();
+        if let Some(first) = self
+            .line(start.line)
+            .and_then(|line| line.get(start.offset..))
+        {
+            collected.push_str(first);
+        }
+        for index in start.line.saturating_add(1)..end.line {
+            collected.push('\n');
+            if let Some(line) = self.line(index) {
+                collected.push_str(line);
+            }
+        }
+        collected.push('\n');
+        if let Some(last) = self.line(end.line).and_then(|line| line.get(..end.offset)) {
+            collected.push_str(last);
+        }
+        collected
+    }
+
+    /// Remplace le texte entre deux positions, et consigne de quoi faire l'inverse.
+    ///
+    /// **C'est la seule mutation du texte de ce module** (ADR-014). Les sept opérations
+    /// d'édition — frappe, collage, saut de ligne, deux suppressions de grappe,
+    /// suppression de ligne, suppression de sélection — s'y ramènent chacune à un triplet
+    /// `(start, end, inserted)`. Sept chirurgies de lignes écrites à la main seraient sept
+    /// inverses à tenir d'accord ; il n'y en a qu'un.
+    ///
+    /// Rend la position qui suit le texte inséré, c'est-à-dire où le curseur doit aller.
+    fn splice(
+        &mut self,
+        start: AirTextPosition,
+        end: AirTextPosition,
+        inserted: &str,
+        changes: &mut AirChangeSet<AirTextChange>,
+    ) -> AirTextPosition {
+        let removed = self.text_between(start, end);
+        if removed.is_empty() && inserted.is_empty() {
+            // Rien à faire, et surtout rien à journaliser : un pas d'annulation vide se
+            // ferait annuler sans que l'écran bouge.
+            return start;
+        }
+        let entry = AirTextEdit {
+            start,
+            removed,
+            inserted: inserted.to_owned(),
+            cursor_before: self.cursor,
+            anchor_before: self.anchor,
+        };
+        let reached = self.rewrite(start, end, inserted, changes);
+        self.history.record(entry);
+        self.edited(changes);
+        reached
+    }
+
+    /// La chirurgie de lignes elle-même, sans journal ni générations.
+    ///
+    /// Séparée de [`Self::splice`] parce que l'annulation l'emploie **sans** consigner une
+    /// entrée de plus : annuler n'est pas une édition nouvelle, c'est le même
+    /// remplacement joué à l'envers.
+    fn rewrite(
+        &mut self,
+        start: AirTextPosition,
+        end: AirTextPosition,
+        inserted: &str,
+        changes: &mut AirChangeSet<AirTextChange>,
+    ) -> AirTextPosition {
+        let before = self.lines.len();
+        let tail = self
+            .line(end.line)
+            .and_then(|line| line.get(end.offset..))
+            .unwrap_or_default()
+            .to_owned();
+        let Some(line) = self.lines.get_mut(start.line) else {
+            // Inatteignable : une position vient toujours du tampon lui-même.
+            return start;
+        };
+        if start.offset > line.len() || !line.is_char_boundary(start.offset) {
+            // Inatteignable : l'invariant du curseur l'interdit. Écrire quand même
+            // corromprait l'UTF-8, donc on refuse plutôt que de paniquer.
+            return start;
+        }
+        line.truncate(start.offset);
+        if end.line > start.line {
+            self.lines.drain(start.line.saturating_add(1)..=end.line);
+        }
+        let mut pieces = inserted.split('\n');
+        if let Some(first) = pieces.next()
+            && let Some(line) = self.lines.get_mut(start.line)
+        {
+            line.push_str(first);
+        }
+        let mut at = start.line;
+        for piece in pieces {
+            at = at.saturating_add(1);
+            self.lines.insert(at, piece.to_owned());
+        }
+        let reached = self.line_length(at);
+        if let Some(line) = self.lines.get_mut(at) {
+            line.push_str(&tail);
+        }
+        if self.lines.len() != before {
+            changes.record_once(AirTextChange::LineCountChanged);
+        }
+        AirTextPosition::new(at, reached)
+    }
+
     /// Supprime le texte sélectionné et place le curseur à son début.
     ///
     /// Rend vrai si quelque chose a été supprimé. C'est l'opération qu'une frappe, un
@@ -496,58 +634,33 @@ impl AirTextBuffer {
             self.clear_selection();
             return false;
         };
-        let tail = self
-            .line(end.line)
-            .and_then(|line| line.get(end.offset..))
-            .unwrap_or_default()
-            .to_owned();
-        if let Some(line) = self.lines.get_mut(start.line) {
-            line.truncate(start.offset);
-            line.push_str(&tail);
-        }
-        if end.line > start.line {
-            let removed = start.line.saturating_add(1)..=end.line;
-            self.lines.drain(removed);
-            changes.record_once(AirTextChange::LineCountChanged);
-        }
-        self.cursor = start;
+        self.history.break_run();
+        self.cursor = self.splice(start, end, "", changes);
         self.clear_selection();
-        self.edited(changes);
         self.moved(false);
         true
     }
 
+    /// Écrit un texte au curseur, en remplaçant la sélection s'il y en a une.
+    ///
+    /// **Un seul remplacement**, et c'est ce qui fait que taper sur une sélection est un
+    /// seul pas d'annulation. Supprimer puis insérer en ferait deux, et l'utilisateur
+    /// devrait annuler deux fois un geste qu'il n'a fait qu'une — c'est le défaut que les
+    /// essais de l'annulation ont rendu visible.
+    fn write_over_selection(&mut self, inserted: &str, changes: &mut AirChangeSet<AirTextChange>) {
+        let (start, end) = self.selection().unwrap_or((self.cursor, self.cursor));
+        self.cursor = self.splice(start, end, inserted, changes);
+        self.clear_selection();
+        self.moved(false);
+    }
+
     /// Insère un texte au curseur, sauts de ligne compris.
     fn insert_text(&mut self, inserted: &str, changes: &mut AirChangeSet<AirTextChange>) {
-        self.delete_selection(changes);
-        let offset = self.cursor.offset;
-        let index = self.cursor.line;
-        let Some(line) = self.lines.get_mut(index) else {
-            return;
-        };
-        if offset > line.len() || !line.is_char_boundary(offset) {
-            // Inatteignable : l'invariant du curseur l'interdit. Insérer quand même
-            // corromprait l'UTF-8, donc on refuse plutôt que de paniquer.
-            return;
-        }
-        let tail = line.split_off(offset);
-        let mut pieces = inserted.split('\n');
-        if let Some(first) = pieces.next() {
-            line.push_str(first);
-        }
-        let mut at = index;
-        for piece in pieces {
-            at = at.saturating_add(1);
-            self.lines.insert(at, piece.to_owned());
-            changes.record_once(AirTextChange::LineCountChanged);
-        }
-        let reached = self.line_length(at);
-        if let Some(line) = self.lines.get_mut(at) {
-            line.push_str(&tail);
-        }
-        self.cursor = AirTextPosition::new(at, reached);
-        self.edited(changes);
-        self.moved(false);
+        // Un collage est **un** pas d'annulation, pas un par caractère : il coupe donc le
+        // geste de frappe en cours, avant comme après.
+        self.history.break_run();
+        self.write_over_selection(inserted, changes);
+        self.history.break_run();
     }
 
     /// Sélectionne le segment qui couvre le curseur.
@@ -590,131 +703,212 @@ impl AirTextBuffer {
         self.cursor_generation.advance();
     }
 
-    /// Note une modification du contenu.
+    /// Note une modification du contenu, et relit le drapeau de modification.
+    ///
+    /// Le drapeau n'est **pas** posé à vrai : il est dérivé de l'historique, parce
+    /// qu'annuler jusqu'au point d'enregistrement doit l'éteindre (ADR-014). Un drapeau
+    /// que seule une édition allume y resterait allumé sur un texte revenu à son état
+    /// enregistré.
     fn edited(&mut self, changes: &mut AirChangeSet<AirTextChange>) {
         self.text_generation.advance();
-        if !self.modified {
-            self.modified = true;
+        self.refresh_modified(changes);
+    }
+
+    /// Relit le drapeau de modification depuis l'historique, et consigne s'il bascule.
+    fn refresh_modified(&mut self, changes: &mut AirChangeSet<AirTextChange>) {
+        let modified = !self.history.is_at_saved_point();
+        if modified != self.modified {
+            self.modified = modified;
             changes.record_once(AirTextChange::ModifiedChanged);
         }
     }
 
-    /// Insère un caractère au curseur.
-    fn insert_character(&mut self, character: char, changes: &mut AirChangeSet<AirTextChange>) {
-        let offset = self.cursor.offset;
-        let Some(line) = self.lines.get_mut(self.cursor.line) else {
-            return;
+    /// Vrai s'il y a un geste à annuler.
+    #[must_use]
+    pub fn can_undo(&self) -> bool {
+        self.history.can_undo()
+    }
+
+    /// Vrai s'il y a un geste à rétablir.
+    #[must_use]
+    pub fn can_redo(&self) -> bool {
+        self.history.can_redo()
+    }
+
+    /// Le nombre de gestes annulables.
+    ///
+    /// Exposé parce que c'est ce qui rend la **fusion** observable : taper trois lettres
+    /// doit donner un pas, pas trois.
+    #[must_use]
+    pub fn undo_depth(&self) -> usize {
+        self.history.depth()
+    }
+
+    /// Annule le dernier geste, et rend vrai si quelque chose a été annulé.
+    fn undo(&mut self, changes: &mut AirChangeSet<AirTextChange>) -> bool {
+        let Some(entry) = self.history.undo() else {
+            return false;
         };
-        if offset > line.len() || !line.is_char_boundary(offset) {
-            // Inatteignable : l'invariant du curseur l'interdit. Insérer quand même
-            // corromprait l'UTF-8, donc on refuse plutôt que de paniquer.
-            return;
-        }
-        line.insert(offset, character);
-        // Le curseur avance de la longueur insérée, pas d'une grappe : le caractère inséré
-        // peut se joindre à la grappe qui précède — un accent combinant — et la frontière
-        // suivante serait alors derrière lui.
-        self.cursor.offset = offset.saturating_add(character.len_utf8());
-        self.edited(changes);
+        let end = position_after(entry.start, &entry.inserted);
+        self.rewrite(entry.start, end, &entry.removed, changes);
+        self.restore(entry.cursor_before, entry.anchor_before, changes);
+        true
+    }
+
+    /// Rétablit le dernier geste annulé, et rend vrai si quelque chose a été rétabli.
+    fn redo(&mut self, changes: &mut AirChangeSet<AirTextChange>) -> bool {
+        let Some(entry) = self.history.redo() else {
+            return false;
+        };
+        let end = position_after(entry.start, &entry.removed);
+        let reached = self.rewrite(entry.start, end, &entry.inserted, changes);
+        // Rétablir replace le curseur **après** le texte rejoué, et non là où il était
+        // avant le geste : c'est là que l'utilisateur l'attend, comme après la frappe.
+        self.restore(reached, None, changes);
+        true
+    }
+
+    /// Replace le curseur et l'ancre, et relit les drapeaux.
+    ///
+    /// La génération de sélection avance sans condition : annuler peut faire réapparaître
+    /// une sélection comme en faire disparaître une, et la vue doit repeindre dans les
+    /// deux cas.
+    fn restore(
+        &mut self,
+        cursor: AirTextPosition,
+        anchor: Option<AirTextPosition>,
+        changes: &mut AirChangeSet<AirTextChange>,
+    ) {
+        self.cursor = self.clamped(cursor);
+        self.anchor = anchor.map(|position| self.clamped(position));
+        self.selection_generation.advance();
+        self.text_generation.advance();
+        self.refresh_modified(changes);
         self.moved(false);
     }
 
-    /// Coupe la ligne courante au curseur.
-    fn insert_line_break(&mut self, changes: &mut AirChangeSet<AirTextChange>) {
-        let offset = self.cursor.offset;
-        let index = self.cursor.line;
-        let Some(line) = self.lines.get_mut(index) else {
-            return;
+    /// Une position ramenée dans le tampon.
+    ///
+    /// Une position journalisée décrit le tampon d'avant le remplacement : après l'avoir
+    /// joué à l'envers, elle y est de nouveau valide — sauf si la borne du journal a
+    /// oublié une entrée intermédiaire, et c'est le seul cas où cette borne se voit.
+    fn clamped(&self, position: AirTextPosition) -> AirTextPosition {
+        let line = position.line.min(self.last_line());
+        let length = self.line_length(line);
+        let offset = if position.offset <= length
+            && self
+                .line(line)
+                .is_some_and(|text| text.is_char_boundary(position.offset))
+        {
+            position.offset
+        } else {
+            length
         };
-        if offset > line.len() || !line.is_char_boundary(offset) {
-            return;
-        }
-        let tail = line.split_off(offset);
-        let next = index.saturating_add(1);
-        self.lines.insert(next, tail);
-        self.cursor = AirTextPosition::new(next, 0);
-        self.edited(changes);
-        changes.record_once(AirTextChange::LineCountChanged);
-        self.moved(false);
+        AirTextPosition::new(line, offset)
+    }
+
+    /// Insère un caractère au curseur, en remplaçant la sélection s'il y en a une.
+    ///
+    /// Le curseur avance de la longueur insérée, pas d'une grappe : le caractère inséré
+    /// peut se joindre à la grappe qui précède — un accent combinant — et la frontière
+    /// suivante serait alors derrière lui. C'est [`Self::splice`] qui le place.
+    fn insert_character(&mut self, character: char, changes: &mut AirChangeSet<AirTextChange>) {
+        let mut text = String::new();
+        text.push(character);
+        self.write_over_selection(&text, changes);
+    }
+
+    /// Coupe la ligne courante au curseur.
+    ///
+    /// Une touche `Entrée` **coupe le geste** d'annulation : un paragraphe est une
+    /// frontière, et fondre la ligne suivante dans la précédente ferait annuler les deux
+    /// d'un coup (ADR-014).
+    fn insert_line_break(&mut self, changes: &mut AirChangeSet<AirTextChange>) {
+        self.history.break_run();
+        self.write_over_selection("\n", changes);
+        self.history.break_run();
     }
 
     /// Supprime la grappe qui précède le curseur, ou recolle la ligne précédente.
     fn delete_backward(&mut self, changes: &mut AirChangeSet<AirTextChange>) {
-        if self.cursor.offset > 0 {
-            let offset = self.cursor.offset;
-            let Some(line) = self.lines.get_mut(self.cursor.line) else {
+        let end = self.cursor;
+        let start = if end.offset > 0 {
+            let offset = self.line(end.line).map_or(end.offset, |line| {
+                previous_grapheme_boundary(line, end.offset)
+            });
+            AirTextPosition::new(end.line, offset)
+        } else {
+            let Some(previous) = end.line.checked_sub(1) else {
+                // Début du texte : il n'y a rien à supprimer, et ce n'est pas une erreur.
                 return;
             };
-            let start = previous_grapheme_boundary(line, offset);
-            line.replace_range(start..offset, "");
-            self.cursor.offset = start;
-            self.edited(changes);
-            self.moved(false);
-            return;
-        }
-        let Some(previous) = self.cursor.line.checked_sub(1) else {
-            // Début du texte : il n'y a rien à supprimer, et ce n'est pas une erreur.
-            return;
+            AirTextPosition::new(previous, self.line_length(previous))
         };
-        let removed = self.lines.remove(self.cursor.line);
-        let join_offset = self.line_length(previous);
-        if let Some(line) = self.lines.get_mut(previous) {
-            line.push_str(&removed);
-        }
-        self.cursor = AirTextPosition::new(previous, join_offset);
-        self.edited(changes);
-        changes.record_once(AirTextChange::LineCountChanged);
+        self.cursor = self.splice(start, end, "", changes);
         self.moved(false);
     }
 
     /// Supprime la grappe qui suit le curseur, ou recolle la ligne suivante.
+    ///
+    /// Elle **coupe le geste** : une suite de `Suppr` ne se fond pas, parce que le curseur
+    /// ne bouge pas et que deux entrées voisines y commenceraient au même endroit — la
+    /// règle de fusion de l'ADR-014 ne saurait pas les distinguer d'une insertion.
     fn delete_forward(&mut self, changes: &mut AirChangeSet<AirTextChange>) {
-        let offset = self.cursor.offset;
-        if offset < self.line_length(self.cursor.line) {
-            let Some(line) = self.lines.get_mut(self.cursor.line) else {
+        let start = self.cursor;
+        let end = if start.offset < self.line_length(start.line) {
+            let offset = self.line(start.line).map_or(start.offset, |line| {
+                next_grapheme_boundary(line, start.offset)
+            });
+            AirTextPosition::new(start.line, offset)
+        } else {
+            let next = start.line.saturating_add(1);
+            if next >= self.lines.len() {
+                // Fin du texte : rien à recoller.
                 return;
-            };
-            let end = next_grapheme_boundary(line, offset);
-            line.replace_range(offset..end, "");
-            self.edited(changes);
-            return;
-        }
-        let next = self.cursor.line.saturating_add(1);
-        if next >= self.lines.len() {
-            // Fin du texte : rien à recoller.
-            return;
-        }
-        let removed = self.lines.remove(next);
-        if let Some(line) = self.lines.get_mut(self.cursor.line) {
-            line.push_str(&removed);
-        }
-        self.edited(changes);
-        changes.record_once(AirTextChange::LineCountChanged);
+            }
+            AirTextPosition::new(next, 0)
+        };
+        self.history.break_run();
+        self.cursor = self.splice(start, end, "", changes);
+        self.history.break_run();
     }
 
     /// Supprime la ligne courante.
     ///
-    /// La dernière ligne n'est pas retirée mais vidée : l'invariant « au moins une ligne »
-    /// vaut aussi pour la suppression.
+    /// Trois plages, et le choix de la bonne est tout l'intérêt : une ligne supprimée doit
+    /// emporter **un** saut de ligne, et un seul.
+    ///
+    /// - une ligne suivie d'une autre va de son début au début de la suivante ;
+    /// - la **dernière** ligne va de la fin de la précédente à la sienne, parce que le
+    ///   saut de ligne à retirer est devant elle et non derrière. Ne pas le prendre
+    ///   laisserait une ligne vide là où la ligne était ;
+    /// - la ligne **unique** est vidée sans être retirée : l'invariant « au moins une
+    ///   ligne » vaut aussi pour la suppression.
     fn delete_line(&mut self, changes: &mut AirChangeSet<AirTextChange>) {
-        if self.lines.len() <= 1 {
-            let was_empty = self.line_length(0) == 0;
-            if let Some(line) = self.lines.get_mut(0) {
-                line.clear();
-            }
-            self.cursor = AirTextPosition::default();
-            if !was_empty {
-                self.edited(changes);
-            }
-            self.moved(false);
-            return;
-        }
+        self.history.break_run();
         let index = self.cursor.line.min(self.last_line());
-        self.lines.remove(index);
-        let line = index.min(self.last_line());
-        self.cursor = AirTextPosition::new(line, 0);
-        self.edited(changes);
-        changes.record_once(AirTextChange::LineCountChanged);
+        let next = index.saturating_add(1);
+        let (start, end) = if next <= self.last_line() {
+            (
+                AirTextPosition::new(index, 0),
+                AirTextPosition::new(next, 0),
+            )
+        } else if let Some(previous) = index.checked_sub(1) {
+            (
+                AirTextPosition::new(previous, self.line_length(previous)),
+                AirTextPosition::new(index, self.line_length(index)),
+            )
+        } else {
+            (
+                AirTextPosition::new(0, 0),
+                AirTextPosition::new(0, self.line_length(0)),
+            )
+        };
+        self.splice(start, end, "", changes);
+        // Le curseur se pose au début de la ligne qui a pris la place de celle qu'on
+        // vient de retirer — la dernière, quand c'est la dernière qui est partie.
+        self.cursor = AirTextPosition::new(index.min(self.last_line()), 0);
+        self.history.break_run();
         self.moved(false);
     }
 
@@ -879,15 +1073,14 @@ impl AirModel for AirTextBuffer {
 
     fn apply(&mut self, action: Self::Action, changes: &mut AirChangeSet<Self::Change>) {
         match action {
+            // Les trois insertions remplacent la sélection **dans le même
+            // remplacement** : taper sur une sélection est un geste, donc un pas
+            // d'annulation (ADR-014).
             AirTextAction::InsertCharacter(character) => {
-                self.delete_selection(changes);
                 self.insert_character(character, changes);
             }
             AirTextAction::InsertText(inserted) => self.insert_text(&inserted, changes),
-            AirTextAction::InsertLineBreak => {
-                self.delete_selection(changes);
-                self.insert_line_break(changes);
-            }
+            AirTextAction::InsertLineBreak => self.insert_line_break(changes),
             AirTextAction::DeleteBackward => {
                 // Sur une sélection, le retour arrière la supprime **et s'arrête** : y
                 // ajouter la grappe précédente mangerait un caractère de plus que ce que
@@ -930,16 +1123,23 @@ impl AirModel for AirTextBuffer {
             }
             AirTextAction::Load(lines) => {
                 self.replace_lines(lines);
+                // Un chargement oublie l'historique : annuler au-delà d'une ouverture de
+                // fichier ferait réapparaître le contenu du précédent (ADR-014).
+                self.history.clear();
                 self.modified = false;
                 changes.record_once(AirTextChange::ContentReplaced);
                 changes.record_once(AirTextChange::LineCountChanged);
                 changes.record_once(AirTextChange::ModifiedChanged);
             }
             AirTextAction::MarkSaved => {
-                if self.modified {
-                    self.modified = false;
-                    changes.record_once(AirTextChange::ModifiedChanged);
-                }
+                self.history.mark_saved();
+                self.refresh_modified(changes);
+            }
+            AirTextAction::Undo => {
+                self.undo(changes);
+            }
+            AirTextAction::Redo => {
+                self.redo(changes);
             }
         }
     }
@@ -968,6 +1168,284 @@ mod tests {
             buffer,
             text.chars().map(AirTextAction::InsertCharacter).collect(),
         );
+    }
+
+    // ------------------------------------------------- annulation (ADR-014)
+
+    #[test]
+    fn annuler_une_frappe_rend_le_texte_et_le_curseur() {
+        let mut buffer = AirTextBuffer::from_text("une");
+        apply_all(
+            &mut buffer,
+            vec![AirTextAction::move_by(AirTextMotion::LineEnd)],
+        );
+        type_text(&mut buffer, " chose");
+        assert_eq!(buffer.to_text(), "une chose");
+        assert_eq!(buffer.undo_depth(), 1, "six frappes, un seul geste");
+        apply_all(&mut buffer, vec![AirTextAction::Undo]);
+        assert_eq!(buffer.to_text(), "une");
+        assert_eq!(
+            buffer.cursor(),
+            AirTextPosition::new(0, 3),
+            "le regard revient avant la première lettre tapée"
+        );
+    }
+
+    #[test]
+    fn un_deplacement_coupe_le_geste_de_frappe() {
+        let mut buffer = AirTextBuffer::new();
+        type_text(&mut buffer, "ab");
+        apply_all(
+            &mut buffer,
+            vec![AirTextAction::move_by(AirTextMotion::LineStart)],
+        );
+        type_text(&mut buffer, "z");
+        assert_eq!(buffer.to_text(), "zab");
+        assert_eq!(buffer.undo_depth(), 2);
+        apply_all(&mut buffer, vec![AirTextAction::Undo]);
+        assert_eq!(buffer.to_text(), "ab");
+    }
+
+    #[test]
+    fn un_collage_s_annule_d_un_seul_pas() {
+        let mut buffer = AirTextBuffer::from_text("début");
+        apply_all(
+            &mut buffer,
+            vec![
+                AirTextAction::move_by(AirTextMotion::LineEnd),
+                AirTextAction::InsertText(" une\ndeux\ntrois".to_owned()),
+            ],
+        );
+        assert_eq!(buffer.line_count(), 3);
+        assert_eq!(buffer.undo_depth(), 1);
+        apply_all(&mut buffer, vec![AirTextAction::Undo]);
+        assert_eq!(buffer.to_text(), "début");
+        assert_eq!(buffer.line_count(), 1);
+    }
+
+    #[test]
+    fn un_saut_de_ligne_est_une_frontiere_d_annulation() {
+        // Un paragraphe est une frontière : annuler ne doit pas emporter la ligne d'avant.
+        let mut buffer = AirTextBuffer::new();
+        type_text(&mut buffer, "une");
+        apply_all(&mut buffer, vec![AirTextAction::InsertLineBreak]);
+        type_text(&mut buffer, "deux");
+        assert_eq!(buffer.undo_depth(), 3, "frappe, saut, frappe");
+        apply_all(&mut buffer, vec![AirTextAction::Undo]);
+        assert_eq!(buffer.to_text(), "une\n");
+        apply_all(&mut buffer, vec![AirTextAction::Undo]);
+        assert_eq!(buffer.to_text(), "une");
+    }
+
+    #[test]
+    fn une_serie_de_retours_arriere_s_annule_d_un_seul_pas() {
+        let mut buffer = AirTextBuffer::from_text("abcdef");
+        apply_all(
+            &mut buffer,
+            vec![
+                AirTextAction::move_by(AirTextMotion::LineEnd),
+                AirTextAction::DeleteBackward,
+                AirTextAction::DeleteBackward,
+                AirTextAction::DeleteBackward,
+            ],
+        );
+        assert_eq!(buffer.to_text(), "abc");
+        assert_eq!(buffer.undo_depth(), 1);
+        apply_all(&mut buffer, vec![AirTextAction::Undo]);
+        assert_eq!(buffer.to_text(), "abcdef");
+        assert_eq!(buffer.cursor(), AirTextPosition::new(0, 6));
+    }
+
+    #[test]
+    fn annuler_une_suppression_de_selection_rend_la_selection() {
+        // La moitié de ce qu'on attend d'une annulation est que le regard revienne : ici,
+        // ce qui revient est la surbrillance elle-même.
+        let mut buffer = AirTextBuffer::from_text("une belle journée");
+        apply_all(
+            &mut buffer,
+            vec![
+                AirTextAction::move_by(AirTextMotion::LineStart),
+                AirTextAction::select_by(AirTextMotion::NextWord),
+                AirTextAction::DeleteSelection,
+            ],
+        );
+        assert_ne!(buffer.to_text(), "une belle journée");
+        assert!(!buffer.has_selection());
+        apply_all(&mut buffer, vec![AirTextAction::Undo]);
+        assert_eq!(buffer.to_text(), "une belle journée");
+        assert!(buffer.has_selection(), "la sélection doit réapparaître");
+        assert_eq!(buffer.selected_text().as_deref(), Some("une "));
+    }
+
+    #[test]
+    fn annuler_une_suppression_de_ligne_la_rend_entiere() {
+        let mut buffer = AirTextBuffer::from_text("une\ndeux\ntrois");
+        apply_all(
+            &mut buffer,
+            vec![
+                AirTextAction::move_by(AirTextMotion::DownByLines(1)),
+                AirTextAction::DeleteLine,
+            ],
+        );
+        assert_eq!(buffer.to_text(), "une\ntrois");
+        apply_all(&mut buffer, vec![AirTextAction::Undo]);
+        assert_eq!(buffer.to_text(), "une\ndeux\ntrois");
+        assert_eq!(buffer.line_count(), 3);
+    }
+
+    #[test]
+    fn annuler_la_suppression_de_la_derniere_ligne_la_rend_aussi() {
+        // Le cas qui a trouvé un défaut pendant la refonte : la plage d'une dernière
+        // ligne part de la **fin de la précédente**, pour emporter le saut de ligne qui
+        // est devant elle et non derrière.
+        let mut buffer = AirTextBuffer::from_text("une\ndeux");
+        apply_all(
+            &mut buffer,
+            vec![
+                AirTextAction::move_by(AirTextMotion::DocumentEnd),
+                AirTextAction::DeleteLine,
+            ],
+        );
+        assert_eq!(buffer.lines(), ["une"]);
+        apply_all(&mut buffer, vec![AirTextAction::Undo]);
+        assert_eq!(buffer.lines(), ["une", "deux"]);
+    }
+
+    #[test]
+    fn retablir_rejoue_le_geste_annule() {
+        let mut buffer = AirTextBuffer::new();
+        type_text(&mut buffer, "abc");
+        apply_all(&mut buffer, vec![AirTextAction::Undo]);
+        assert_eq!(buffer.to_text(), "");
+        assert!(buffer.can_redo());
+        apply_all(&mut buffer, vec![AirTextAction::Redo]);
+        assert_eq!(buffer.to_text(), "abc");
+        assert_eq!(
+            buffer.cursor(),
+            AirTextPosition::new(0, 3),
+            "le curseur se pose après le texte rejoué, comme après la frappe"
+        );
+    }
+
+    #[test]
+    fn une_frappe_apres_une_annulation_interdit_le_retablissement() {
+        let mut buffer = AirTextBuffer::new();
+        type_text(&mut buffer, "abc");
+        apply_all(&mut buffer, vec![AirTextAction::Undo]);
+        assert!(buffer.can_redo());
+        type_text(&mut buffer, "z");
+        assert!(!buffer.can_redo(), "le texte décrit n'existe plus");
+    }
+
+    #[test]
+    fn annuler_tout_eteint_le_drapeau_de_modification() {
+        // Un drapeau que seule une édition allume resterait allumé sur un texte revenu à
+        // son état enregistré, et le titre de `redit` garderait son étoile.
+        let mut buffer = AirTextBuffer::from_text("origine");
+        apply_all(&mut buffer, vec![AirTextAction::MarkSaved]);
+        assert!(!buffer.is_modified());
+        type_text(&mut buffer, "x");
+        assert!(buffer.is_modified());
+        let changes = apply_all(&mut buffer, vec![AirTextAction::Undo]);
+        assert!(!buffer.is_modified(), "le texte est revenu à l'enregistré");
+        assert!(
+            changes.contains(&AirTextChange::ModifiedChanged),
+            "le basculement doit être consigné : {:?}",
+            changes.as_slice()
+        );
+    }
+
+    #[test]
+    fn un_chargement_oublie_l_historique() {
+        // Annuler au-delà d'une ouverture ferait réapparaître le fichier précédent.
+        let mut buffer = AirTextBuffer::new();
+        type_text(&mut buffer, "brouillon");
+        assert!(buffer.can_undo());
+        apply_all(
+            &mut buffer,
+            vec![AirTextAction::Load(vec!["une".to_owned()])],
+        );
+        assert!(!buffer.can_undo());
+        assert!(!buffer.can_redo());
+        assert!(!buffer.is_modified());
+    }
+
+    #[test]
+    fn annuler_sans_rien_a_annuler_ne_fait_rien() {
+        let mut buffer = AirTextBuffer::from_text("une");
+        let before = buffer.text_generation();
+        let changes = apply_all(&mut buffer, vec![AirTextAction::Undo, AirTextAction::Redo]);
+        assert_eq!(buffer.to_text(), "une");
+        assert_eq!(buffer.text_generation(), before, "rien n'a bougé");
+        assert!(changes.is_empty());
+    }
+
+    #[test]
+    fn un_deplacement_seul_ne_remplit_pas_le_journal() {
+        // Le journal ne porte que des remplacements : un déplacement n'en est pas un, et
+        // un pas d'annulation vide se ferait annuler sans que l'écran bouge.
+        let mut buffer = AirTextBuffer::from_text("une\ndeux");
+        apply_all(
+            &mut buffer,
+            vec![
+                AirTextAction::move_by(AirTextMotion::Right),
+                AirTextAction::move_by(AirTextMotion::Down),
+                AirTextAction::SelectAll,
+                AirTextAction::ClearSelection,
+            ],
+        );
+        assert!(!buffer.can_undo());
+        assert_eq!(buffer.undo_depth(), 0);
+    }
+
+    #[test]
+    fn annuler_une_frappe_sur_une_selection_rend_le_texte_remplace() {
+        // Deux gestes en un : la sélection est supprimée **et** le caractère inséré. Les
+        // deux doivent revenir, et dans le bon ordre.
+        let mut buffer = AirTextBuffer::from_text("une belle journée");
+        apply_all(
+            &mut buffer,
+            vec![
+                AirTextAction::move_by(AirTextMotion::LineStart),
+                AirTextAction::select_by(AirTextMotion::NextWord),
+                AirTextAction::InsertCharacter('X'),
+            ],
+        );
+        assert_eq!(buffer.to_text(), "Xbelle journée");
+        assert_eq!(buffer.undo_depth(), 1, "un geste, un pas");
+        apply_all(&mut buffer, vec![AirTextAction::Undo]);
+        assert_eq!(buffer.to_text(), "une belle journée");
+        assert!(
+            buffer.has_selection(),
+            "la sélection remplacée doit réapparaître"
+        );
+    }
+
+    #[test]
+    fn annuler_une_suppression_avant_rend_le_caractere() {
+        let mut buffer = AirTextBuffer::from_text("abc");
+        apply_all(&mut buffer, vec![AirTextAction::DeleteForward]);
+        assert_eq!(buffer.to_text(), "bc");
+        apply_all(&mut buffer, vec![AirTextAction::Undo]);
+        assert_eq!(buffer.to_text(), "abc");
+        assert_eq!(buffer.cursor(), AirTextPosition::new(0, 0));
+    }
+
+    #[test]
+    fn annuler_une_grappe_composee_la_rend_entiere() {
+        // Une grappe de plusieurs points de code s'efface d'une touche : son annulation
+        // doit la rendre entière, et non son premier point de code.
+        let mut buffer = AirTextBuffer::from_text("e\u{301}a");
+        apply_all(
+            &mut buffer,
+            vec![
+                AirTextAction::move_by(AirTextMotion::LineStart),
+                AirTextAction::DeleteForward,
+            ],
+        );
+        assert_eq!(buffer.to_text(), "a");
+        apply_all(&mut buffer, vec![AirTextAction::Undo]);
+        assert_eq!(buffer.to_text(), "e\u{301}a");
     }
 
     #[test]

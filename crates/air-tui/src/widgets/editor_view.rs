@@ -505,6 +505,14 @@ impl AirEditorView {
             // d'autre équivalent au clavier.
             AirKey::Character('y' | 'Y') if control => Some(AirTextAction::DeleteLine),
             AirKey::Character('a' | 'A') if control => Some(AirTextAction::SelectAll),
+            // L'annulation sort par le canal des **intentions** et non des commandes :
+            // l'historique appartient au modèle, que cette vue adresse déjà (ADR-014).
+            AirKey::Character('z' | 'Z') if control => Some(AirTextAction::Undo),
+            // `Ctrl`+`R` et non `Ctrl`+`Y`, pris par la suppression de ligne de Turbo
+            // Vision, ni `Ctrl`+`Maj`+`Z`, qu'un terminal sans protocole Kitty ne
+            // distingue pas de `Ctrl`+`Z` : le rétablissement marcherait sur certains
+            // terminaux et pas sur d'autres, ce qui est pire que de ne pas l'offrir.
+            AirKey::Character('r' | 'R') if control => Some(AirTextAction::Redo),
             AirKey::Character(_) if control => None,
             AirKey::Character(character) => Some(AirTextAction::InsertCharacter(character)),
             AirKey::Enter => Some(AirTextAction::InsertLineBreak),
@@ -686,6 +694,42 @@ mod tests {
             ..AirKeyEvent::press(key)
         }));
         view.handle_event(&mut event, &mut context)
+    }
+
+    #[test]
+    fn controle_z_annule_et_controle_r_retablit() {
+        // Les deux sortent par le canal des **intentions** : l'historique appartient au
+        // modèle, que cette vue adresse déjà. `Ctrl`+`Y` reste la suppression de ligne de
+        // Turbo Vision, et `Ctrl`+`Maj`+`Z` serait indistinguable de `Ctrl`+`Z` sur un
+        // terminal sans protocole Kitty (ADR-014).
+        let mut view = editor(20, 4);
+        let control = AirModifiers::NONE.with_control();
+        assert_eq!(
+            press_with(&mut view, AirKey::Character('z'), control),
+            AirOutcome::Consumed
+        );
+        assert_eq!(
+            press_with(&mut view, AirKey::Character('r'), control),
+            AirOutcome::Consumed
+        );
+        assert_eq!(
+            view.drain_actions().collect::<Vec<_>>(),
+            vec![AirTextAction::Undo, AirTextAction::Redo]
+        );
+    }
+
+    #[test]
+    fn la_majuscule_de_la_touche_ne_change_pas_l_intention() {
+        // `Ctrl`+`Maj`+`Z` arrive en majuscule sur un terminal qui transmet la casse : il
+        // ne doit pas tomber dans le bras des frappes ordinaires.
+        let mut view = editor(20, 4);
+        let control = AirModifiers::NONE.with_control();
+        press_with(&mut view, AirKey::Character('Z'), control);
+        press_with(&mut view, AirKey::Character('R'), control);
+        assert_eq!(
+            view.drain_actions().collect::<Vec<_>>(),
+            vec![AirTextAction::Undo, AirTextAction::Redo]
+        );
     }
 
     fn mouse(

@@ -26,7 +26,9 @@ use std::path::{Path, PathBuf};
 
 use air_tui::application::{AirDesktop, AirScreen};
 use air_tui::clipboard::AirClipboard;
-use air_tui::command::{AirCommand, AirCommandSet, CANCEL, COPY, CUT, OK, OPEN, PASTE, QUIT, SAVE};
+use air_tui::command::{
+    AirCommand, AirCommandSet, CANCEL, COPY, CUT, OK, OPEN, PASTE, QUIT, REDO, SAVE, UNDO,
+};
 use air_tui::geometry::{AirRectangle, AirSize};
 use air_tui::input::event::AirKey;
 use air_tui::model::{AirChangeSet, AirModel, AirTextAction, AirTextChange};
@@ -233,6 +235,20 @@ impl Editor {
         } else {
             commands.enable(PASTE);
         }
+
+        // Et le même *pull* pour l'annulation, qui est la raison pour laquelle l'ADR-014
+        // n'a ajouté **aucun** changement structurel : une vue qui demande au moment où
+        // elle peint ne peut pas afficher un état périmé.
+        for (command, possible) in [
+            (UNDO, self.document.buffer().can_undo()),
+            (REDO, self.document.buffer().can_redo()),
+        ] {
+            if possible {
+                commands.enable(command);
+            } else {
+                commands.disable(command);
+            }
+        }
     }
 
     /// Étape 2 : applique au modèle les intentions que les vues ont accumulées.
@@ -307,6 +323,18 @@ impl Editor {
                 self.document
                     .buffer_mut()
                     .apply(AirTextAction::SelectAll, &mut self.changes);
+            }
+            // Au clavier, la vue d'édition produit l'action elle-même : ces deux bras ne
+            // servent qu'à la barre de menu, qui ne sait émettre que des commandes.
+            UNDO => {
+                self.document
+                    .buffer_mut()
+                    .apply(AirTextAction::Undo, &mut self.changes);
+            }
+            REDO => {
+                self.document
+                    .buffer_mut()
+                    .apply(AirTextAction::Redo, &mut self.changes);
             }
             ABOUT => {
                 self.message = Some(format!("redit {}", env!("CARGO_PKG_VERSION")));
@@ -519,6 +547,9 @@ fn build_menu_bar() -> AirMenuBar {
     )
     .with_menu(
         AirMenu::new("~E~dition")
+            .with_item(AirMenuItem::new("~A~nnuler", UNDO))
+            .with_item(AirMenuItem::new("~R~établir", REDO))
+            .with_item(AirMenuItem::separator())
             .with_item(AirMenuItem::new("Co~p~ier", COPY))
             .with_item(AirMenuItem::new("Co~u~per", CUT))
             .with_item(AirMenuItem::new("C~o~ller", PASTE))
@@ -550,7 +581,9 @@ fn build_status_line() -> AirStatusLine {
 
 #[cfg(test)]
 mod tests {
-    use air_tui::command::{AirCommandSet, CANCEL, COPY, CUT, OK, OPEN, PASTE, QUIT, SAVE};
+    use air_tui::command::{
+        AirCommandSet, CANCEL, COPY, CUT, OK, OPEN, PASTE, QUIT, REDO, SAVE, UNDO,
+    };
     use air_tui::geometry::AirSize;
     use air_tui::input::event::{AirInputEvent, AirKey, AirKeyEvent};
     use air_tui::model::{AirChangeSet, AirModel, AirTextAction};
@@ -652,6 +685,50 @@ mod tests {
         assert!(!commands.is_enabled(SAVE));
         type_text(&mut editor, "a", &mut commands);
         assert!(commands.is_enabled(SAVE));
+    }
+
+    #[test]
+    fn annuler_est_grise_tant_que_rien_n_a_ete_edite() {
+        // Le même *pull* que pour `SAVE` : l'état est lu au dessin, et aucun changement
+        // structurel n'est consigné quand le journal se remplit (ADR-014).
+        let mut editor = editor(60, 20);
+        let mut commands = AirCommandSet::new();
+        turn(&mut editor, &mut commands);
+        assert!(!commands.is_enabled(UNDO));
+        assert!(!commands.is_enabled(REDO));
+        type_text(&mut editor, "a", &mut commands);
+        assert!(commands.is_enabled(UNDO));
+        assert!(!commands.is_enabled(REDO), "rien n'a encore été annulé");
+    }
+
+    #[test]
+    fn la_commande_d_annulation_defait_la_frappe_et_ouvre_le_retablissement() {
+        let mut editor = editor(60, 20);
+        let mut commands = AirCommandSet::new();
+        turn(&mut editor, &mut commands);
+        type_text(&mut editor, "bonjour", &mut commands);
+        assert_eq!(editor.document.buffer().to_text(), "bonjour");
+        editor.execute(UNDO);
+        turn(&mut editor, &mut commands);
+        assert_eq!(editor.document.buffer().to_text(), "");
+        assert!(commands.is_enabled(REDO));
+        editor.execute(REDO);
+        turn(&mut editor, &mut commands);
+        assert_eq!(editor.document.buffer().to_text(), "bonjour");
+    }
+
+    #[test]
+    fn annuler_tout_eteint_l_etoile_du_titre() {
+        // C'est la part visible du drapeau dérivé de l'historique : le titre de la fenêtre
+        // perd son étoile quand le texte revient à son état enregistré.
+        let mut editor = editor(60, 20);
+        let mut commands = AirCommandSet::new();
+        turn(&mut editor, &mut commands);
+        type_text(&mut editor, "a", &mut commands);
+        assert!(editor.document.buffer().is_modified());
+        editor.execute(UNDO);
+        turn(&mut editor, &mut commands);
+        assert!(!editor.document.buffer().is_modified());
     }
 
     #[test]

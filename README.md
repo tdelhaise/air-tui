@@ -27,6 +27,9 @@ terminal veut bien les donner.
 - **MVC.** Le modèle ne connaît aucune vue et n'appelle personne : il consigne ce qui a
   changé et rend la main. Les vues n'émettent que des intentions. Pas un `Rc`, pas un
   `RefCell` : la réentrance est impossible par construction.
+- **Annulation par journal de remplacements.** Le tampon de texte n'a **qu'un** point de
+  mutation, et l'annulation est une propriété de ce point plutôt qu'une couche posée à
+  côté. L'unité est le geste : un mot tapé ou un collage s'annulent d'un coup.
 - **Zéro dépendance.** La couche 0 (`air-tui-platform-posix`) isole les appels système
   derrière un contrat en traits ; tout le reste est du Rust sûr, en
   `#![forbid(unsafe_code)]`, et le cœur n'a aucune dépendance vers une implémentation de
