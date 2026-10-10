@@ -280,3 +280,26 @@ Sur la couverture, deux exigences de portée différente, à ne pas confondre :
 - `git commit -s` obligatoire (DCO). Signature GPG sur les commits de `main`.
 - Conventional Commits : `feat`, `fix`, `docs`, `chore`, `test`, `refactor`.
 - Jamais de force-push sur `main`.
+
+## Le `Signed-off-by` d'une fusion squash
+
+Une fusion squash produit **un** commit sur `main`, et c'est lui qui doit porter le DCO.
+Sans `--body`, GitHub construit le corps en reprenant les messages des commits de la
+branche, trailers compris : le `Signed-off-by` arrive tout seul. Avec un `--body` écrit à
+la main, il **disparaît**, et c'est silencieux — aucun contrôle ne le voit, puisque
+`check-dco` n'est pas écrit.
+
+Donc, quand on passe un corps à la main, y remettre la ligne :
+
+```sh
+gh pr merge <n> --squash --delete-branch \
+    --subject "feat!: …" \
+    --body "…
+
+Signed-off-by: Thierry DELHAISE <thierry.delhaise@air-desktop.org>"
+```
+
+Payé au jalon M7g : son commit de fusion (`806f7ae`) est le seul de `main` sans DCO. Il
+n'est **pas réparable** — amender demanderait un force-push sur `main`, que ce dépôt
+interdit sans exception. Une règle outillée aurait rattrapé la distraction, et c'est
+exactement ce que `check-dco` ferait : il reste à écrire.

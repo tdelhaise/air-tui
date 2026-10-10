@@ -618,7 +618,12 @@ affirmations de M7b se sont révélées fausses. Elles sont corrigées ici plut�
 
 ### Défauts ouverts
 
-*(aucun à ce jour)*
+- **Le commit de fusion du jalon M7g (`806f7ae`) ne porte pas de `Signed-off-by`.** Les
+  quatre commits de la branche le portaient tous ; la fusion squash a reçu un corps écrit à
+  la main, et le trailer que GitHub aurait repris des commits a disparu avec lui. Ce commit
+  n'est **pas réparable** : amender un commit de `main` demanderait un force-push, que ce
+  dépôt interdit sans exception. La consigne est écrite dans `CLAUDE.md`, et c'est
+  précisément ce que le gate `check-dco`, toujours à écrire, rattraperait.
 
 ### Pas fait — et à ne pas annoncer comme fait
 
