@@ -6,6 +6,72 @@ tête. On ajoute, on ne réécrit jamais une entrée passée.
 Une entrée par campagne, pas par commit. Répartition des rôles : `etat-avancement.md` est
 l'état vivant, ce journal est la trace figée, `INDEX.md` est la carte structurelle.
 
+## 2026-10-10 — Jalon M7f : les cases à cocher et les boutons radio
+
+- **Un seul type pour les deux, et c'est la structure de Borland sans son héritage.**
+  `TCheckBoxes` et `TRadioButtons` dérivent tous deux de `TCluster` et ne diffèrent que par
+  trois choses : la marque dessinée, ce qu'un appui fait, et si un déplacement du curseur
+  emporte la sélection. Tout le reste — la disposition en lignes, la navigation aux flèches,
+  les lettres d'accès rapide, le clic, le dessin — est commun. Deux types Rust séparés
+  auraient dupliqué ce reste, et une règle écrite deux fois finit par ne plus l'être qu'une :
+  c'est la leçon de M7c et de M7d, appliquée une troisième fois. D'où un `AirCluster`, un
+  `AirClusterKind` qui porte la différence, et deux constructeurs nommés pour que le site
+  d'appel dise lequel il construit.
+- **Le déplacement qui choisit vient de Borland, pas d'une préférence.**
+  `TRadioButtons::movedTo` affecte `value` : dans un groupe à choix unique, la flèche
+  sélectionne. Un curseur qui s'y promènerait sans rien choisir obligerait à appuyer après
+  chaque flèche, pour un geste qui n'a qu'une issue possible. Dans un groupe de cases, la
+  même flèche ne fait que déplacer. Les deux comportements portent chacun leur essai, parce
+  que c'est exactement le genre d'asymétrie qu'une refonte aplatit sans le voir.
+- **La lecture de `cpAppColor` s'est recoupée toute seule.** `cpCluster "\x10\x11\x12…"`
+  donne `cpGrayDialog[16..18]`, soit `cpAppColor[47..49]`, que `tvdemo2.cpp` nomme
+  « Cluster normal », « Cluster selected » et « Cluster shortcut ». En relisant la table
+  pour ces trois indices, j'ai vérifié au passage que les valeurs des listes transcrites à
+  M7b — 57, 58, 59 — concordent à l'octet avec la même lecture. Trois jalons, trois
+  extractions indépendantes, aucune divergence : c'est ce qui donne confiance dans la
+  méthode plutôt que dans le résultat.
+- **Six glyphes qui ne viennent pas du skin, et le dire était la seule option honnête.**
+  `[`, `X`, `]`, `(`, `•`, `)` : un balayage des trente-neuf skins de `mc` 4.8.33 montre
+  qu'**aucun** ne porte de clef pour eux. Ils restent donc ceux du thème par défaut, et ce
+  n'est pas une transcription. La tentation était d'écrire ce que `mc` affiche de mémoire ;
+  je n'ai pas de source pour l'affirmer, donc l'artefact dit « aucun skin ne les décrit »
+  plutôt que d'inventer une provenance.
+- **Un décompte faux trouvé en y touchant, hérité de M7b.** Le commentaire de l'artefact
+  généré et la doc de `AirGlyphSet` annonçaient « cinq glyphes » hors skin et en énuméraient
+  **six** : `scroll_thumb` avait été ajouté à M7b sans que la phrase suive. Il est à douze
+  maintenant, et juste aux trois endroits qui le portent. Un décompte dans un document
+  généré est exactement ce qui dérive sans qu'on le voie, puisque personne ne le recompte.
+- **Une généralisation de l'ADR-008 démentie par la mesure, et c'est le résultat le plus
+  intéressant du jalon.** L'ADR affirmait qu'« un rôle de plus est une clef de plus à savoir
+  exprimer » — formulation écrite à M7b, quand deux skins avaient été perdus. Ce jalon
+  ajoute trois rôles et le compte **ne bouge pas** : toujours neuf sur trente-neuf, parce
+  que les trois se branchent sur `[dialog] _default_`, `dfocus` et `dhotnormal`, que la
+  table lisait déjà. Ce qui fait baisser le compte est une **clef** nouvelle, pas un rôle
+  nouveau. La phrase est corrigée, et le contre-exemple est écrit à côté.
+- **L'invariant du choix unique vaut aussi à la construction.** Un item coché ajouté à un
+  groupe radio décoche les autres. Sans cela, un groupe mal monté afficherait deux points et
+  le premier appui en effacerait un sans qu'on sache lequel — un défaut qui ne se voit qu'à
+  l'écran, jamais à la relecture du code qui monte le dialogue.
+- **Deux états légitimes, écrits plutôt que corrigés.** Un groupe radio neuf n'a **aucun**
+  choix : « rien n'est encore décidé » est un état réel, et en cocher un d'office déciderait
+  à la place de l'utilisateur. Et décocher le choix courant est accepté, parce que le
+  refuser obligerait l'appelant à reconstruire le groupe pour revenir à cet état.
+- **Le curseur ne se montre que dans un groupe qui a le focus**, et l'exemple `frame` met
+  les deux groupes **côte à côte** — la seule disposition qui le vérifie à l'œil. Le champ
+  de saisie y perd son focus au profit des cases : deux vues focalisées se disputeraient le
+  curseur du terminal, et la traversée n'en retiendrait qu'un.
+- **Vérifié sur les octets émis, dans les deux thèmes** : `[X]`, `[ ]`, `(•)` et `( )`
+  apparaissent dans la sortie de `frame` comme dans celle de `frame mc`, et la couleur du
+  curseur de groupe du skin de `mc` y est présente. Un essai refuse par ailleurs que les
+  glyphes des deux thèmes divergent, puisque rien ne les distingue.
+- **Une extraction imposée par clippy, et le découpage s'est révélé juste** : `emit`
+  dépassait cent lignes, et c'est l'émission du jeu de glyphes qui en est sortie. Les deux
+  sorties ne partagent que le tampon qu'elles remplissent, donc la coupure était là où la
+  fonction avait déjà deux sujets.
+- **Vérifications** : `fmt`, `clippy -D warnings`, **1191 essais** (trente de plus),
+  `deny check`, `check-naming`, `check-versions`, `check-codec-coverage` — 7 codecs à
+  100 % —, `import-mc-skin --check`, et les essais en pseudo-terminal avec leurs contrôles.
+
 ## 2026-10-10 — Jalon M7e : le double et le triple clic
 
 - **La décision qui restait à prendre était de placement, et trois endroits possibles

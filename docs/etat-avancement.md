@@ -3,8 +3,8 @@
 Document de suivi **vivant** : où en est-on, quelle est la prochaine tâche. Il se met à
 jour à chaque session. L'historique figé est dans [`JOURNAL.md`](JOURNAL.md).
 
-**Dernière mise à jour : 2026-10-10** (jalon M7e — le double et le triple clic ; jalon M7d
-— la sélection de texte, le presse-papiers interne et le collage encadré).
+**Dernière mise à jour : 2026-10-10** (jalon M7f — les cases à cocher et les boutons
+radio ; jalon M7e — le double et le triple clic).
 
 ## Dépôt
 
@@ -27,14 +27,15 @@ contrôle, donc **aucun essai en pseudo-terminal** n'y tourne, et le fuzzing exi
 
 ## Où en est-on
 
-Jalons **M0 à M7e terminés**. Le dépôt porte ses conventions, ses ADR fondateurs, le socle
-de rendu, le décodeur d'entrée, l'arbre de vues, douze widgets, la **couche MVC** de
+Jalons **M0 à M7f terminés**. Le dépôt porte ses conventions, ses ADR fondateurs, le socle
+de rendu, le décodeur d'entrée, l'arbre de vues, treize widgets, la **couche MVC** de
 l'ADR-007, la hiérarchie d'objets complète, deux thèmes dont un **compilé**, et deux
 **applications** : `redit` ouvre un fichier, l'édite et l'enregistre ; `rmc` parcourt deux
 arborescences côte à côte.
 
-Ce qui manque pour que ce soit un framework complet : les **cases à cocher** et les
-**boutons radio**, et l'étage d'entrée natif Linux (M8).
+Ce qui manque pour que ce soit un framework complet : l'étage d'entrée natif Linux (M8),
+une liste à plusieurs colonnes, et le **défilement d'un groupe** d'items plus long que sa
+place.
 
 ### Fait
 
@@ -487,6 +488,57 @@ affirmations de M7b se sont révélées fausses. Elles sont corrigées ici plut�
   flux, pas de vivre sous `input/` — et ce fichier agrège des événements avec une horloge
   sans en convertir aucun. La note est dans la liste de `xtask`.
 
+### Fait au jalon M7f — les cases à cocher et les boutons radio
+
+- **Un seul type pour les deux, comme Turbo Vision.** `TCheckBoxes` et `TRadioButtons`
+  dérivent tous deux de `TCluster` et ne diffèrent que par trois choses : la **marque**
+  dessinée, ce qu'un **appui** fait, et si un déplacement du curseur emporte la sélection.
+  Le reste — la disposition en lignes, la navigation aux flèches, les lettres d'accès
+  rapide, le clic — est identique. Sans héritage, deux types séparés auraient dupliqué ce
+  reste, et une règle écrite deux fois finit par ne plus l'être qu'une : c'est la leçon de
+  M7c et M7d. D'où un `AirCluster`, un `AirClusterKind` qui porte la différence, et deux
+  constructeurs nommés pour que le site d'appel dise lequel il construit.
+- **Le déplacement qui choisit vient de Borland, pas d'une préférence.**
+  `TRadioButtons::movedTo` affecte `value` : dans un groupe à choix unique, la flèche
+  sélectionne. Un curseur qui s'y promènerait sans rien choisir obligerait à appuyer après
+  chaque flèche, pour un geste qui n'a qu'une issue possible. Dans un groupe de cases, la
+  flèche ne fait que déplacer — et les deux comportements portent chacun leur essai.
+- **Trois rôles de palette, portée à trente-huit**, et la méthode des jalons précédents a
+  resservi : `cpCluster "\x10\x11\x12…"` donne `cpAppColor[47..49]`, que `tvdemo2.cpp`
+  nomme lui-même « Cluster normal », « Cluster selected » et « Cluster shortcut ». Au
+  passage, cette lecture de la table est recoupée par les transcriptions de M7b : les
+  valeurs des listes concordent à l'octet.
+- **Six glyphes qui ne viennent pas du skin, et c'est écrit comme tel.** `[`, `X`, `]`,
+  `(`, `•`, `)` : **aucun** des trente-neuf skins de `mc` ne porte de clef pour eux, ce qui
+  a été vérifié par un balayage et non supposé. Ils restent donc ceux du thème par défaut,
+  et ce n'est pas une transcription — ce que l'artefact généré dit maintenant.
+- **Un décompte faux trouvé et corrigé, hérité de M7b.** Le commentaire de l'artefact et la
+  doc de `AirGlyphSet` annonçaient « cinq glyphes » hors skin et en énuméraient **six** :
+  `scroll_thumb` avait été ajouté à M7b sans que la phrase suive. Le compte passe à douze,
+  et il est juste aux trois endroits qui le portent.
+- **Une généralisation de l'ADR-008 démentie par la mesure.** Il affirmait qu'« un rôle de
+  plus est une clef de plus à savoir exprimer » ; ce jalon ajoute trois rôles et le compte
+  des skins importables **ne bouge pas** — toujours neuf sur trente-neuf —, parce que les
+  trois se branchent sur `[dialog] _default_`, `dfocus` et `dhotnormal`, déjà lues. Ce qui
+  fait baisser le compte est une **clef** nouvelle, pas un rôle nouveau. Corrigé dans l'ADR.
+- **L'invariant du choix unique vaut aussi à la construction** : un item coché ajouté à un
+  groupe radio décoche les autres. Sans cela, un groupe mal monté afficherait deux points,
+  et le premier appui en effacerait un sans qu'on sache lequel.
+- **Deux états légitimes, écrits plutôt que corrigés** : un groupe radio neuf n'a **aucun**
+  choix, parce que « rien n'est encore décidé » est un état réel et qu'en cocher un d'office
+  déciderait à la place de l'utilisateur ; et décocher le choix courant est accepté, parce
+  que le refuser obligerait l'appelant à reconstruire le groupe pour y revenir.
+- **Le curseur ne se montre que dans un groupe qui a le focus.** Deux groupes côte à côte
+  qui marqueraient chacun un item laisseraient croire à deux curseurs — et l'exemple `frame`
+  les met précisément côte à côte, ce qui est la seule disposition qui le vérifie à l'œil.
+- **Vérifié sur les octets émis, dans les deux thèmes** : `[X]`, `[ ]`, `(•)` et `( )`
+  apparaissent dans la sortie de `frame` comme dans celle de `frame mc`, et la couleur du
+  curseur de groupe du skin de `mc` (`dfocus`) y est présente.
+- **1191 essais** (trente de plus), 7 codecs toujours à 100 %.
+- Une extraction imposée par clippy, et le découpage est juste : `emit` dépassait cent
+  lignes, et l'émission du jeu de glyphes en est sortie. Les deux sorties ne partagent que
+  le tampon qu'elles remplissent.
+
 ### Défauts ouverts
 
 *(aucun à ce jour)*
@@ -515,7 +567,6 @@ affirmations de M7b se sont révélées fausses. Elles sont corrigées ici plut�
 - Un **attribut par rôle** dans la palette, et une couleur « défaut du terminal » dans
   `AirColor` : les deux lèveraient vingt-neuf des trente refus de l'importeur de skins. Le
   trentième, `gotar.ini`, demande en plus de décider quoi faire d'une **clef absente**.
-- Les **cases à cocher et boutons radio**.
 - L'échange avec le **presse-papiers du système** : `AirClipboard` est interne au
   processus. Il ne parle ni à `pbcopy`, ni à `wl-clipboard`, ni à OSC 52 — trois mécanismes
   différents, dont le dernier est refusé par défaut par la plupart des terminaux et les
@@ -560,13 +611,11 @@ vérifier est exactement ce que ce dépôt refuse. Les candidats, du plus petit 
 1. **Les deux limites du thème** : un attribut par rôle dans la palette, une couleur
    « défaut du terminal » dans `AirColor`. Chiffré : vingt-neuf des trente skins refusés
    sur trente-neuf deviendraient importables. C'est de la donnée, pas de l'architecture.
-2. **Les cases à cocher et les boutons radio**, qui complètent les contrôles de dialogue
-   avec `AirPromptDialog`. C'est désormais la plus grosse absence du catalogue de widgets.
-3. **L'annulation** dans `redit` — `Ctrl`+`Z`. La sélection vient d'ajouter des opérations
+2. **L'annulation** dans `redit` — `Ctrl`+`Z`. La sélection vient d'ajouter des opérations
    dont l'inverse n'est pas évident (remplacer une sélection par un collage est deux
    gestes en un), donc le moment est bon pour décider si le modèle tient un journal
    d'annulation ou des instantanés.
-4. **La peinture hors des limites d'une vue**, décision d'architecture dont dépendent
+3. **La peinture hors des limites d'une vue**, décision d'architecture dont dépendent
    `AirDecorations` et l'ombre portée. À trancher avant d'écrire la troisième assiette du
    triplet de l'ADR-008, pas après.
 
@@ -595,4 +644,5 @@ des numéros de touches fonctionnelles.
 | M7c | le type d'événement de touche : décodé partout, écarté à la distribution | **fait** |
 | M7d | la sélection de texte, le presse-papiers interne, le collage encadré | **fait** |
 | M7e | le double et le triple clic, synthétisés par la boucle | **fait** |
+| M7f | les cases à cocher et les boutons radio | **fait** |
 | M8 | étage natif Linux : evdev, `TIOCLINUX`, gpm | à faire |

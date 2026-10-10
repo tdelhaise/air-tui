@@ -54,7 +54,8 @@ refus à la compilation, jamais un comportement dégradé à l'exécution.
 - L'importeur de skins MC donne accès à des thèmes existants pour le coût d'un analyseur
   `.ini` — mais côté `xtask`, pas côté runtime.
 - Jalons : M5 pour le moteur et le thème Turbo Vision, M7a pour MC et l'importeur, M7b
-  pour les rôles de liste et la coquille `rmc`, M7d pour les rôles du texte sélectionné.
+  pour les rôles de liste et la coquille `rmc`, M7d pour les rôles du texte sélectionné,
+  M7f pour ceux des cases à cocher et des boutons radio.
 
 ## État au jalon M7
 
@@ -70,8 +71,8 @@ et quinze correspondances portent écrite la règle qui a demandé un choix. Une
 nommée se discute ; une dérivation silencieuse se découvre des mois plus tard devant un
 écran qui ne ressemble pas au skin.
 
-**Mesuré sur les trente-neuf skins livrés avec `mc` 4.8.33 : neuf sont importables** au
-jalon M7d — dix à M7b, douze à M7a. Les trente autres sont **refusés**, et pour trois
+**Mesuré sur les trente-neuf skins livrés avec `mc` 4.8.33 : neuf sont importables** aux
+jalons M7d et M7f — dix à M7b, douze à M7a. Les trente autres sont **refusés**, et pour trois
 raisons qui sont des limites du modèle d'air-tui ou des lacunes du skin, non des défauts de
 l'analyseur :
 
@@ -87,9 +88,15 @@ l'analyseur :
 
 Les deux skins perdus entre M7a et M7b — `gray-green-purple256` et `gray-orange-blue256` —
 posent `bold` sur `[core] marked`, une clef que la table n'employait pas avant les rôles de
-liste. Le compte baisse donc **parce que le modèle s'est enrichi** : un rôle de plus est
-une clef de plus à savoir exprimer. C'est le prix de l'exigence, et il est chiffré à chaque
-jalon plutôt que supposé.
+liste.
+
+**Ce qui fait baisser le compte est une clef nouvelle, pas un rôle nouveau**, et le jalon
+M7f l'a montré en démentant la formulation précédente de ce paragraphe. Il ajoute trois
+rôles — ceux des cases à cocher et des boutons radio — et le compte **ne bouge pas** : les
+trois viennent de `[dialog] _default_`, `dfocus` et `dhotnormal`, que la table employait
+déjà. Un rôle de plus n'exige donc rien de plus du skin tant qu'il se branche sur une clef
+déjà lue. C'est le prix de l'exigence, et il est chiffré à chaque jalon plutôt que supposé —
+y compris quand il est nul.
 
 Lever les deux premières limites — un attribut par rôle, une couleur « défaut du
 terminal » — rendrait vingt-neuf des trente refusés importables ; le trentième demande en
@@ -141,6 +148,20 @@ Un résultat de cette transcription mérite d'être écrit, parce qu'il valide l
 le texte **non** sélectionné de l'éditeur n'a pas besoin d'un rôle propre. `cpEditor[1]`
 vaut `cpAppColor[13]`, qui est déjà `AirRole::WindowText`, transcrit au jalon M5. La vue
 d'édition peignait donc juste depuis le début, et sans qu'on sache pourquoi.
+
+**Fait au jalon M7f : trois rôles de cluster, et six glyphes qui ne viennent pas du skin.**
+`ClusterNormal`, `ClusterSelected` et `ClusterHotkey` portent la palette à trente-huit
+rôles. Les valeurs de Turbo Vision suivent la méthode des jalons précédents et sont
+confirmées par une source indépendante du calcul : `cpCluster "\x10\x11\x12…"` donne
+`cpGrayDialog[16..18]`, soit `cpAppColor[47..49]`, que `tvdemo2.cpp` nomme « Cluster
+normal », « Cluster selected » et « Cluster shortcut ».
+
+Les **six caractères** des cases à cocher et des boutons radio — `[`, `X`, `]`, `(`, `•`,
+`)` — ne sont **pas** transcrits, et c'est écrit comme tel : aucun des trente-neuf skins ne
+porte de clef pour eux, ce qui a été vérifié par un balayage et non supposé. Ils restent
+donc ceux du thème par défaut. Le décompte des glyphes hors skin passe à douze, et il était
+**faux** depuis M7b : il annonçait cinq glyphes et en énumérait six, le curseur d'ascenseur
+ayant été ajouté sans que la phrase suive. Corrigé aux trois endroits qui le portaient.
 
 Le jeu de glyphes a gagné `scroll_thumb`, pour une raison que seule la coquille pouvait
 faire apparaître : le curseur d'ascenseur empruntait `close_box_mark`. Les deux glyphes
