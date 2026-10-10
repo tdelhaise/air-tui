@@ -1,0 +1,65 @@
+# Avancement des ADR d'air-tui.
+#
+# Ce fichier est le SEUL endroit où vit l'avancement d'un ADR. Le champ `**Statut :**`
+# que porte chaque fichier ADR décrit sa *décision* (Accepté / Proposé) : c'est une
+# dimension distincte, à ne pas confondre.
+#
+# Valeurs admises pour `statut` :
+#   fait        — mise en œuvre terminée
+#   en-cours    — implémentation entamée, non close
+#   a-faire     — décision actée, rien de commencé
+#   permanent   — politique en vigueur continue, sans mise en œuvre à produire
+#   a-qualifier — à trancher ; ne doit pas subsister durablement
+#
+# NOTE : le registre généré et son gate `--check`, repris d'Air, ne sont PAS en place.
+# Les ADR sont pour l'instant en français seulement (traduction anglaise à produire).
+
+["001"]
+objet  = "Cibles tier-1 : Linux 6.1+ et macOS Sequoia 15+, x86_64 et aarch64"
+statut = "permanent"
+note   = "remplace la clause Linux-only d'ADR-004 d'Air, qui n'est pas reprise"
+
+["002"]
+objet  = "Architecture en couches et frontière unsafe entre air-tui-sys et air-tui"
+statut = "en-cours"
+note   = "les deux crates existent ; la couche 0 porte six symboles C"
+
+["003"]
+objet  = "Entrée clavier à deux étages : terminal en tier-1, natif en complément local"
+statut = "a-faire"
+note   = "aucun étage écrit ; le protocole Kitty est au jalon M2"
+
+["004"]
+objet  = "Conventions de nommage : aucune abréviation, préfixe Air sur le modèle d'objets"
+statut = "permanent"
+note   = "gate check-naming à écrire ; règle tenue à la main en attendant"
+
+["005"]
+objet  = "Zéro dépendance : std plus six symboles de la libc déjà liée"
+statut = "en-cours"
+note   = "les six déclarations existent dans air-tui-sys"
+
+["006"]
+objet  = "Unicode : tables UCD générées et committées"
+statut = "a-faire"
+note   = "statut de décision Proposé ; forme des tables à arrêter au jalon M3"
+
+["007"]
+objet  = "MVC par journal de changements, sans Observer ni Rc/RefCell"
+statut = "a-faire"
+note   = "aucun module mvc écrit"
+
+["008"]
+objet  = "Moteur de thèmes : palette par rôles, glyphes, décorations ; thèmes compilés"
+statut = "a-faire"
+note   = "un thème minimal aux glyphes Borland existe pour l'exemple M0, pas le moteur"
+
+["009"]
+objet  = "Versionnement semver, par crate, incrémenté à chaque PR qui touche la crate"
+statut = "permanent"
+note   = "gate check-versions à écrire ; règle tenue à la main en attendant"
+
+["010"]
+objet  = "Bordure par défaut sur les vues, retirable par border = false"
+statut = "a-faire"
+note   = "l'arbre de vues du jalon M4 n'est pas écrit"
