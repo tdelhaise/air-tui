@@ -75,17 +75,32 @@ ses préconditions.
 
 ## Ce qui n'existe pas encore
 
-`cargo xtask` porte **six** commandes de vérification — `generate-unicode-tables --check`,
-`check-segmentation`, `check-naming` (ADR-004), `check-versions` (ADR-009),
-`check-codec-coverage` (ADR-012) et `import-mc-skin --check` (ADR-008). L'intégration
-continue en exécute **cinq** : celle de l'importeur de skins demande le même fichier de
-skin que celui qui a produit l'artefact, donc le même `mc` installé, et un coureur n'en a
-pas. Elle reste locale, et l'empreinte que l'artefact porte en en-tête la rend
-vérifiable : elle dit « ce n'est pas le même skin » plutôt que « l'artefact a dérivé ».
+`cargo xtask` porte **sept** commandes de vérification — `generate-unicode-tables
+--check`, `check-segmentation`, `check-naming` (ADR-004), `check-versions` (ADR-009),
+`check-codec-coverage` (ADR-012), `check-dco` et `import-mc-skin --check` (ADR-008).
+L'intégration continue en exécute **six** : celle de l'importeur de skins demande le même
+fichier de skin que celui qui a produit l'artefact, donc le même `mc` installé, et un
+coureur n'en a pas. Elle reste locale, et l'empreinte que l'artefact porte en en-tête la
+rend vérifiable : elle dit « ce n'est pas le même skin » plutôt que « l'artefact a dérivé ».
 
-Trois contrôles de `docs/CONVENTIONS-fr.md` restent **à écrire**, donc à tenir à la main :
-`check-licence-headers`, `check-safety-comments` et `check-dco`. Ne pas écrire qu'ils
-tournent avant qu'ils tournent (NO GO n° 1).
+**Deux** contrôles de `docs/CONVENTIONS-fr.md` restent **à écrire**, donc à tenir à la
+main : `check-licence-headers` et `check-safety-comments`. Ne pas écrire qu'ils tournent
+avant qu'ils tournent (NO GO n° 1).
+
+Portée de `check-dco`, parce qu'elle n'est pas intuitive : sans `--all`, il garde les
+commits de la branche, et c'est ce que la CI exécute sur une pull request. Avec `--all`, il
+parcourt tout l'historique, et c'est ce qu'elle exécute sur une poussée vers `main` — seul
+moment où le commit de **fusion squash** existe, puisqu'il est fabriqué après le dernier
+passage de la CI sur la branche. Sur `main`, ce contrôle **constate** au lieu de prévenir,
+et un commit de `main` ne s'amende pas. Il porte un pardon nommé, `806f7ae`, et l'annonce à
+chaque exécution.
+
+Il ignore les commits de **fusion**, qui n'apportent aucun contenu à certifier, et il les
+compte pour le dire. Ce n'est pas une précaution théorique : sur un événement
+`pull_request`, `actions/checkout` place un commit de fusion que **GitHub fabrique** pour
+éprouver le résultat — « Merge <sha> into <base> », que personne n'a écrit et que personne
+ne peut signer. Son premier passage en CI l'a trouvé. Une fusion **squash** n'en est pas
+une : un seul parent, donc elle reste examinée.
 
 Portée de `check-naming`, à connaître avant de s'y fier : il inspecte les **sites de
 déclaration** et non les emplois, et son angle mort est la liaison d'un bras de `match`
@@ -101,6 +116,7 @@ cargo deny check
 cargo xtask check-naming
 cargo xtask check-versions          # compare à origin/main, arbre de travail compris
 cargo xtask check-codec-coverage    # prend la mesure lui-même, ~1 min
+cargo xtask check-dco               # les commits de la branche ; --all pour l'historique
 ```
 
 Ces contrôles tournent aussi en intégration continue sur chaque PR

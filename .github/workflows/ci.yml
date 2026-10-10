@@ -19,6 +19,10 @@
 # - Pas d'essai en pseudo-terminal : `tools/pty-drive.py` demande un vrai terminal de
 #   contrôle, et un coureur n'en a pas. Les deux essais restent dans la liste locale.
 # - Pas de fuzzing : il exige nightly, et le dépôt est pinné sur stable.
+# - Pas de rattrapage possible sur `main` : `check-dco --all` y tourne, mais une fusion
+#   squash est fabriquée après le dernier passage de la CI sur la branche. Sur `main`, ce
+#   contrôle constate au lieu de prévenir, et un commit de `main` ne s'amende pas — le
+#   force-push y est interdit sans exception.
 # - Pas de `import-mc-skin --check` : il demande le fichier de skin qui a produit
 #   l'artefact, donc le même `mc` installé, et un coureur n'en a pas. Installer une version
 #   quelconque donnerait un rouge pour une raison fausse le jour où le skin amont change.
@@ -80,6 +84,26 @@ jobs:
       - name: versionnement par crate (ADR-009)
         if: github.event_name == 'pull_request'
         run: cargo xtask check-versions --base origin/${{ github.base_ref }}
+
+      # Le DCO se contrôle sur les **deux** événements, et pas pour la même raison.
+      #
+      # Sur une pull request, la plage garde les commits de la branche : c'est le moment
+      # où un oubli se rattrape, par un `git commit -s --amend` ou un
+      # `git rebase --signoff`.
+      #
+      # Sur une poussée vers `main`, c'est l'historique entier qu'il faut parcourir, parce
+      # que le commit de **fusion squash** n'existe pas avant la fusion : il est fabriqué
+      # après le dernier passage de la CI sur la branche, donc aucune vérification de
+      # branche ne peut le voir. Là, le contrôle ne prévient pas — il constate, et c'est
+      # tout ce qu'un dépôt qui interdit le force-push peut obtenir. C'est exactement ce
+      # qui est arrivé au commit de fusion du jalon M7g.
+      - name: DCO et paternité, sur la branche
+        if: github.event_name == 'pull_request'
+        run: cargo xtask check-dco --base origin/${{ github.base_ref }}
+
+      - name: DCO et paternité, sur tout l'historique
+        if: github.event_name == 'push'
+        run: cargo xtask check-dco --all
 
   outillage:
     name: codecs, dépendances, Unicode

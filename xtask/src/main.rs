@@ -15,6 +15,8 @@
 //! cargo xtask check-naming
 //! cargo xtask check-versions
 //! cargo xtask check-codec-coverage
+//! cargo xtask check-dco
+//! cargo xtask check-dco --all
 //! cargo xtask import-mc-skin --skin /usr/share/mc/skins/default.ini
 //! ```
 
@@ -24,6 +26,7 @@
 #![cfg_attr(test, allow(clippy::expect_used, clippy::unwrap_used))]
 
 mod codec_coverage;
+mod dco;
 mod mc_skin;
 mod mc_theme;
 mod naming;
@@ -66,6 +69,7 @@ fn main() -> ExitCode {
         Some("check-naming") => check_naming(),
         Some("check-versions") => check_versions(&arguments),
         Some("check-codec-coverage") => check_codec_coverage(&arguments),
+        Some("check-dco") => check_dco(&arguments),
         Some("import-mc-skin") => import_mc_skin(&arguments),
         Some(other) => Err(format!("commande inconnue : {other}\n\n{}", usage())),
         None => Err(usage()),
@@ -91,6 +95,7 @@ fn usage() -> String {
      cargo xtask check-naming\n  \
      cargo xtask check-versions [--base <référence>]\n  \
      cargo xtask check-codec-coverage [--report <relevé.json>]\n  \
+     cargo xtask check-dco [--base <référence>] [--all]\n  \
      cargo xtask import-mc-skin --skin <fichier.ini> [--check]"
         .to_owned()
 }
@@ -321,6 +326,54 @@ fn check_codec_coverage(arguments: &[String]) -> Result<String, String> {
     for violation in &report.violations {
         let _ = writeln!(summary, "  {} — {}", violation.file, violation.detail);
     }
+    Err(summary)
+}
+
+/// Refuse un commit sans `Signed-off-by`, ou qui fait d'un agent un auteur.
+///
+/// Deux portées, et la distinction est le cœur du contrôle : sans `--all`, il garde les
+/// commits **de la branche**, ce qu'une pull request peut vérifier avant la fusion ; avec
+/// `--all`, il parcourt tout l'historique, ce qui est le seul moment où le commit de
+/// fusion squash existe — celui-là est fabriqué après le dernier passage de la CI sur la
+/// branche, donc aucune vérification de branche ne peut le voir.
+///
+/// Les commits de **fusion** sont comptés et ignorés : ils n'apportent aucun contenu à
+/// certifier, et sur un événement `pull_request` la CI en voit un que GitHub fabrique
+/// elle-même. Le compte rendu les annonce, comme il annonce les pardons.
+fn check_dco(arguments: &[String]) -> Result<String, String> {
+    let scope = if has_flag(arguments, "--all") {
+        dco::Scope::All
+    } else {
+        dco::Scope::Range {
+            base: option_value(arguments, "--base").unwrap_or_else(|| DEFAULT_BASE.to_owned()),
+        }
+    };
+    let report = dco::check(&repository_root()?, &scope)?;
+    // Les pardons sont nommés à chaque exécution, succès compris : un contrôle qui taît ce
+    // qu'il ne regarde pas donne la même assurance qu'un contrôle absent.
+    let mut pardons = String::new();
+    for (hash, reason) in dco::pardons() {
+        let _ = write!(pardons, "\n  pardonné : {hash} — {reason}");
+    }
+    if report.violations.is_empty() {
+        return Ok(format!(
+            "{} commit(s) examiné(s) sur {}, {} pardonné(s), {} fusion(s) ignorée(s) : \
+             tous signés, aucun agent parmi les auteurs{pardons}",
+            report.examined, report.scope, report.pardoned, report.merges
+        ));
+    }
+    let mut summary = format!(
+        "{} manquement(s) au DCO sur {} :\n",
+        report.violations.len(),
+        report.scope
+    );
+    for violation in &report.violations {
+        let _ = writeln!(summary, "  {} — {}", violation.subject, violation.detail);
+    }
+    summary.push_str(
+        "Rattraper le dernier commit : git commit -s --amend --no-edit\n\
+         Toute la branche : git rebase --signoff <base>",
+    );
     Err(summary)
 }
 
