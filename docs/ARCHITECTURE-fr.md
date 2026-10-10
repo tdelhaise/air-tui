@@ -127,6 +127,45 @@ savait pas faire : un écran d'accueil, un assistant multi-étapes, et surtout l
 cohabitation de deux chromes radicalement différents — `redit` en style Turbo Vision,
 `rmc` en style Midnight Commander — sur le même moteur.
 
+## L'arbre de vues
+
+Écrit au jalon M4 (`air-tui/src/view/`). Trois pièces, et c'est la deuxième qui fait tout
+tenir :
+
+**Le modèle.** `AirView` est un **trait** et `AirViewState` une structure que chaque vue
+**contient** — composition, pas héritage (ADR-011). Une vue expose son état et dit comment
+se dessiner ; elle n'hérite de rien.
+
+**Le peintre.** `AirPainter` est la pièce maîtresse. Une vue dessine à partir de `(0, 0)`,
+**le sien** : elle ne sait pas où elle se trouve à l'écran, et c'est voulu — un bouton dans
+une fenêtre déplacée n'a aucune raison d'être réécrit. C'est le modèle relatif au
+propriétaire de Turbo Vision (`TView::origin`), et il apporte ce qui manquait depuis M0 :
+**un découpage réel**. Toute écriture hors du rectangle de découpage est abandonnée, et un
+peintre d'enfant intersecte son découpage avec celui de son parent. Une vue ne peut pas
+déborder de son propriétaire, même en essayant. Le texte trop long qui mangeait le cadre
+au jalon M0 est devenu impossible, et l'exemple `frame` en fait la démonstration en
+insérant volontairement une étiquette plus large que sa fenêtre.
+
+**Le routage.** Les trois phases de Turbo Vision, conservées telles quelles :
+`PreProcess`, `Focused`, `PostProcess`. C'est ce qui permet à une barre de menu ouverte de
+voir `Échap` avant le champ de saisie qui a le focus, et à un raccourci global de ne pas
+voler une frappe qui lui était destinée. Les événements de souris, eux, se routent par la
+**position** : du premier plan vers l'arrière, et les coordonnées sont traduites à la
+descente puis restaurées à la remontée — une vue reçoit toujours des coordonnées qui sont
+les siennes.
+
+Le focus est **exclusif entre sœurs**, tenu par le groupe : le garder à un seul endroit est
+la façon la plus sûre de ne pas le voir se dédoubler.
+
+## Les commandes
+
+`AirCommandSet` est le mécanisme 3 de l'ADR-007, et il mérite d'être signalé parce qu'il
+résout en *pull* ce pour quoi on écrirait un observateur. Griser « Enregistrer » grise d'un
+coup l'item de menu, le bouton et l'item de barre de statut — **sans que personne soit
+notifié** : chaque vue interroge le jeu au moment où elle se dessine. Il n'y a aucune arête
+à tenir à jour, donc aucune à oublier, et les widgets créés après la désactivation sont
+grisés comme les autres.
+
 ## La bordure des vues
 
 Contrairement à Turbo Vision, où le cadre est un `TFrame` qu'un `TWindow` insère comme

@@ -3,7 +3,7 @@
 Document de suivi **vivant** : où en est-on, quelle est la prochaine tâche. Il se met à
 jour à chaque session. L'historique figé est dans [`JOURNAL.md`](JOURNAL.md).
 
-**Dernière mise à jour : 2026-10-10** (jalon M3 — tables Unicode).
+**Dernière mise à jour : 2026-10-10** (jalon M4 — arbre de vues).
 
 ## Dépôt
 
@@ -16,7 +16,7 @@ vérifications de `CLAUDE.md` sont à exécuter en local avant d'ouvrir une PR.
 
 ## Où en est-on
 
-Jalons **M0 à M3 terminés**. Le dépôt porte ses conventions, ses
+Jalons **M0 à M4 terminés**. Le dépôt porte ses conventions, ses
 ADR fondateurs, le socle de rendu et le décodeur d'entrée. Ce n'est pas encore utilisable
 comme framework : il n'y a ni arbre de vues, ni widget.
 
@@ -32,6 +32,23 @@ comme framework : il n'y a ni arbre de vues, ni widget.
   `PosixTerminal` qui implémente le contrat.
 - Codecs : `AirSgrEncoder`, l'écriture décimale et le **décodeur ANSI d'entrée**, tous à
   **100 % de couverture** (ADR-012).
+- **M4 — arbre de vues** (`air-tui/src/view/`) : trait `AirView` et composition
+  `AirViewState`, `AirPainter` à coordonnées relatives au propriétaire et **découpage
+  réel**, routage en trois phases plus routage positionnel de la souris avec traduction
+  des coordonnées, focus exclusif entre sœurs, ordre de profondeur, bordure par défaut
+  d'ADR-010 avec `content_bounds`, et titre de cadre dessiné par la traversée.
+- **Le défaut du jalon M0 est devenu impossible** : un contenu trop long ne peut plus
+  écraser le cadre qui l'entoure, et l'exemple `frame` en fait la démonstration en
+  insérant une étiquette volontairement plus large que sa fenêtre. Les bordures restent
+  alignées aux mêmes colonnes sur toutes les lignes, texte accentué compris.
+- **`AirCommandSet`** : le mécanisme 3 de l'ADR-007, en *pull*. Griser une commande grise
+  d'un coup tout ce qui la porte, sans que personne soit notifié.
+- **Deux widgets, pour prouver l'arbre** : `AirPanel`, conteneur bordé à titre, et
+  `AirStaticText`, qui retire la bordure dans son constructeur comme le veut le corollaire
+  d'ADR-010. Le jeu complet vient avec M5.
+- **Une duplication supprimée** : le dessin de texte existait en deux endroits, sur la
+  surface et dans le peintre. `AirSurface::draw_text` délègue désormais au peintre — deux
+  implémentations de la même règle garantissaient qu'elles divergent.
 - **M3 — Unicode** (`air-tui/src/unicode/`, tables générées en Unicode **18.0.0**) :
   largeur d'affichage et segmentation en graphèmes, règles `GB3` à `GB13` de l'annexe 29
   **y compris `GB9c`**, la coupure conjointe indienne. Sept tables, 2546 plages, 113 Ko de
@@ -111,6 +128,8 @@ comme framework : il n'y a ni arbre de vues, ni widget.
 - Moteur de thèmes complet, quantificateur de couleurs, thème Midnight Commander.
 - Couche MVC.
 - `redit`, `rmc`.
+- La couche MVC d'ADR-007 au-delà du mécanisme 3 : le journal de changements et les
+  compteurs de génération attendent l'éditeur du jalon M6.
 - Les gates `check-naming` (ADR-004), `check-versions` (ADR-009) et
   `check-codec-coverage` (ADR-012). `cargo xtask` **existe** depuis M3, mais ne porte que
   la génération des tables Unicode ; ces trois contrôles restent manuels.
@@ -131,10 +150,12 @@ comme framework : il n'y a ni arbre de vues, ni widget.
 
 ## Prochaine tâche
 
-**M4 — l'arbre de vues** : trait `AirView`, composition `AirViewState`, routage en trois
-phases (`PreProcess`, `Focused`, `PostProcess`), focus, ordre de profondeur, **découpage
-par vue** et la bordure par défaut d'ADR-010. C'est le jalon qui transforme le socle en
-framework : jusqu'ici tout se dessine à la main sur la surface.
+**M5 — les widgets et le moteur de thèmes**, recalés ensemble parce qu'ils se tiennent :
+un bouton, un champ de saisie, une barre de menu et une barre de statut ont besoin de rôles
+de couleur que la palette actuelle n'a pas, et le quantificateur qui ramène un thème en RGB
+vers les seize couleurs d'une console Linux conditionne leur lisibilité. S'y ajoutent
+`AirWindow` et sa case de fermeture `[■]`, absente de l'exemple depuis que celui-ci est
+bâti sur l'arbre.
 
 Une dette restante : remonter la couverture de `air-tui-platform-posix` par des tests sous
 pty. Et deux vérifications encore absentes : la **console Linux native**, inaccessible par
@@ -155,8 +176,8 @@ externes).
 | M1 | décodeur ANSI, souris SGR, collage encadré, focus | **fait** |
 | M2 | protocole clavier Kitty, repli `modifyOtherKeys` | **fait** |
 | M3 | tables Unicode : largeur et graphèmes | **fait** |
-| M4 | arbre de vues, trois phases, focus, découpage, widgets de base | à faire |
-| M5 | moteur de thèmes, thème Turbo Vision, quantificateur | à faire |
+| M4 | arbre de vues, trois phases, focus, découpage | **fait** |
+| M5 | widgets de base, moteur de thèmes, quantificateur de couleurs | à faire |
 | M6 | `redit` — équivalent de `tvedit` | à faire |
 | M7 | thème et coquille Midnight Commander, importeur de skins | à faire |
 | M8 | étage natif Linux : evdev, `TIOCLINUX`, gpm | à faire |

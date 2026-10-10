@@ -34,16 +34,20 @@
 
 pub mod cell;
 pub mod codec;
+pub mod command;
 pub mod geometry;
 pub mod input;
 pub mod surface;
 pub mod terminal;
 pub mod theme;
 pub mod unicode;
+pub mod view;
+pub mod widgets;
 
 pub use air_tui_platform::{InputReadiness, PlatformError, PlatformErrorKind, TerminalDevice};
 pub use cell::{AirAttributes, AirCell, AirColor};
 pub use codec::{AirCellPresentation, AirSgrEncoder};
+pub use command::{AirCommand, AirCommandSet};
 pub use geometry::{AirColumn, AirPoint, AirRectangle, AirRow, AirSize};
 pub use input::{
     AirAnsiDecoder, AirDecodeError, AirInputEvent, AirKey, AirKeyEvent, AirKeyState, AirModifiers,
@@ -57,3 +61,8 @@ pub use unicode::{
     grapheme_break, grapheme_width, graphemes, indic_conjunct_break, is_extended_pictographic,
     text_width,
 };
+pub use view::{
+    AirBorderStyle, AirContext, AirEvent, AirGroup, AirOutcome, AirPainter, AirPhase, AirView,
+    AirViewId, AirViewState, dispatch_event, draw_view,
+};
+pub use widgets::{AirPanel, AirStaticText};
