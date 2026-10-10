@@ -64,13 +64,15 @@ pub use desktop::AirDesktop;
 pub use screen::AirScreen;
 
 use core::time::Duration;
+use std::time::Instant;
 
 use air_tui_platform::{Decoder, InputReadiness, PlatformError, PlatformErrorKind, TerminalDevice};
 
 use crate::command::{AirCommand, AirCommandSet};
 use crate::geometry::AirSize;
 use crate::input::ansi::AirAnsiDecoder;
-use crate::input::event::AirInputEvent;
+use crate::input::clicks::{AirClickTracker, extra_event};
+use crate::input::event::{AirInputEvent, AirMouseEvent, AirMouseEventKind};
 use crate::surface::AirSurface;
 use crate::terminal::AirTerminal;
 use crate::theme::AirTheme;
@@ -120,6 +122,12 @@ pub struct AirApplication {
     dispatching: Vec<AirInputEvent>,
     /// La dimension du terminal au dernier tour.
     size: AirSize,
+    /// Le suiveur des clics multiples.
+    ///
+    /// Ici et non dans le décodeur, qui est pur, ni dans les widgets, où ce serait la même
+    /// règle écrite douze fois : c'est la leçon du jalon M7c, appliquée avant d'avoir à la
+    /// repayer. Voir [`crate::input::clicks`].
+    clicks: AirClickTracker<Instant>,
 }
 
 impl AirApplication {
@@ -146,6 +154,7 @@ impl AirApplication {
             events: Vec::new(),
             dispatching: Vec::new(),
             size,
+            clicks: AirClickTracker::new(),
         })
     }
 
@@ -230,6 +239,9 @@ impl AirApplication {
         self.size = size;
         self.surface.resize(size);
         root.resize(size);
+        // Le redimensionnement déplace tout : la cellule du clic précédent ne désigne plus
+        // la même chose, et enchaîner dessus ferait un double clic sur un autre widget.
+        self.clicks.forget();
         Ok(true)
     }
 
@@ -302,17 +314,59 @@ impl AirApplication {
     }
 
     /// Distribue les événements décodés et collecte les commandes.
+    ///
+    /// Un enfoncement de souris est distribué, puis **suivi** de son double ou triple clic
+    /// quand il en termine un : l'ordre compte, parce que c'est l'enfoncement qui place le
+    /// curseur et le clic multiple qui étend ensuite la sélection.
     fn dispatch_events(&mut self, root: &mut dyn AirView, commands: &mut Vec<AirCommand>) {
         core::mem::swap(&mut self.events, &mut self.dispatching);
-        for input in self.dispatching.drain(..) {
-            let mut event = AirEvent::new(input);
-            let mut context = AirContext {
-                commands: &mut self.commands,
-            };
-            if let AirOutcome::Command(command) = dispatch_event(root, &mut event, &mut context) {
-                commands.push(command);
+        // Le vecteur est **emprunté au champ** le temps du tour, puis rendu : itérer
+        // directement sur `self.dispatching` emprunterait `self` et interdirait d'appeler
+        // la synthèse, qui a besoin du suiveur de clics. Le rendre conserve sa capacité,
+        // ce qui est la raison d'être du second vecteur.
+        let mut dispatching = core::mem::take(&mut self.dispatching);
+        let now = Instant::now();
+        for input in dispatching.drain(..) {
+            let multiple = self.multiple_click(&input, now);
+            self.dispatch_one(root, input, commands);
+            if let Some(synthesized) = multiple {
+                self.dispatch_one(root, synthesized, commands);
             }
         }
+        self.dispatching = dispatching;
+    }
+
+    /// Distribue un événement et retient la commande qu'il produit.
+    fn dispatch_one(
+        &mut self,
+        root: &mut dyn AirView,
+        input: AirInputEvent,
+        commands: &mut Vec<AirCommand>,
+    ) {
+        let mut event = AirEvent::new(input);
+        let mut context = AirContext {
+            commands: &mut self.commands,
+        };
+        if let AirOutcome::Command(command) = dispatch_event(root, &mut event, &mut context) {
+            commands.push(command);
+        }
+    }
+
+    /// L'événement de clic multiple qu'un enfoncement termine, s'il en termine un.
+    fn multiple_click(&mut self, input: &AirInputEvent, now: Instant) -> Option<AirInputEvent> {
+        let AirInputEvent::Mouse(mouse) = input else {
+            return None;
+        };
+        let AirMouseEventKind::Pressed(button) = mouse.kind else {
+            return None;
+        };
+        let count = self
+            .clicks
+            .press(button, mouse.position, now, |later, earlier| {
+                later.saturating_duration_since(earlier)
+            });
+        let kind = extra_event(count, button)?;
+        Some(AirInputEvent::Mouse(AirMouseEvent { kind, ..*mouse }))
     }
 }
 
@@ -342,7 +396,7 @@ mod tests {
     use crate::application::AirDesktop;
     use crate::command::{AirCommand, QUIT, SAVE};
     use crate::geometry::{AirRectangle, AirSize};
-    use crate::input::event::AirKey;
+    use crate::input::event::{AirInputEvent, AirKey, AirMouseButton, AirMouseEventKind};
     use crate::theme::AirTheme;
     use crate::view::{AirView, AirViewId, AirViewState};
     use crate::widgets::{AirMenu, AirMenuBar, AirMenuItem, AirStatusItem, AirStatusLine};
@@ -703,5 +757,163 @@ mod tests {
         let text = format!("{application:?}");
         assert!(text.contains("AirApplication"), "rendu : {text}");
         assert!(text.contains("size: AirSize"), "rendu : {text}");
+    }
+
+    // ------------------------------------------- la synthèse du clic multiple
+
+    /// Une vue qui note les natures d'événement de souris qu'elle reçoit.
+    struct MouseSpy {
+        /// L'état commun.
+        state: AirViewState,
+        /// Ce qu'elle a vu, dans l'ordre.
+        seen: Rc<RefCell<Vec<AirMouseEventKind>>>,
+    }
+
+    impl AirView for MouseSpy {
+        fn state(&self) -> &AirViewState {
+            &self.state
+        }
+
+        fn state_mut(&mut self) -> &mut AirViewState {
+            &mut self.state
+        }
+
+        fn draw_content(
+            &self,
+            painter: &mut crate::view::painter::AirPainter<'_>,
+            context: &crate::view::AirDrawContext<'_>,
+        ) {
+            let _ = (painter, context);
+        }
+
+        fn handle_event(
+            &mut self,
+            event: &mut crate::view::AirEvent,
+            context: &mut crate::view::AirContext<'_>,
+        ) -> crate::view::AirOutcome {
+            let _ = context;
+            if let Some(AirInputEvent::Mouse(mouse)) = event.input() {
+                self.seen.borrow_mut().push(mouse.kind);
+                event.consume();
+                return crate::view::AirOutcome::Consumed;
+            }
+            crate::view::AirOutcome::Ignored
+        }
+    }
+
+    /// L'enfoncement du bouton gauche en haut à gauche, au format SGR 1006.
+    const LEFT_PRESS: &str = "\u{1b}[<0;1;1M";
+
+    fn mouse_spy() -> (MouseSpy, Rc<RefCell<Vec<AirMouseEventKind>>>) {
+        let seen = Rc::new(RefCell::new(Vec::new()));
+        let spy = MouseSpy {
+            state: AirViewState::new(AirViewId::FIRST, AirRectangle::from_parts(0, 0, 40, 10)),
+            seen: Rc::clone(&seen),
+        };
+        (spy, seen)
+    }
+
+    #[test]
+    fn deux_clics_dans_le_meme_tour_synthetisent_un_double() {
+        // Les deux enfoncements arrivent dans la même lecture, donc au même instant : le
+        // délai est nul, et la règle de Borland s'applique. L'essai est déterministe sans
+        // faire dormir personne.
+        let (mut application, _screen, _state) = application(
+            40,
+            10,
+            vec![InputReadiness::Ready],
+            vec![&format!("{LEFT_PRESS}{LEFT_PRESS}")],
+        );
+        let (mut spy, seen) = mouse_spy();
+        let mut commands: Vec<AirCommand> = Vec::new();
+        application
+            .pump(&mut spy, None, &mut commands)
+            .expect("le tour aboutit");
+
+        // L'enfoncement **précède** son double clic : c'est lui qui place le curseur, et
+        // le double qui étend ensuite.
+        assert_eq!(
+            seen.borrow().as_slice(),
+            [
+                AirMouseEventKind::Pressed(AirMouseButton::Left),
+                AirMouseEventKind::Pressed(AirMouseButton::Left),
+                AirMouseEventKind::DoubleClicked(AirMouseButton::Left),
+            ]
+        );
+    }
+
+    #[test]
+    fn trois_clics_dans_le_meme_tour_synthetisent_un_triple() {
+        let (mut application, _screen, _state) = application(
+            40,
+            10,
+            vec![InputReadiness::Ready],
+            vec![&format!("{LEFT_PRESS}{LEFT_PRESS}{LEFT_PRESS}")],
+        );
+        let (mut spy, seen) = mouse_spy();
+        let mut commands: Vec<AirCommand> = Vec::new();
+        application
+            .pump(&mut spy, None, &mut commands)
+            .expect("le tour aboutit");
+
+        // La suite exacte, et elle dit tout : chaque enfoncement passe, le deuxième est
+        // suivi d'un double, le troisième d'un triple — et d'un triple **seulement**, le
+        // double n'étant pas réémis.
+        assert_eq!(
+            seen.borrow().as_slice(),
+            [
+                AirMouseEventKind::Pressed(AirMouseButton::Left),
+                AirMouseEventKind::Pressed(AirMouseButton::Left),
+                AirMouseEventKind::DoubleClicked(AirMouseButton::Left),
+                AirMouseEventKind::Pressed(AirMouseButton::Left),
+                AirMouseEventKind::TripleClicked(AirMouseButton::Left),
+            ]
+        );
+    }
+
+    #[test]
+    fn un_clic_isole_ne_synthetise_rien() {
+        let (mut application, _screen, _state) =
+            application(40, 10, vec![InputReadiness::Ready], vec![LEFT_PRESS]);
+        let (mut spy, seen) = mouse_spy();
+        let mut commands: Vec<AirCommand> = Vec::new();
+        application
+            .pump(&mut spy, None, &mut commands)
+            .expect("le tour aboutit");
+        assert_eq!(
+            seen.borrow().as_slice(),
+            [AirMouseEventKind::Pressed(AirMouseButton::Left)]
+        );
+    }
+
+    #[test]
+    fn un_redimensionnement_coupe_l_enchainement_des_clics() {
+        // La cellule d'avant ne désigne plus la même chose : enchaîner dessus ferait un
+        // double clic sur un autre widget.
+        let (mut application, _screen, state) = application(
+            40,
+            10,
+            vec![InputReadiness::Ready, InputReadiness::Ready],
+            vec![LEFT_PRESS, LEFT_PRESS],
+        );
+        let (mut spy, seen) = mouse_spy();
+        let mut commands: Vec<AirCommand> = Vec::new();
+        application
+            .pump(&mut spy, None, &mut commands)
+            .expect("le premier tour aboutit");
+        state.borrow_mut().size = Some(WindowSize {
+            columns: 50,
+            rows: 12,
+        });
+        application
+            .pump(&mut spy, None, &mut commands)
+            .expect("le second tour aboutit");
+        assert!(
+            !seen
+                .borrow()
+                .contains(&AirMouseEventKind::DoubleClicked(AirMouseButton::Left)),
+            "l'enchaînement a survécu au redimensionnement : {:?}",
+            seen.borrow()
+        );
     }
 }

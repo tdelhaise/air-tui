@@ -168,6 +168,16 @@ tools/pty-drive.py ./target/debug/redit /tmp/redit-selection.txt -- \
     500 6162 300 1b5b313b3244 300 1b5b313b3244 300 03 300 1b5b46 300 16 400 1b5b31327e 600 1b5b32317e
 cat /tmp/redit-selection.txt     # doit contenir « abZab »
 
+# double clic sur « belle » puis Ctrl+X : le mot est coupé, le fichier porte « une  journee »
+printf 'une belle journee\n' > /tmp/redit-double.txt
+tools/pty-drive.py ./target/debug/redit /tmp/redit-double.txt -- \
+    600 1b5b3c303b363b334d1b5b3c303b363b334d 400 18 400 1b5b31327e 600 1b5b32317e
+cat /tmp/redit-double.txt     # doit contenir « une  journee »
+# le contrôle : un **seul** clic ne sélectionne rien, donc Ctrl+X ne coupe rien
+printf 'une belle journee\n' > /tmp/redit-double.txt
+tools/pty-drive.py ./target/debug/redit /tmp/redit-double.txt -- \
+    600 1b5b3c303b363b334d 400 18 400 1b5b31327e 600 1b5b32317e
+
 cargo build -p rmc
 mkdir -p /tmp/rmc-essai/sous-repertoire && printf 'abcd' > /tmp/rmc-essai/quatre.txt
 tools/pty-drive.py ./target/debug/rmc /tmp/rmc-essai -- 700 1b5b32317e      # doit sortir
@@ -210,7 +220,11 @@ tools/pty-drive.py ./target/debug/rmc /tmp/rmc-essai -- \
 repeint, que le relâchement d'`Inser` a démarqué. Les deux étaient vrais avant M7c.
 
 Attention aux codes : `1b5b31327e` est `F2`, `1b5b31337e` est `F3`, `1b5b32317e` est
-`F10`, `1b5b313b3244` est `Maj`+Gauche, `03` est `Ctrl`+`C` et `16` est `Ctrl`+`V`. Se tromper de touche donne un faux négatif — `F3` ouvre un dialogue modal qui
+`F10`, `1b5b313b3244` est `Maj`+Gauche, `03` est `Ctrl`+`C`, `16` est `Ctrl`+`V` et `18`
+est `Ctrl`+`X`. `1b5b3c303b363b334d` est un enfoncement du bouton gauche à la colonne 6,
+ligne 3 au format SGR 1006 — **comptées depuis un**, et la vue d'édition de `redit`
+commence à la colonne 1, ligne 2 de l'écran, sous la barre de menu et dans le cadre de sa
+fenêtre. Se tromper d'une cellule fait cliquer dans le cadre, et le geste n'a plus d'effet. Se tromper de touche donne un faux négatif — `F3` ouvre un dialogue modal qui
 consomme le `F10` qui suit, et le verdict devient `timeout` alors que tout fonctionne.
 
 Les **deux** essais comptent : sans l'essai de contrôle, un programme qui sort pour une

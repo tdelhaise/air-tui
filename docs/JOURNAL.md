@@ -6,6 +6,71 @@ tête. On ajoute, on ne réécrit jamais une entrée passée.
 Une entrée par campagne, pas par commit. Répartition des rôles : `etat-avancement.md` est
 l'état vivant, ce journal est la trace figée, `INDEX.md` est la carte structurelle.
 
+## 2026-10-10 — Jalon M7e : le double et le triple clic
+
+- **La décision qui restait à prendre était de placement, et trois endroits possibles
+  s'excluaient pour trois raisons différentes.** C'est le résultat de cette campagne : la
+  question « où vit l'horloge » avait une réponse unique dès qu'on écrivait les contraintes.
+  Le **décodeur** la refuse parce qu'il est pur, et cette pureté n'est pas décorative : elle
+  est ce qui permet au fuzzing de vérifier qu'un découpage arbitraire de l'entrée produit la
+  même suite d'événements. Une horloge dedans, et le même flux rejoué donnerait deux
+  résultats. Les **widgets** la refusent parce que ce serait la même règle écrite douze fois
+  — la leçon de M7c, appliquée cette fois *avant* de la repayer. Et `dispatch_event` la
+  refuse parce que c'est une fonction pure sur l'arbre, testable sans horloge, et qu'elle
+  doit le rester. Reste la **boucle d'application**, seul endroit qui voit tous les
+  événements avant l'arbre et qui connaît déjà le temps.
+- **Le seuil et ses conditions sont transcrits, pas inventés.**
+  `TEventQueue::doubleDelay = 8` ticks de l'horloge BIOS à 18,2 Hz, soit 440 ms, et les
+  trois conditions de `tevent.cpp` reprises telles quelles : le même bouton, **exactement
+  la même cellule**, le délai. La condition de position est stricte chez Borland — aucune
+  tolérance d'une cellule —, et elle le reste : une cellule de terminal est assez grande
+  pour qu'un double clic y tienne. La comparaison est `<=`, et un essai le dit en cliquant
+  pile au seuil.
+- **Le triple clic venait avec**, parce que c'est le même compteur. Borland le gère
+  (`meTripleClick`) et plafonne au triple : un quatrième clic rapide reste un triple chez
+  lui comme ici. L'ignorer aurait fait du troisième clic un second double, ce qui est
+  précisément le défaut qu'on remarque sans savoir le nommer.
+- **Le suiveur ne tient pas d'horloge, et c'est ce qui le rend vérifiable.** L'instant lui
+  est donné, et la mesure d'écart aussi, par une fermeture. Les essais emploient un simple
+  compteur de millisecondes, la boucle un vrai `Instant` : **treize essais déterministes**
+  là où un `Instant::now()` à l'intérieur aurait demandé de faire dormir un test, donc un
+  test lent et instable que personne n'aurait osé resserrer.
+- **L'événement s'ajoute au lieu de remplacer, et la rétrocompatibilité en découle.** Un
+  double clic produit `Pressed` **puis** `DoubleClicked`. L'ordre compte — l'enfoncement
+  place le curseur, le clic multiple étend ensuite —, et un widget qui ignore le geste garde
+  le comportement du simple clic au lieu de ne plus rien recevoir. C'est obtenu par
+  construction, pas par précaution : il n'y a aucun cas à traiter pour que ce soit vrai.
+- **Un redimensionnement coupe l'enchaînement**, parce que la cellule d'avant ne désigne
+  plus la même chose. Sans cela, agrandir le terminal entre deux clics ferait un double clic
+  sur un autre widget que celui visé.
+- **Trois usages, et le troisième n'est pas une sélection.** Dans la vue d'édition, le
+  double clic prend le segment et le triple la ligne. Dans un champ d'une ligne, le triple
+  vaut « tout sélectionner », parce qu'il n'y a qu'une ligne à prendre. Dans une **liste**,
+  le double clic **ouvre** l'item — le geste de Midnight Commander. Le même événement, trois
+  sens selon le widget : c'est exactement pourquoi la boucle le synthétise sans décider quoi
+  en faire, et pourquoi il ne pouvait pas être « la sélection d'un mot » dans le framework.
+- **Le segment, et non « le mot ».** `unicode::segment_at` rend les bornes du segment au
+  sens de l'UAX #29 : un mot, mais aussi une suite d'espaces ou un signe de ponctuation. Un
+  double clic sur un espace sélectionne les espaces, parce que rendre « rien » laisserait le
+  geste sans effet visible. Le nom de l'action le dit — `SelectSegment` et non `SelectWord`,
+  qui aurait menti dès le premier espace.
+- **Vérifié en pseudo-terminal, avec son contrôle**, et c'est ce qui prouve la chaîne
+  entière : séquence SGR, décodeur, synthèse dans la boucle, distribution, intention,
+  modèle, enregistrement. Deux clics sur « belle » puis `Ctrl`+`X` donnent « une  journee » ;
+  un **seul** clic laisse le texte intact. Sans ce second essai, le premier ne prouverait
+  pas que c'est le *double* clic qui agit.
+- **Un piège de coordonnées, consigné dans `CLAUDE.md`.** Le format SGR compte depuis un, et
+  la vue d'édition de `redit` commence à la colonne 1, ligne 2 de l'écran — sous la barre de
+  menu et dans le cadre de sa fenêtre. Se tromper d'une cellule fait cliquer dans le cadre,
+  et le geste n'a plus d'effet : un faux négatif qui ressemble à un défaut.
+- **Un point de catégorie, écrit pour qu'on n'y voie pas un oubli** : `input/clicks.rs`
+  n'est pas soumis à la règle des 100 % de l'ADR-012. Ce qui fait un codec est de convertir
+  un flux, pas de vivre sous `input/`, et ce fichier agrège des événements avec une horloge
+  sans en convertir aucun. La liste de `xtask` est nominative, et porte désormais la raison.
+- **Vérifications** : `fmt`, `clippy -D warnings`, **1161 essais** (trente-sept de plus),
+  `deny check`, `check-naming`, `check-versions`, `check-codec-coverage` — 7 codecs à
+  100 % —, `import-mc-skin --check`, et les essais en pseudo-terminal avec leurs contrôles.
+
 ## 2026-10-10 — Jalon M7d : la sélection de texte, et le presse-papiers
 
 - **Le plus gros chantier de la liste, et c'est l'ADR-007 qui en sort renforcé.** La

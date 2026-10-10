@@ -298,6 +298,27 @@ indiscernable du début d'une séquence, seul le temps les sépare. Le décodeur
 rend « incomplet » ; c'est la boucle d'événements, qui sait qu'un délai s'est écoulé, qui
 appelle `AirAnsiDecoder::isolated_escape_event`.
 
+### Ce que le décodeur refuse de faire — jalon M7e
+
+Un double clic n'est pas une séquence d'octets : c'est **deux séquences et un délai**. Le
+décodeur est pur — mêmes octets, mêmes événements, toujours —, et c'est cette pureté qui
+permet au fuzzing de vérifier qu'un découpage arbitraire de l'entrée produit la même suite
+d'événements. Y mettre une horloge la détruirait : le même flux rejoué donnerait deux
+résultats.
+
+La synthèse vit donc dans la **boucle d'application**, seul endroit qui voit tous les
+événements avant l'arbre et qui connaît déjà le temps. Pas dans les widgets : ce serait la
+même règle écrite douze fois, et le jalon M7c a payé cette leçon sur le filtrage des
+relâchements de touche. Pas dans `dispatch_event` non plus, qui est une fonction pure sur
+l'arbre et doit le rester pour être testable sans horloge.
+
+Le suiveur ne tient d'ailleurs **pas** d'horloge lui-même : l'instant lui est donné, et la
+mesure d'écart aussi. C'est ce qui rend la règle vérifiable par des essais déterministes,
+là où un `Instant::now()` à l'intérieur demanderait de faire dormir un test — donc un test
+lent et instable. Le seuil est celui de Borland : `TEventQueue::doubleDelay`, 8 ticks à
+18,2 Hz, soit 440 ms, avec ses trois conditions reprises telles quelles — même bouton,
+exactement la même cellule, et le délai.
+
 ### Le protocole Kitty, et pourquoi il était indispensable
 
 Écrit au jalon M2 (`air-tui/src/input/kitty.rs`). C'est le seul mécanisme qui livre les

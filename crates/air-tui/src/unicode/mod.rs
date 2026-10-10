@@ -37,7 +37,8 @@ use core::cmp::Ordering;
 
 pub use tables::UNICODE_VERSION;
 pub use words::{
-    AirWordBreak, AirWords, is_word, next_word_start, previous_word_start, word_break, words,
+    AirWordBreak, AirWords, is_word, next_word_start, previous_word_start, segment_at, word_break,
+    words,
 };
 
 use tables::{

@@ -46,10 +46,11 @@
 //! Le copier-coller **sort par le canal des commandes** et non par celui des intentions :
 //! le presse-papiers n'appartient pas à cette vue, et c'est le contrôleur qui le tient.
 //!
-//! # Ce qui n'est pas là
+//! Le double clic sélectionne le segment sous le pointeur, le triple la ligne entière.
+//! La vue ne détecte **pas** le geste : la boucle d'application le synthétise et le lui
+//! livre après l'enfoncement, donc le curseur est déjà posé quand la sélection s'étend.
 //!
-//! Le **double clic**, qui sélectionnerait un mot : il demande une horloge, et le
-//! décodeur est pur. Tant que personne ne décide où l'horloge vit, le geste n'existe pas.
+//! # Ce qui n'est pas là
 //!
 //! La **tabulation** : insérer un `\t` demande de choisir des taquets et de les appliquer
 //! au rendu comme au calcul de colonne. Tant que ce choix n'est pas fait, `Tab` n'est pas
@@ -591,6 +592,16 @@ impl AirView for AirEditorView {
                     AirMouseEventKind::Moved(Some(AirMouseButton::Left)) => {
                         let motion = self.motion_at(position);
                         self.pending_actions.push(AirTextAction::select_by(motion));
+                    }
+                    // Le double clic arrive **après** son enfoncement, qui a déjà poussé
+                    // le déplacement : les deux intentions sont appliquées dans l'ordre au
+                    // même tour, donc le curseur est posé avant que le segment soit pris.
+                    // Sans cet ordre, la sélection porterait sur le mot d'avant.
+                    AirMouseEventKind::DoubleClicked(AirMouseButton::Left) => {
+                        self.pending_actions.push(AirTextAction::SelectSegment);
+                    }
+                    AirMouseEventKind::TripleClicked(AirMouseButton::Left) => {
+                        self.pending_actions.push(AirTextAction::SelectLine);
                     }
                     AirMouseEventKind::WheelUp => {
                         self.scroll_to_line(self.top_line.saturating_sub(3));
@@ -1474,5 +1485,98 @@ mod tests {
         view.handle_event(&mut event, &mut context);
         turn(&mut view, &mut buffer);
         assert_eq!(buffer.lines(), ["XYcd"]);
+    }
+
+    // ------------------------------------------------- le clic multiple
+
+    #[test]
+    fn un_double_clic_selectionne_le_mot() {
+        // L'enfoncement place le curseur, le double clic prend le segment : les deux
+        // intentions sont appliquées dans l'ordre au même tour.
+        let mut buffer = AirTextBuffer::from_text("une belle journée");
+        let mut view = editor(20, 1);
+        view.synchronize(&buffer);
+        mouse(
+            &mut view,
+            AirMouseEventKind::Pressed(AirMouseButton::Left),
+            6,
+            0,
+        );
+        mouse(
+            &mut view,
+            AirMouseEventKind::DoubleClicked(AirMouseButton::Left),
+            6,
+            0,
+        );
+        turn(&mut view, &mut buffer);
+        assert_eq!(buffer.selected_text().as_deref(), Some("belle"));
+    }
+
+    #[test]
+    fn un_triple_clic_selectionne_la_ligne() {
+        let mut buffer = AirTextBuffer::from_text("une\ndeux\ntrois");
+        let mut view = editor(20, 3);
+        view.synchronize(&buffer);
+        mouse(
+            &mut view,
+            AirMouseEventKind::Pressed(AirMouseButton::Left),
+            2,
+            1,
+        );
+        mouse(
+            &mut view,
+            AirMouseEventKind::TripleClicked(AirMouseButton::Left),
+            2,
+            1,
+        );
+        turn(&mut view, &mut buffer);
+        assert_eq!(buffer.selected_text().as_deref(), Some("deux\n"));
+    }
+
+    #[test]
+    fn le_mot_selectionne_par_un_double_clic_est_surligne() {
+        let (marked, normal) = selection_backgrounds();
+        let mut buffer = AirTextBuffer::from_text("ab cd");
+        let mut view = editor(5, 1);
+        view.synchronize(&buffer);
+        mouse(
+            &mut view,
+            AirMouseEventKind::Pressed(AirMouseButton::Left),
+            0,
+            0,
+        );
+        mouse(
+            &mut view,
+            AirMouseEventKind::DoubleClicked(AirMouseButton::Left),
+            0,
+            0,
+        );
+        turn(&mut view, &mut buffer);
+        assert_eq!(
+            backgrounds(&view, AirSize::new(5, 1), 0),
+            vec![
+                Some(marked),
+                Some(marked),
+                Some(normal),
+                Some(normal),
+                Some(normal)
+            ]
+        );
+    }
+
+    #[test]
+    fn un_double_clic_du_bouton_droit_ne_selectionne_rien() {
+        let mut buffer = AirTextBuffer::from_text("une belle");
+        let mut view = editor(20, 1);
+        view.synchronize(&buffer);
+        let outcome = mouse(
+            &mut view,
+            AirMouseEventKind::DoubleClicked(AirMouseButton::Right),
+            6,
+            0,
+        );
+        assert_eq!(outcome, AirOutcome::Ignored);
+        turn(&mut view, &mut buffer);
+        assert_eq!(buffer.selection(), None);
     }
 }
