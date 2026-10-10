@@ -138,9 +138,25 @@ cd fuzz && cargo +nightly fuzz run ansi_decoder -- -max_total_time=60
 
 Et, quand la modification touche un thème ou l'importeur de skins (ADR-008) :
 
+Le dépôt porte **trois** artefacts de thème depuis le jalon M7i, et le registre
+`theme/skins/mod.rs` est **généré** à chaque import. Chacun se vérifie contre son propre
+skin :
+
 ```sh
 # le même fichier que celui qui a produit l'artefact — l'empreinte en en-tête le dit
 cargo xtask import-mc-skin --skin /usr/local/share/mc/skins/default.ini --check
+cargo xtask import-mc-skin --skin /usr/local/share/mc/skins/modarcon16-defbg.ini --check
+cargo xtask import-mc-skin --skin /usr/local/share/mc/skins/seasons-autumn16M.ini --check
+./target/debug/redit --list-themes   # les noms exacts à taper ; c'est cette liste qui fait foi
+```
+
+**Une arête à connaître avant de toucher à `theme/skins/`** : `xtask` dépend d'`air-tui`,
+donc un registre désaccordé de ses fichiers empêche l'outil de se bâtir — et c'est l'outil
+qui écrit le registre. Retirer un artefact à la main demande donc de corriger `mod.rs` à la
+main **une fois**, puis de relancer un import pour que le registre soit régénéré. Payé deux
+fois en écrivant M7i.
+
+```sh
 cargo build --example frame
 tools/pty-drive.py ./target/debug/examples/frame mc -- 800 1b5b32317e   # doit sortir
 tools/pty-drive.py ./target/debug/examples/frame mc -- 600 1b66         # doit tenir

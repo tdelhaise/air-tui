@@ -130,6 +130,40 @@ Les deux skins perdus entre M7a et M7b — `gray-green-purple256` et `gray-orang
 posaient `bold` sur `[core] marked`, une clef que la table n'employait pas avant les rôles
 de liste. Ils sont importables depuis M7g.
 
+**Fait au jalon M7i : plusieurs skins compilés à la fois, et le choix par un nom.** Le
+dépôt ne portait qu'**un** artefact : importer le second effaçait le premier, de sorte que
+les trente-neuf importables ne l'étaient jamais ensemble. `theme/skins/mod.rs` est devenu
+un **registre généré** qui déclare les modules et les nomme, et
+`AirTheme::from_command_line_name` résout trois formes — `tv`, `mc`, et `mc:<nom>` pour un
+skin compilé.
+
+L'ADR n'est pas touché, et c'est le point : **rien n'est lu à l'exécution**. Le choix se
+fait par une clef dans une table construite à la compilation, pas par un fichier ouvert au
+démarrage. L'espace de noms `mc:` dit d'où vient un thème, ce qu'un nom nu ne dirait pas.
+
+Le registre est généré plutôt qu'écrit parce que la liste des modules et la table des noms
+disent la même chose deux fois : tenues à la main, elles divergeraient. Les deux sortent du
+même balayage du répertoire, à chaque import.
+
+Deux conséquences qu'il faut écrire :
+
+- le nom d'un thème est le nom du fichier de skin **transposé en identifiant Rust** —
+  minuscules, tirets en soulignés —, parce qu'un module Rust n'admet ni tiret ni majuscule
+  et que `clippy -D warnings` refuse `non_snake_case`. `--list-themes` donne les noms
+  exacts à taper, et c'est lui qui fait foi ;
+- `xtask` dépend d'`air-tui`, donc un registre désaccordé de ses fichiers **empêche
+  l'outil de se bâtir**, et c'est l'outil qui écrit le registre. Retirer un artefact à la
+  main demande donc de corriger `mod.rs` une fois à la main avant de relancer un import.
+  C'est une arête du dépôt à un seul espace de travail (ADR-005), payée deux fois en
+  écrivant ce jalon.
+
+**Trois skins sont repris**, chacun pour ce qu'il démontre : `default` (celui que `mc`
+emploie sans configuration), `modarcon16-defbg` (la couleur du terminal, sur quinze rôles)
+et `seasons-autumn16M` (les vraies couleurs et les attributs). Le registre en accepte
+autant qu'on lui en donne ; n'en reprendre que trois est une décision de l'auteur du dépôt
+— les trente-neuf coûteraient 395 Kio de source générée et deux dixièmes de seconde de
+compilation, mesurés.
+
 **Fait au jalon M7g : les deux limites du thème, et une troisième qui n'en était pas
 une.** `AirColorPair` porte des attributs en plus de ses deux couleurs, et `AirColor`
 compte une variante `TerminalDefault` que l'encodeur SGR émet par `39` et `49` — les deux

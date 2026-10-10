@@ -3,8 +3,8 @@
 Document de suivi **vivant** : où en est-on, quelle est la prochaine tâche. Il se met à
 jour à chaque session. L'historique figé est dans [`JOURNAL.md`](JOURNAL.md).
 
-**Dernière mise à jour : 2026-10-10** (les deux derniers gates de conventions ; jalon M7h
-— l'annulation dans `redit` ; le gate `check-dco`).
+**Dernière mise à jour : 2026-10-10** (jalon M7i — plusieurs skins compilés ; les deux
+derniers gates de conventions ; jalon M7h — l'annulation dans `redit`).
 
 ## Dépôt
 
@@ -27,7 +27,7 @@ contrôle, donc **aucun essai en pseudo-terminal** n'y tourne, et le fuzzing exi
 
 ## Où en est-on
 
-Jalons **M0 à M7h terminés**. Le dépôt porte ses conventions, ses ADR fondateurs, le socle
+Jalons **M0 à M7i terminés**. Le dépôt porte ses conventions, ses ADR fondateurs, le socle
 de rendu, le décodeur d'entrée, l'arbre de vues, treize widgets, la **couche MVC** de
 l'ADR-007, la hiérarchie d'objets complète, deux thèmes dont un **compilé**, et deux
 **applications** : `redit` ouvre un fichier, l'édite et l'enregistre ; `rmc` parcourt deux
@@ -616,6 +616,46 @@ affirmations de M7b se sont révélées fausses. Elles sont corrigées ici plut�
   annonçait le quantificateur « prévu au jalon M5 et **n'est pas écrit** », celui
   d'`AirCell` les tables UCD de même. Les deux existent depuis M5 et M3.
 
+### Fait au jalon M7i — plusieurs skins compilés, et le choix par un nom
+
+- **La limite que M7g avait laissée est levée.** Les trente-neuf skins étaient importables,
+  mais pas **ensemble** : importer le second effaçait le premier. `theme/skins/mod.rs` est
+  devenu un **registre généré**, et `AirTheme::from_command_line_name` résout trois
+  formes — `tv`, `mc`, et `mc:<nom>` pour un skin compilé.
+- **L'ADR-008 n'est pas touché, et c'est le point** : rien n'est lu à l'exécution. Le choix
+  est une clef dans une table construite à la compilation, pas un fichier ouvert au
+  démarrage. L'espace de noms `mc:` dit d'où vient un thème.
+- **Le registre est généré parce que deux listes disent la même chose** : la liste des
+  modules et la table des noms divergeraient si on les tenait à la main. Les deux sortent
+  du même balayage du répertoire, à chaque import.
+- **Trois skins repris, et le chiffre des trente-neuf écrit à côté de la décision.** Les
+  trente-neuf coûtent 395 Kio de source générée et deux dixièmes de seconde de compilation
+  — 1,03 s contre 1,26 s. Ce n'est donc pas le coût technique qui tranche : reprendre
+  trente-neuf skins d'un projet sous GPLv3 dans un dépôt sous MPL-2.0 est une décision de
+  l'auteur, et l'argument du `NOTICE` lui appartient. Les trois choisis le sont pour ce
+  qu'ils démontrent : `default`, `modarcon16-defbg` (la couleur du terminal, quinze rôles)
+  et `seasons-autumn16M` (vraies couleurs et attributs).
+- **La résolution d'un nom vit dans `air-tui`**, et non dans les deux applications :
+  `ThemeChoice` y était écrit deux fois, avec des défauts différents.
+- **Une régression introduite et rattrapée en relisant** : le remplacement de
+  `ThemeChoice` par un nom donnait `tv` pour défaut aux deux applications, alors que `rmc`
+  s'ouvre aux couleurs de `mc` — ce que son propre doc-comment disait. Aucun essai ne
+  l'affirmait autrement que par une comparaison à `ThemeChoice::default()`, qui
+  disparaissait avec le type ; celui qui le dit maintenant compare à `DEFAULT_THEME`.
+- **Le nom d'un thème est le nom du skin transposé en identifiant Rust**, minuscules
+  comprises : `seasons-autumn16M.ini` donne `mc:seasons_autumn16m`. `clippy -D warnings`
+  refuse `non_snake_case`, ce qui s'est vu à la compilation. `--list-themes` donne les noms
+  exacts et fait foi.
+- **Une arête du dépôt, payée deux fois** : `xtask` dépend d'`air-tui`, donc un registre
+  désaccordé de ses fichiers empêche l'outil de se bâtir — et c'est l'outil qui écrit le
+  registre. Retirer un artefact demande de corriger `mod.rs` à la main une fois. C'est le
+  prix d'un espace de travail unique (ADR-005), écrit dans `CLAUDE.md`.
+- **Vérifié sur les octets émis, les quatre thèmes dans le même binaire** : `tv` donne
+  `38;5;0;48;5;7`, `mc:default` `38;5;0;48;5;6`, `mc:modarcon16_defbg` `38;5;15;48;5;2`
+  avec seize `;49m`, et `mc:seasons_autumn16m` `38;2;0;0;0;48;2;255;201;12` avec trois
+  soulignés. Un seul exécutable, quatre apparences.
+- **1296 essais**, 7 codecs toujours à 100 %.
+
 ### Fait après M7h — les deux derniers gates de conventions
 
 - **Les six contrôles de `docs/CONVENTIONS-fr.md` sont écrits et exécutés en CI.** Plus
@@ -817,15 +857,13 @@ affirmations de M7b se sont révélées fausses. Elles sont corrigées ici plut�
 demandent une console physique, inaccessible par SSH. Écrire du code qu'on ne peut pas
 vérifier est exactement ce que ce dépôt refuse. Les candidats, du plus petit au plus gros :
 
-1. **Choisir le skin ailleurs qu'à la compilation.** L'ADR-008 interdit d'analyser un thème
-   à l'exécution, et le dépôt porte **un** artefact à la fois : les trente-neuf skins sont
-   importables, mais pas simultanément. Compiler plusieurs artefacts nommés — le choix se
-   faisant alors par une ligne de commande et non par un fichier lu au démarrage — tiendrait
-   l'ADR tout en rendant la capacité utilisable. À chiffrer : le poids d'un artefact et le
-   temps de compilation.
-2. **La peinture hors des limites d'une vue**, décision d'architecture dont dépendent
+1. **La peinture hors des limites d'une vue**, décision d'architecture dont dépendent
    `AirDecorations` et l'ombre portée. À trancher avant d'écrire la troisième assiette du
-   triplet de l'ADR-008, pas après.
+   triplet de l'ADR-008, pas après. C'est le dernier des candidats qui restaient après M7g.
+2. **Reprendre plus de trois skins**, si l'auteur du dépôt le décide : le mécanisme est en
+   place et le coût est chiffré — 395 Kio et deux dixièmes de seconde pour les trente-neuf.
+   Ce qui reste à trancher n'est pas technique : c'est la place que prend la donnée d'un
+   projet sous GPLv3 dans un dépôt sous MPL-2.0.
 
 Dettes plus anciennes : remonter la couverture de `air-tui-platform-posix` par des tests
 sous pty ; la **console Linux native**, dont dépend tout M8 ; et le protocole Kitty
@@ -854,4 +892,5 @@ des numéros de touches fonctionnelles.
 | M7f | les cases à cocher et les boutons radio | **fait** |
 | M7g | les attributs par rôle, la couleur du terminal, la clef absente héritée | **fait** |
 | M7h | l'annulation par journal de remplacements, et la mutation unique | **fait** |
+| M7i | plusieurs skins compilés, et le choix par un nom | **fait** |
 | M8 | étage natif Linux : evdev, `TIOCLINUX`, gpm | à faire |

@@ -39,6 +39,13 @@
 //! Le rôle `AirRole::ButtonShadow` est dans la palette pour la même raison inverse : il
 //! est transcrit de Borland et de `mc`, et **aucun widget ne le lit** encore.
 
+/// Le nom du skin de Midnight Commander que `AirTheme::midnight_commander` rend.
+///
+/// C'est `default.ini`, le skin que `mc` emploie sans configuration. Nommé ici plutôt
+/// qu'écrit à trois endroits : le jour où le registre ne le porterait plus, un seul site
+/// serait à changer.
+pub const DEFAULT_SKIN: &str = "default";
+
 pub mod glyphs;
 pub mod palette;
 pub mod quantize;
@@ -47,6 +54,24 @@ pub(crate) mod skins;
 pub use glyphs::{AirClusterGlyphs, AirFrameGlyphs, AirGlyphSet};
 pub use palette::{AirColorPair, AirPalette, AirRole};
 pub use quantize::{AirColorDepth, quantize};
+
+/// Un thème compilé depuis un skin, tel que le registre le déclare.
+///
+/// Des pointeurs de fonction plutôt qu'un `match` sur un nom : la table se **parcourt**
+/// pour énumérer les noms, ce qu'un `match` ne permet pas, et c'est ce dont
+/// `--list-themes` a besoin. Les deux fonctions sont `const fn` dans l'artefact ; les
+/// prendre par pointeur ne coûte qu'un appel indirect, au démarrage, une fois.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct AirCompiledSkin {
+    /// Le nom du skin, tel que la ligne de commande le désigne.
+    pub name: &'static str,
+    /// La description que porte la section `[skin]` du fichier d'origine.
+    pub description: &'static str,
+    /// La palette compilée.
+    pub palette: fn() -> AirPalette,
+    /// Le jeu de glyphes compilé.
+    pub glyphs: fn() -> AirGlyphSet,
+}
 
 /// Un thème complet.
 ///
@@ -82,16 +107,82 @@ impl AirTheme {
     /// couleurs de `mc`, pas `mc`.
     #[must_use]
     pub fn midnight_commander() -> Self {
-        Self {
-            palette: AirPalette::midnight_commander(),
-            glyphs: AirGlyphSet::midnight_commander(),
-        }
+        // Le skin par défaut de `mc`, cherché dans le registre comme n'importe quel
+        // autre : un second chemin d'accès au même artefact finirait par en désigner un
+        // autre. Le repli sur Turbo Vision ne se produit que si le registre ne portait
+        // plus `default`, cas qu'un essai de ce module interdit.
+        Self::compiled(DEFAULT_SKIN).unwrap_or_else(Self::turbo_vision)
     }
 
     /// La description que le skin d'origine porte, pour le thème de Midnight Commander.
     #[must_use]
-    pub const fn midnight_commander_description() -> &'static str {
-        skins::midnight_commander::DESCRIPTION
+    pub fn midnight_commander_description() -> &'static str {
+        Self::compiled_description(DEFAULT_SKIN).unwrap_or("skin sans description")
+    }
+
+    /// Le thème compilé que désigne un nom, s'il y en a un.
+    ///
+    /// Les noms sont ceux du registre `theme::skins`, c'est-à-dire des **fichiers de
+    /// skin** dont ils sont compilés. Rien n'est lu ni analysé ici : la table est
+    /// construite à la compilation, et ce nom n'y est qu'une clef (ADR-008).
+    #[must_use]
+    pub fn compiled(name: &str) -> Option<Self> {
+        let entry = skins::COMPILED.iter().find(|entry| entry.name == name)?;
+        Some(Self {
+            palette: (entry.palette)(),
+            glyphs: (entry.glyphs)(),
+        })
+    }
+
+    /// Les noms des thèmes compilés que ce dépôt porte, par ordre de nom.
+    #[must_use]
+    pub fn compiled_names() -> Vec<&'static str> {
+        skins::COMPILED.iter().map(|entry| entry.name).collect()
+    }
+
+    /// La description que porte le skin d'origine d'un thème compilé.
+    #[must_use]
+    pub fn compiled_description(name: &str) -> Option<&'static str> {
+        skins::COMPILED
+            .iter()
+            .find(|entry| entry.name == name)
+            .map(|entry| entry.description)
+    }
+
+    /// Le thème que désigne un nom de ligne de commande, s'il en désigne un.
+    ///
+    /// Trois formes, et l'espace de noms `mc:` est là pour dire **d'où vient** un thème :
+    ///
+    /// - `tv` ou `turbo-vision` — le thème par défaut, transcrit de Borland ;
+    /// - `mc` ou `midnight-commander` — le skin par défaut de Midnight Commander ;
+    /// - `mc:<nom>` — un skin compilé nommé, les noms venant de
+    ///   [`Self::compiled_names`].
+    ///
+    /// Cette résolution est ici et non dans les applications parce que `redit` et `rmc`
+    /// la demandent toutes les deux : écrite deux fois, elle finirait par ne plus l'être
+    /// qu'une.
+    #[must_use]
+    pub fn from_command_line_name(name: &str) -> Option<Self> {
+        match name {
+            "tv" | "turbo-vision" => Some(Self::turbo_vision()),
+            "mc" | "midnight-commander" => Self::compiled(DEFAULT_SKIN),
+            other => Self::compiled(other.strip_prefix("mc:")?),
+        }
+    }
+
+    /// Les noms que [`Self::from_command_line_name`] accepte, pour un `--list-themes`.
+    ///
+    /// Les alias n'y figurent pas : ce sont des commodités, et une liste qui les
+    /// énumérerait ferait croire à autant de thèmes.
+    #[must_use]
+    pub fn command_line_names() -> Vec<String> {
+        let mut names = vec!["tv".to_owned()];
+        names.extend(
+            Self::compiled_names()
+                .into_iter()
+                .map(|name| format!("mc:{name}")),
+        );
+        names
     }
 }
 

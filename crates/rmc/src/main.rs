@@ -72,37 +72,13 @@ const TURN_TIMEOUT: Duration = Duration::from_millis(250);
 /// Le délai laissé au terminal pour répondre à la négociation du protocole clavier.
 const PROTOCOL_TIMEOUT: Duration = Duration::from_millis(100);
 
-/// Le thème que la ligne de commande demande.
+/// Le thème par défaut, quand la ligne de commande n'en nomme pas.
 ///
-/// Le défaut n'est pas celui de `redit` : une coquille qui s'appelle `rmc` s'ouvre aux
-/// couleurs de `mc`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-enum ThemeChoice {
-    /// Midnight Commander, compilé depuis son skin par défaut.
-    #[default]
-    MidnightCommander,
-    /// Turbo Vision.
-    TurboVision,
-}
-
-impl ThemeChoice {
-    /// Le thème que désigne un nom, s'il en désigne un.
-    fn from_name(name: &str) -> Option<Self> {
-        match name {
-            "tv" | "turbo-vision" => Some(Self::TurboVision),
-            "mc" | "midnight-commander" => Some(Self::MidnightCommander),
-            _ => None,
-        }
-    }
-
-    /// Le thème lui-même.
-    fn theme(self) -> AirTheme {
-        match self {
-            Self::TurboVision => AirTheme::turbo_vision(),
-            Self::MidnightCommander => AirTheme::midnight_commander(),
-        }
-    }
-}
+/// Il n'est **pas** celui de `redit` : une coquille qui s'appelle `rmc` s'ouvre aux
+/// couleurs de `mc`. La résolution d'un nom en thème vit dans `air-tui`, parce que les
+/// deux applications la demandent — écrite deux fois, elle finirait par ne plus l'être
+/// qu'une.
+const DEFAULT_THEME: &str = "mc";
 
 /// Ce que la ligne de commande demande.
 #[derive(Debug, PartialEq, Eq)]
@@ -113,11 +89,13 @@ enum Request {
         left: Option<PathBuf>,
         /// Celui du panneau de droite.
         right: Option<PathBuf>,
-        /// Le thème demandé.
-        theme: ThemeChoice,
+        /// Le nom du thème demandé, déjà validé.
+        theme: String,
     },
     /// Afficher le mode d'emploi.
     Usage,
+    /// Afficher les noms de thèmes acceptés.
+    ListThemes,
     /// Afficher la version.
     Version,
     /// Une option inconnue.
@@ -134,14 +112,17 @@ enum Request {
 /// silence promettrait un panneau qui n'existe pas.
 fn parse(arguments: &[String]) -> Request {
     let mut directories: Vec<PathBuf> = Vec::new();
-    let mut theme = ThemeChoice::default();
+    let mut theme = DEFAULT_THEME.to_owned();
     let mut awaiting_theme = false;
     for argument in arguments {
         if awaiting_theme {
-            let Some(choice) = ThemeChoice::from_name(argument) else {
+            // Le nom est validé ici, et non au moment de peindre : une option refusée
+            // doit l'être avant que le terminal passe en mode brut, sinon le message
+            // s'affiche sur un écran déjà effacé.
+            if AirTheme::from_command_line_name(argument).is_none() {
                 return Request::UnknownTheme(argument.clone());
-            };
-            theme = choice;
+            }
+            theme.clone_from(argument);
             awaiting_theme = false;
             continue;
         }
@@ -149,6 +130,7 @@ fn parse(arguments: &[String]) -> Request {
             "-h" | "--help" => return Request::Usage,
             "-V" | "--version" => return Request::Version,
             "--theme" => awaiting_theme = true,
+            "--list-themes" => return Request::ListThemes,
             other if other.starts_with('-') => return Request::Unknown(other.to_owned()),
             other => {
                 if directories.len() >= 2 {
@@ -174,13 +156,14 @@ fn parse(arguments: &[String]) -> Request {
 /// Le mode d'emploi.
 fn usage() -> String {
     format!(
-        "usage : rmc [--theme mc|tv] [RÉPERTOIRE [RÉPERTOIRE]]\n\
+        "usage : rmc [--theme <nom>] [--list-themes] [RÉPERTOIRE [RÉPERTOIRE]]\n\
          \n\
          Coquille à deux panneaux en mode terminal, bâtie sur air-tui.\n\
          \n\
            -h, --help     affiche ce message\n\
            -V, --version  affiche la version\n\
-               --theme    mc (Midnight Commander, par défaut) ou tv (Turbo Vision)\n\
+               --theme    mc (défaut), tv, ou mc:<skin> pour un skin compilé\n\
+               --list-themes  énumère les noms acceptés\n\
          \n\
          Touches : Tab change de panneau, Entrée descend, Inser marque,\n\
          F5 relit, F10 quitte.\n\
@@ -235,6 +218,21 @@ fn main() -> ExitCode {
             print!("{}", usage());
             ExitCode::SUCCESS
         }
+        Request::ListThemes => {
+            // Les noms exacts à taper, et leur description quand le thème vient d'un
+            // skin : c'est cette liste qui fait foi, puisque le nom d'un skin est
+            // transposé en identifiant Rust à la compilation.
+            for name in AirTheme::command_line_names() {
+                match name
+                    .strip_prefix("mc:")
+                    .and_then(AirTheme::compiled_description)
+                {
+                    Some(description) => println!("{name:<24} {description}"),
+                    None => println!("{name:<24} Turbo Vision"),
+                }
+            }
+            ExitCode::SUCCESS
+        }
         Request::Version => {
             println!("rmc {}", env!("CARGO_PKG_VERSION"));
             ExitCode::SUCCESS
@@ -264,7 +262,13 @@ fn main() -> ExitCode {
             // ce que fait `mc` au premier lancement.
             let right = right.unwrap_or_else(|| left.clone());
             let shell = Shell::new(left, right);
-            match run(shell, theme.theme()) {
+            let Some(resolved) = AirTheme::from_command_line_name(&theme) else {
+                // Inatteignable : le nom est validé par `parse`. Refuser plutôt que de
+                // retomber sur un défaut, pour que l'écart se voie s'il arrivait.
+                eprintln!("rmc : thème « {theme} » introuvable");
+                return ExitCode::FAILURE;
+            };
+            match run(shell, resolved) {
                 Ok(()) => ExitCode::SUCCESS,
                 Err(error) => {
                     eprintln!("rmc : {error}");
@@ -277,7 +281,7 @@ fn main() -> ExitCode {
 
 #[cfg(test)]
 mod tests {
-    use super::{Request, ThemeChoice, parse, usage};
+    use super::{DEFAULT_THEME, Request, parse, usage};
     use std::path::PathBuf;
 
     /// Une ligne de commande, telle que `std::env::args` la rendrait.
@@ -292,14 +296,31 @@ mod tests {
             Request::Browse {
                 left: None,
                 right: None,
-                theme: ThemeChoice::MidnightCommander,
+                theme: "mc".to_owned(),
             }
         );
     }
 
     #[test]
     fn le_theme_par_defaut_est_celui_dont_la_coquille_porte_le_nom() {
-        assert_eq!(ThemeChoice::default(), ThemeChoice::MidnightCommander);
+        assert_eq!(DEFAULT_THEME, "mc");
+    }
+
+    #[test]
+    fn un_skin_compile_se_demande_par_son_nom() {
+        assert_eq!(
+            parse(&arguments(&["--theme", "mc:seasons_autumn16m"])),
+            Request::Browse {
+                left: None,
+                right: None,
+                theme: "mc:seasons_autumn16m".to_owned(),
+            }
+        );
+    }
+
+    #[test]
+    fn list_themes_est_une_demande_a_part() {
+        assert_eq!(parse(&arguments(&["--list-themes"])), Request::ListThemes);
     }
 
     #[test]
@@ -309,7 +330,7 @@ mod tests {
             Request::Browse {
                 left: Some(PathBuf::from("/usr")),
                 right: None,
-                theme: ThemeChoice::MidnightCommander,
+                theme: "mc".to_owned(),
             }
         );
     }
@@ -321,7 +342,7 @@ mod tests {
             Request::Browse {
                 left: Some(PathBuf::from("/usr")),
                 right: Some(PathBuf::from("/etc")),
-                theme: ThemeChoice::MidnightCommander,
+                theme: "mc".to_owned(),
             }
         );
     }
@@ -338,23 +359,15 @@ mod tests {
 
     #[test]
     fn le_theme_se_choisit_par_son_nom() {
-        for name in ["tv", "turbo-vision"] {
+        // Le nom est retenu **tel qu'il est écrit**, alias compris : le résoudre ici
+        // obligerait `Request` à porter un `AirTheme`, qui n'est pas comparable.
+        for name in ["tv", "turbo-vision", "mc", "midnight-commander"] {
             assert_eq!(
                 parse(&arguments(&["--theme", name])),
                 Request::Browse {
                     left: None,
                     right: None,
-                    theme: ThemeChoice::TurboVision,
-                }
-            );
-        }
-        for name in ["mc", "midnight-commander"] {
-            assert_eq!(
-                parse(&arguments(&["--theme", name])),
-                Request::Browse {
-                    left: None,
-                    right: None,
-                    theme: ThemeChoice::MidnightCommander,
+                    theme: name.to_owned(),
                 }
             );
         }
@@ -367,7 +380,7 @@ mod tests {
             Request::Browse {
                 left: Some(PathBuf::from("/usr")),
                 right: None,
-                theme: ThemeChoice::TurboVision,
+                theme: "tv".to_owned(),
             }
         );
     }
@@ -414,7 +427,11 @@ mod tests {
     #[test]
     fn le_mode_d_emploi_cite_les_touches_la_version_et_ce_qui_n_est_pas_fait() {
         let text = usage();
-        assert!(text.contains("rmc [--theme mc|tv] [RÉPERTOIRE [RÉPERTOIRE]]"));
+        assert!(text.contains("rmc [--theme <nom>] [--list-themes]"));
+        assert!(
+            text.contains("mc:<skin>"),
+            "les skins compilés doivent être cités"
+        );
         assert!(text.contains("Tab"));
         assert!(text.contains("F10"));
         // Un mode d'emploi qui taira ce que l'outil ne fait pas le fera découvrir à

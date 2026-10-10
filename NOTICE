@@ -39,14 +39,25 @@ Ces données appartiennent à Unicode, Inc. et sont distribuées sous la licence
 
     Texte complet : https://www.unicode.org/license.txt
 
-Skin par défaut de GNU Midnight Commander
-------------------------------------------
+Skins de GNU Midnight Commander
+--------------------------------
 
-Le fichier `crates/air-tui/src/theme/skins/midnight_commander.rs` est **généré** à partir
-du skin par défaut de GNU Midnight Commander — `share/mc/skins/default.ini`, version
-**4.8.33** — par `cargo xtask import-mc-skin` (ADR-008).
+Les fichiers de `crates/air-tui/src/theme/skins/` sont **générés** à partir de skins de
+GNU Midnight Commander, version **4.8.33**, par `cargo xtask import-mc-skin` (ADR-008).
+Trois skins sont repris, chacun pour ce qu'il démontre :
 
-Ce qui en est repris est la **donnée de configuration** de ce fichier : trente-huit
+| Artefact généré | Skin d'origine | Ce qu'il démontre |
+|---|---|---|
+| `default.rs` | `share/mc/skins/default.ini` | le skin que `mc` emploie sans configuration |
+| `modarcon16_defbg.rs` | `share/mc/skins/modarcon16-defbg.ini` | la couleur « défaut du terminal », sur quinze rôles |
+| `seasons_autumn16m.rs` | `share/mc/skins/seasons-autumn16M.ini` | les vraies couleurs et les attributs de rôle |
+
+Les trente-neuf skins livrés avec `mc` 4.8.33 sont **importables** depuis le jalon M7g, et
+le registre en accepte autant qu'on lui en donne. N'en reprendre que trois est une décision
+de l'auteur du dépôt et non une limite de l'outil : le coût mesuré des trente-neuf est de
+395 Kio de source générée et de deux dixièmes de seconde de compilation.
+
+Ce qui en est repris, pour chacun, est la **donnée de configuration** du fichier : trente-huit
 couples de couleurs — vingt-huit depuis le jalon M7a, quatre de plus pour les listes à
 M7b, trois pour le texte sélectionné à M7d, trois pour les cases à cocher à M7f — et douze
 caractères de dessin de cadre, plus la marque de la case de fermeture, transposés dans le
@@ -67,10 +78,10 @@ ultérieure** :
     Texte complet : https://www.gnu.org/licenses/gpl-3.0.html
     Projet : https://midnight-commander.org/
 
-L'artefact généré porte en commentaire, rôle par rôle, la section et la clef du skin dont
-chaque valeur vient, ainsi qu'une empreinte du fichier d'origine : la provenance de chaque
-couleur est donc vérifiable ligne à ligne, et `cargo xtask import-mc-skin --check` la
-confronte au fichier.
+Chaque artefact généré porte en commentaire, rôle par rôle, la section et la clef du skin
+dont chaque valeur vient, ainsi qu'une empreinte du fichier d'origine : la provenance de
+chaque couleur est donc vérifiable ligne à ligne, et
+`cargo xtask import-mc-skin --skin <fichier> --check` la confronte au fichier.
 
 ---
 

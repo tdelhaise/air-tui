@@ -346,8 +346,9 @@ impl AirPalette {
     /// Les valeurs viennent de `crate::theme::skins::midnight_commander`, produit par
     /// `cargo xtask import-mc-skin` — voir `NOTICE` pour l'origine et sa licence.
     #[must_use]
-    pub const fn midnight_commander() -> Self {
-        crate::theme::skins::midnight_commander::palette()
+    pub fn midnight_commander() -> Self {
+        crate::theme::AirTheme::compiled(crate::theme::DEFAULT_SKIN)
+            .map_or_else(Self::turbo_vision, |theme| theme.palette)
     }
 
     /// La palette de Turbo Vision, transcrite depuis `magiblot/tvision`.

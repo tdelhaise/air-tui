@@ -150,8 +150,9 @@ impl AirGlyphSet {
     /// Le compte était faux entre M7b et M7f : il annonçait cinq glyphes et en énumérait
     /// six, le curseur d'ascenseur ayant été ajouté sans que la phrase suive.
     #[must_use]
-    pub const fn midnight_commander() -> Self {
-        crate::theme::skins::midnight_commander::glyphs()
+    pub fn midnight_commander() -> Self {
+        crate::theme::AirTheme::compiled(crate::theme::DEFAULT_SKIN)
+            .map_or_else(Self::turbo_vision, |theme| theme.glyphs)
     }
 }
 

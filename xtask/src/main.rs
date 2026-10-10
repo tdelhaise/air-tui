@@ -20,6 +20,7 @@
 //! cargo xtask check-licence-headers
 //! cargo xtask check-safety-comments
 //! cargo xtask import-mc-skin --skin /usr/share/mc/skins/default.ini
+//! cargo xtask import-mc-skin --skin /usr/share/mc/skins/gotar.ini --check
 //! ```
 
 // `expect` et `unwrap` sont interdits en production (lints de l'espace de travail) et
@@ -35,6 +36,7 @@ mod mc_theme;
 mod naming;
 mod safety;
 mod segmentation_conformance;
+mod skin_registry;
 mod ucd;
 mod unicode_tables;
 mod versions;
@@ -44,7 +46,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 /// Le chemin de l'artefact du thème Midnight Commander, relatif à la racine du dépôt.
-const MC_THEME_PATH: &str = "crates/air-tui/src/theme/skins/midnight_commander.rs";
+const SKINS_DIRECTORY: &str = "crates/air-tui/src/theme/skins";
 
 /// Le chemin du fichier de tables, relatif à la racine du dépôt.
 const TABLES_PATH: &str = "crates/air-tui/src/unicode/tables.rs";
@@ -104,7 +106,7 @@ fn usage() -> String {
      cargo xtask check-dco [--base <référence>] [--all]\n  \
      cargo xtask check-licence-headers\n  \
      cargo xtask check-safety-comments\n  \
-     cargo xtask import-mc-skin --skin <fichier.ini> [--check]"
+     cargo xtask import-mc-skin --skin <fichier.ini> [--name <nom>] [--check]"
         .to_owned()
 }
 
@@ -448,7 +450,18 @@ fn import_mc_skin(arguments: &[String]) -> Result<String, String> {
     let fingerprint = mc_skin::fingerprint(&text);
     let compiled = mc_theme::compile(&skin, &skin_path, fingerprint)
         .map_err(|cause| format!("{skin_path} : {cause}"))?;
-    let destination = repository_root()?.join(MC_THEME_PATH);
+
+    // Le nom par défaut est celui du fichier de skin, parce que c'est le seul qui ne
+    // demande rien à l'appelant et qui reste vrai : un artefact porte le nom de ce dont
+    // il est compilé. `--name` sert quand deux skins de même nom viennent de deux
+    // installations.
+    let name = option_value(arguments, "--name")
+        .or_else(|| skin_stem(&skin_path))
+        .ok_or_else(|| format!("{skin_path} n'a pas de nom de fichier exploitable"))?;
+    let module = skin_registry::module_name(&name);
+    let directory = repository_root()?.join(SKINS_DIRECTORY);
+    let relative = format!("{SKINS_DIRECTORY}/{module}.rs");
+    let destination = directory.join(format!("{module}.rs"));
 
     if has_flag(arguments, "--check") {
         let committed = std::fs::read_to_string(&destination)
@@ -456,7 +469,7 @@ fn import_mc_skin(arguments: &[String]) -> Result<String, String> {
         let reference = format_through_rustfmt(&compiled.source, &destination)?;
         if committed == reference {
             return Ok(format!(
-                "{MC_THEME_PATH} est à jour, et vient bien de ce skin ({fingerprint:#018x})"
+                "{relative} est à jour, et vient bien de ce skin ({fingerprint:#018x})"
             ));
         }
         // Deux échecs très différents portent le même symptôme, et les confondre fait
@@ -466,30 +479,29 @@ fn import_mc_skin(arguments: &[String]) -> Result<String, String> {
             && recorded != fingerprint
         {
             return Err(format!(
-                "{skin_path} n'est pas le skin qui a produit {MC_THEME_PATH} :\n  \
+                "{skin_path} n'est pas le skin qui a produit {relative} :\n  \
                  empreinte de l'artefact : {recorded:#018x}\n  \
                  empreinte du fichier    : {fingerprint:#018x}"
             ));
         }
         return Err(format!(
-            "{MC_THEME_PATH} ne correspond plus au skin, dont l'empreinte est pourtant la \
+            "{relative} ne correspond plus au skin, dont l'empreinte est pourtant la \
              même.\n\
              C'est donc la compilation qui a changé. Relancer :\n  \
              cargo xtask import-mc-skin --skin {skin_path}"
         ));
     }
 
-    if let Some(parent) = destination.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|cause| format!("création de {} impossible : {cause}", parent.display()))?;
-    }
+    std::fs::create_dir_all(&directory)
+        .map_err(|cause| format!("création de {} impossible : {cause}", directory.display()))?;
     std::fs::write(&destination, &compiled.source)
         .map_err(|cause| format!("écriture de {} impossible : {cause}", destination.display()))?;
     run_rustfmt(&destination)?;
+    let registered = write_skin_registry(&directory)?;
     Ok(format!(
-        "{MC_THEME_PATH} écrit ({fingerprint:#018x}) — {} rôles transcrits d'une clef, {} composés de deux, \
+        "{relative} écrit ({fingerprint:#018x}) — {} rôles transcrits d'une clef, {} composés de deux, \
          {} correspondances annotées, {} rôles avec attribut, {} avec une couleur du terminal, \
-         {} clefs du skin inemployées",
+         {} clefs du skin inemployées ; registre à {registered} thème(s) compilé(s)",
         compiled.transcribed,
         compiled.composed,
         compiled.noted,
@@ -497,6 +509,28 @@ fn import_mc_skin(arguments: &[String]) -> Result<String, String> {
         compiled.terminal_colors,
         compiled.unused_keys
     ))
+}
+
+/// Le nom d'un skin, depuis le chemin de son fichier.
+fn skin_stem(skin_path: &str) -> Option<String> {
+    Path::new(skin_path)
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .map(str::to_owned)
+}
+
+/// Réécrit le registre des thèmes compilés, et rend leur nombre.
+///
+/// Appelé après **chaque** import : un artefact écrit sans son entrée dans le registre
+/// serait du code mort, et une entrée sans son artefact ne compilerait pas. Les deux sont
+/// donc produites du même balayage du répertoire, jamais à la main.
+fn write_skin_registry(directory: &Path) -> Result<usize, String> {
+    let compiled = skin_registry::present(directory)?;
+    let registry = directory.join("mod.rs");
+    std::fs::write(&registry, skin_registry::emit(&compiled))
+        .map_err(|cause| format!("écriture de {} impossible : {cause}", registry.display()))?;
+    run_rustfmt(&registry)?;
+    Ok(compiled.len())
 }
 
 /// L'empreinte que l'artefact committé déclare, si elle y est.
