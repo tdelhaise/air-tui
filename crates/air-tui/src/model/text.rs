@@ -109,6 +109,18 @@ pub enum AirTextAction {
     MoveDownByLines(usize),
     /// Place le curseur à une position donnée, bornée au texte.
     MoveTo(AirTextPosition),
+    /// Place le curseur sur une ligne, à une colonne **d'affichage**.
+    ///
+    /// C'est ce qu'un clic produit : une souris donne une colonne, jamais un décalage en
+    /// octets. La résolution appartient au modèle, seul à connaître le texte de la ligne —
+    /// une vue qui la ferait aurait besoin de la ligne entière alors qu'elle n'en reflète
+    /// que la partie visible.
+    MoveToColumn {
+        /// L'indice de la ligne, borné au texte.
+        line: usize,
+        /// La colonne d'affichage, bornée à la fin de la ligne.
+        column: usize,
+    },
     /// Remplace tout le contenu — c'est l'ouverture d'un fichier.
     Load(Vec<String>),
     /// Déclare le contenu enregistré.
@@ -583,6 +595,15 @@ impl AirModel for AirTextBuffer {
                 self.move_to_line(self.cursor.line.saturating_add(count));
             }
             AirTextAction::MoveTo(position) => self.move_to(position),
+            AirTextAction::MoveToColumn { line, column } => {
+                let line = line.min(self.last_line());
+                let offset = match self.line(line) {
+                    Some(text) => Self::offset_for_column(text, column),
+                    None => 0,
+                };
+                self.cursor = AirTextPosition::new(line, offset);
+                self.moved(false);
+            }
             AirTextAction::Load(lines) => {
                 self.replace_lines(lines);
                 self.modified = false;
@@ -954,6 +975,30 @@ mod tests {
             vec![AirTextAction::MoveTo(AirTextPosition::new(0, 2))],
         );
         assert_eq!(buffer.cursor(), AirTextPosition::new(0, 0));
+    }
+
+    #[test]
+    fn un_clic_place_le_curseur_a_la_colonne_d_affichage() {
+        // L'idéogramme occupe deux colonnes : la colonne 2 tombe sur le `a` qui le suit.
+        let mut buffer = AirTextBuffer::from_text("x\n\u{6F22}ab");
+        apply_all(
+            &mut buffer,
+            vec![AirTextAction::MoveToColumn { line: 1, column: 2 }],
+        );
+        assert_eq!(buffer.cursor(), AirTextPosition::new(1, 3));
+    }
+
+    #[test]
+    fn un_clic_au_dela_d_une_ligne_place_le_curseur_a_sa_fin() {
+        let mut buffer = AirTextBuffer::from_text("ab");
+        apply_all(
+            &mut buffer,
+            vec![AirTextAction::MoveToColumn {
+                line: 99,
+                column: 99,
+            }],
+        );
+        assert_eq!(buffer.cursor(), AirTextPosition::new(0, 2));
     }
 
     #[test]
