@@ -70,8 +70,8 @@ struct RoleSource {
 
 /// La table de correspondance, dans l'ordre des champs d'`AirPalette`.
 ///
-/// L'ordre compte : l'émetteur produit les sept groupes de la structure en suivant cette
-/// table, et un test vérifie que les trente-deux rôles y sont, une fois chacun.
+/// L'ordre compte : l'émetteur produit les onze groupes de la structure en suivant cette
+/// table, et un test vérifie que les trente-huit rôles y sont, une fois chacun.
 const ROLE_SOURCES: &[RoleSource] = &[
     RoleSource {
         role: "DesktopBackground",
@@ -389,7 +389,8 @@ const ROLE_SOURCES: &[RoleSource] = &[
     },
 ];
 
-/// Les bornes des sept groupes d'`AirPalette`, dans l'ordre de [`ROLE_SOURCES`].
+/// Les bornes des dix groupes d'`AirPalette` qui vont par assiettes, dans l'ordre de
+/// [`ROLE_SOURCES`] — le fond du bureau est seul dans son champ et n'en fait pas partie.
 ///
 /// Le premier rôle est seul dans son champ ; les suivants vont par groupes, et l'émetteur
 /// produit un tableau Rust par groupe.

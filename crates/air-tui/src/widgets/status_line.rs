@@ -20,7 +20,6 @@
 //! moment de l'événement. Les deux chemins ne peuvent pas diverger : ils lisent la même
 //! source.
 
-use crate::cell::{AirAttributes, AirCell};
 use crate::command::AirCommand;
 use crate::geometry::{AirColumn, AirPoint, AirRectangle, AirRow};
 use crate::input::event::{AirInputEvent, AirKey, AirMouseButton, AirMouseEventKind};
@@ -197,7 +196,7 @@ impl AirView for AirStatusLine {
         let size = painter.size();
         painter.fill_rectangle(
             AirRectangle::from_parts(0, 0, size.columns, 1),
-            AirCell::new(' ', normal.foreground, normal.background),
+            normal.cell(' '),
         );
         for (index, item) in self.items.iter().enumerate() {
             // Le grisage est lu ici, au dessin : c'est le mécanisme 3 de l'ADR-007.
@@ -209,28 +208,22 @@ impl AirView for AirStatusLine {
             };
             let parts = split_hotkey(item.label());
             let mut column = AirColumn::new(self.item_column(index));
-            column = painter.draw_text(
+            column = painter.draw_text_with_colors(
                 AirPoint::new(column, AirRow::FIRST),
                 parts.before,
-                label_colors.foreground,
-                label_colors.background,
-                AirAttributes::NONE,
+                label_colors,
             );
             if let Some(letter) = parts.hotkey {
-                column = painter.draw_text(
+                column = painter.draw_text_with_colors(
                     AirPoint::new(column, AirRow::FIRST),
                     letter,
-                    letter_colors.foreground,
-                    letter_colors.background,
-                    AirAttributes::NONE,
+                    letter_colors,
                 );
             }
-            painter.draw_text(
+            painter.draw_text_with_colors(
                 AirPoint::new(column, AirRow::FIRST),
                 parts.after,
-                label_colors.foreground,
-                label_colors.background,
-                AirAttributes::NONE,
+                label_colors,
             );
         }
     }

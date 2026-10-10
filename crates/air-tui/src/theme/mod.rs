@@ -7,9 +7,19 @@
 //! # État
 //!
 //! **Deux thèmes, et c'est ce qui fait de ce module un moteur.** La palette indexée par
-//! rôles sémantiques (trente-deux rôles), le jeu de glyphes et le quantificateur de
+//! rôles sémantiques — **trente-huit** rôles —, le jeu de glyphes et le quantificateur de
 //! couleurs existent depuis le jalon M5 ; le thème Midnight Commander et l'importeur de
-//! skins qui le produit, depuis M7a ; les quatre rôles de liste, depuis M7b.
+//! skins qui le produit, depuis M7a ; les quatre rôles de liste, depuis M7b ; ceux du
+//! texte sélectionné, depuis M7d ; ceux des cases à cocher et des boutons radio, depuis
+//! M7f.
+//!
+//! Depuis le jalon M7g, un rôle porte aussi des **attributs** — graisse, italique,
+//! souligné —, et ce n'est pas un enrichissement gratuit : vingt des trente-neuf skins
+//! livrés avec `mc` 4.8.33 en posent un sur une clef que la table de correspondance
+//! emploie, et l'importeur les refusait tous pour cette seule raison. Un test de ce module
+//! peint chaque widget avec une palette dont **tout** est gras et vérifie qu'aucune
+//! cellule ne perd l'attribut en route : c'est le seul défaut de ce jalon qui serait
+//! invisible, puisque ni l'un ni l'autre des deux thèmes livrés n'en pose.
 //!
 //! Ces quatre derniers rôles sont la première **extension** de la palette depuis que le
 //! second thème existe, et c'est à cette occasion que le moteur a été éprouvé plutôt que
@@ -94,7 +104,207 @@ impl Default for AirTheme {
 #[cfg(test)]
 mod tests {
     use super::AirTheme;
-    use crate::theme::palette::AirRole;
+    use crate::cell::{AirAttributes, AirCell, AirColor};
+    use crate::command::{AirCommandSet, OK};
+    use crate::geometry::{AirColumn, AirPoint, AirRectangle, AirRow};
+    use crate::input::event::AirKey;
+    use crate::model::text::{AirTextAction, AirTextBuffer};
+    use crate::model::{AirChangeSet, AirModel};
+    use crate::surface::AirSurface;
+    use crate::theme::glyphs::AirGlyphSet;
+    use crate::theme::palette::{AirColorPair, AirPalette, AirPaletteParts, AirRole};
+    use crate::view::AirDrawContext;
+    use crate::view::painter::AirPainter;
+    use crate::view::{AirView, AirViewId, AirViewState, draw_view};
+    use crate::widgets::{
+        AirButton, AirCluster, AirClusterItem, AirEditorView, AirInputLine, AirListBox,
+        AirListItem, AirMenu, AirMenuBar, AirMenuItem, AirOrientation, AirPanel, AirPromptDialog,
+        AirScrollBar, AirStaticText, AirStatusItem, AirStatusLine, AirWindow,
+    };
+
+    /// Une palette dont les trente-huit rôles portent le même attribut.
+    ///
+    /// Elle n'a aucun intérêt visuel — tout y est gris clair sur bleu et en graisse — et
+    /// c'est précisément ce qui la rend utile : si un widget peint une cellule sans
+    /// l'attribut de son rôle, il est le seul à produire une cellule non grasse.
+    fn bold_everywhere() -> AirPalette {
+        let pair = AirColorPair::new(AirColor::LIGHT_GRAY, AirColor::BLUE)
+            .with_attributes(AirAttributes::NONE.with_bold());
+        AirPalette::from_parts(&AirPaletteParts {
+            desktop_background: pair,
+            menu: [pair; 6],
+            status: [pair; 3],
+            window: [pair; 6],
+            dialog: [pair; 4],
+            button: [pair; 6],
+            scroll_bar: [pair; 2],
+            list: [pair; 4],
+            editor: [pair; 1],
+            input_line: [pair; 2],
+            cluster: [pair; 3],
+        })
+    }
+
+    /// La cellule qu'aucun widget ne peut produire, pour distinguer « peint » de
+    /// « jamais touché ».
+    ///
+    /// Un fond jamais écrit garde la cellule par défaut, et un widget qui peint une espace
+    /// sur du gris clair produirait la même chose : sans témoin, le test ne saurait pas
+    /// quelles cellules ont été peintes. Les deux vraies couleurs sont là pour cela — la
+    /// palette de l'essai n'emploie que des index.
+    fn witness() -> AirCell {
+        AirCell::new(
+            '\u{a7}',
+            AirColor::Rgb {
+                red: 1,
+                green: 2,
+                blue: 3,
+            },
+            AirColor::Rgb {
+                red: 4,
+                green: 5,
+                blue: 6,
+            },
+        )
+    }
+
+    /// Un état de vue aux dimensions données, à l'origine, et focalisé.
+    ///
+    /// Focalisé pour que les rôles « sous le curseur » soient atteints eux aussi : un
+    /// groupe sans focus ne dessine pas son curseur, et le rôle resterait non peint.
+    fn focused_state(columns: u16, rows: u16) -> AirViewState {
+        let mut state = AirViewState::new(
+            AirViewId::new(1).unwrap_or(AirViewId::FIRST),
+            AirRectangle::from_parts(0, 0, columns, rows),
+        );
+        state.set_focused(true);
+        state
+    }
+
+    /// Les vues à éprouver, chacune avec le nom qui paraîtra dans le message d'échec.
+    fn every_widget() -> Vec<(&'static str, Box<dyn AirView>)> {
+        let mut editor = AirEditorView::new(focused_state(20, 4));
+        let mut buffer = AirTextBuffer::from_text("une ligne\nune autre");
+        // Tout sélectionner pour que `EditorSelected` soit peint lui aussi : sans
+        // sélection, ce rôle ne toucherait aucune cellule et sortirait de la mesure.
+        let mut changes = AirChangeSet::new();
+        buffer.apply(AirTextAction::SelectAll, &mut changes);
+        editor.synchronize(&buffer);
+
+        let mut list = AirListBox::new(focused_state(20, 4));
+        list.set_items(vec![
+            AirListItem::new("premier").with_detail("2 o").marked(),
+            AirListItem::new("second"),
+        ]);
+
+        vec![
+            (
+                "AirStaticText",
+                Box::new(AirStaticText::new(focused_state(12, 1), "texte")),
+            ),
+            (
+                "AirPanel",
+                Box::new(AirPanel::new(focused_state(12, 3))) as Box<dyn AirView>,
+            ),
+            (
+                "AirWindow",
+                Box::new(AirWindow::new(focused_state(14, 3)).with_title("titre")),
+            ),
+            (
+                "AirButton",
+                Box::new(AirButton::new(focused_state(12, 1), "~O~K", OK).as_default()),
+            ),
+            (
+                "AirInputLine",
+                Box::new(AirInputLine::new(focused_state(12, 1)).with_text("saisie")),
+            ),
+            (
+                "AirMenuBar",
+                Box::new(AirMenuBar::new(focused_state(20, 1)).with_menu(
+                    AirMenu::new("~F~ichier").with_item(AirMenuItem::new("~O~uvrir", OK)),
+                )),
+            ),
+            (
+                "AirStatusLine",
+                Box::new(
+                    AirStatusLine::new(focused_state(20, 1)).with_item(AirStatusItem::new(
+                        "~F2~ Enregistrer",
+                        AirKey::Function(2),
+                        OK,
+                    )),
+                ),
+            ),
+            (
+                "AirScrollBar",
+                Box::new(AirScrollBar::new(
+                    focused_state(1, 6),
+                    AirOrientation::Vertical,
+                )),
+            ),
+            (
+                "AirCluster",
+                Box::new(
+                    AirCluster::check_boxes(focused_state(18, 2))
+                        .with_item(AirClusterItem::new("~G~ras").checked())
+                        .with_item(AirClusterItem::new("~I~talique")),
+                ),
+            ),
+            ("AirListBox", Box::new(list)),
+            ("AirEditorView", Box::new(editor)),
+            (
+                "AirPromptDialog",
+                Box::new(AirPromptDialog::new(focused_state(24, 7), "Titre", "Nom :")),
+            ),
+        ]
+    }
+
+    #[test]
+    fn l_attribut_d_un_role_atteint_toutes_les_cellules_qu_un_widget_peint() {
+        // Le jalon M7g a ajouté un attribut par rôle, et le défaut qu'il rend possible est
+        // silencieux : un widget qui construit sa cellule à partir des deux champs de
+        // couleur du couple laisse l'attribut au bord du chemin, et rien ne le dit — le
+        // thème par défaut n'en pose aucun, et seuls les vingt skins de `mc` qui en posent
+        // un le feraient voir. D'où une palette où **tout** est gras : la cellule qui ne
+        // l'est pas désigne le site fautif.
+        let theme = AirTheme {
+            palette: bold_everywhere(),
+            glyphs: AirGlyphSet::turbo_vision(),
+        };
+        let commands = AirCommandSet::new();
+        for (name, view) in every_widget() {
+            let bounds = view.state().bounds();
+            let mut surface = AirSurface::new(bounds.size);
+            {
+                let mut painter = AirPainter::new(&mut surface);
+                painter.fill_rectangle(AirRectangle::new(AirPoint::ORIGIN, bounds.size), witness());
+                draw_view(
+                    view.as_ref(),
+                    &mut painter,
+                    &AirDrawContext::new(&theme, &commands),
+                );
+            }
+            let mut painted = 0usize;
+            for row in 0..bounds.size.rows {
+                for column in 0..bounds.size.columns {
+                    let point = AirPoint::new(AirColumn::new(column), AirRow::new(row));
+                    let Some(cell) = surface.cell(point) else {
+                        continue;
+                    };
+                    if *cell == witness() {
+                        continue;
+                    }
+                    painted = painted.saturating_add(1);
+                    assert!(
+                        cell.attributes.bold,
+                        "{name} peint {cell:?} en ({column}, {row}) sans l'attribut de son \
+                         rôle : la cellule a été construite à partir des deux couleurs du \
+                         couple au lieu du couple entier"
+                    );
+                }
+            }
+            assert!(painted > 0, "{name} n'a peint aucune cellule");
+        }
+    }
 
     #[test]
     fn les_deux_themes_se_distinguent_a_la_barre_de_menu() {
@@ -146,7 +356,7 @@ mod tests {
     }
 
     #[test]
-    fn les_trente_deux_roles_repondent_dans_les_deux_themes() {
+    fn les_trente_huit_roles_repondent_dans_les_deux_themes() {
         // Un rôle sans valeur serait un trou dans la palette, et le compilateur ne le
         // verrait pas : `color_pair` est exhaustif par construction, mais une palette
         // compilée depuis un skin pourrait porter des couples laissés à zéro.

@@ -74,7 +74,7 @@ impl AirView for AirPanel {
         let size = painter.size();
         painter.fill_rectangle(
             crate::geometry::AirRectangle::new(crate::geometry::AirPoint::ORIGIN, size),
-            crate::cell::AirCell::new(' ', colors.foreground, colors.background),
+            colors.cell(' '),
         );
     }
 

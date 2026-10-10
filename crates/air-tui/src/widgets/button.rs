@@ -4,7 +4,6 @@
 
 //! Le bouton — un libellé centré qui émet une commande.
 
-use crate::cell::{AirAttributes, AirCell};
 use crate::command::AirCommand;
 use crate::geometry::{AirColumn, AirPoint, AirRectangle, AirRow};
 use crate::input::event::{AirInputEvent, AirKey, AirMouseButton, AirMouseEventKind};
@@ -105,10 +104,7 @@ impl AirView for AirButton {
         let enabled = self.state.is_enabled() && context.is_command_enabled(self.command);
         let colors = context.theme.palette.color_pair(self.label_role(enabled));
         let size = painter.size();
-        painter.fill_rectangle(
-            AirRectangle::new(AirPoint::ORIGIN, size),
-            AirCell::new(' ', colors.foreground, colors.background),
-        );
+        painter.fill_rectangle(AirRectangle::new(AirPoint::ORIGIN, size), colors.cell(' '));
 
         let parts = split_hotkey(&self.label);
         // Le libellé est centré. La largeur visible exclut les tildes, qui ne s'affichent
@@ -128,29 +124,12 @@ impl AirView for AirButton {
         } else {
             colors
         };
-        column = painter.draw_text(
-            AirPoint::new(column, row),
-            parts.before,
-            colors.foreground,
-            colors.background,
-            AirAttributes::NONE,
-        );
+        column = painter.draw_text_with_colors(AirPoint::new(column, row), parts.before, colors);
         if let Some(hotkey) = parts.hotkey {
-            column = painter.draw_text(
-                AirPoint::new(column, row),
-                hotkey,
-                hotkey_colors.foreground,
-                hotkey_colors.background,
-                AirAttributes::NONE,
-            );
+            column =
+                painter.draw_text_with_colors(AirPoint::new(column, row), hotkey, hotkey_colors);
         }
-        painter.draw_text(
-            AirPoint::new(column, row),
-            parts.after,
-            colors.foreground,
-            colors.background,
-            AirAttributes::NONE,
-        );
+        painter.draw_text_with_colors(AirPoint::new(column, row), parts.after, colors);
     }
 
     fn handle_event(&mut self, event: &mut AirEvent, context: &mut AirContext<'_>) -> AirOutcome {

@@ -4,7 +4,6 @@
 
 //! La fenêtre — un conteneur à titre et case de fermeture.
 
-use crate::cell::AirCell;
 use crate::command::{AirCommand, CLOSE};
 use crate::geometry::{AirColumn, AirPoint, AirRectangle, AirRow};
 use crate::input::event::{AirInputEvent, AirMouseButton, AirMouseEventKind};
@@ -153,10 +152,7 @@ impl AirView for AirWindow {
         };
         let colors = context.theme.palette.color_pair(role);
         let size = painter.size();
-        painter.fill_rectangle(
-            AirRectangle::new(AirPoint::ORIGIN, size),
-            AirCell::new(' ', colors.foreground, colors.background),
-        );
+        painter.fill_rectangle(AirRectangle::new(AirPoint::ORIGIN, size), colors.cell(' '));
     }
 
     fn draw_frame_decorations(&self, painter: &mut AirPainter<'_>, context: &AirDrawContext<'_>) {
@@ -192,7 +188,7 @@ impl AirView for AirWindow {
                     AirColumn::new(CLOSE_BOX_COLUMN.saturating_add(offset)),
                     AirRow::FIRST,
                 ),
-                AirCell::new(character, colors.foreground, colors.background),
+                colors.cell(character),
             );
         }
     }

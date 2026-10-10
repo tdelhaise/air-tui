@@ -51,7 +51,7 @@
 //! boutons, transcrites au jalon M5, portent les mêmes numéros que ce fichier leur
 //! attribue — c'est ce qui valide le décompte des quatre nouvelles.
 
-use crate::cell::AirColor;
+use crate::cell::{AirAttributes, AirCell, AirColor};
 
 /// Un rôle sémantique de l'interface.
 ///
@@ -161,23 +161,58 @@ pub enum AirRole {
     ClusterHotkey,
 }
 
-/// Un couple de couleurs : caractère et fond.
+/// Ce qu'un rôle décrit : deux couleurs et des attributs.
+///
+/// Le nom dit « couple » parce que les deux couleurs sont ce qu'on lit d'abord, et il est
+/// resté quand les attributs sont arrivés au jalon M7g. Les renommer aurait touché
+/// soixante-dix sites pour ne rien apprendre à personne : un rôle décrit une
+/// **présentation**, et c'est ce que ce type porte.
+///
+/// Les attributs sont venus des skins de `mc` : vingt des trente-neuf fournitures de la
+/// version 4.8.33 posent `bold`, `underline` ou `italic` sur une clef que la table de
+/// correspondance emploie, et l'ADR-008 les refusait toutes pour cette seule raison.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AirColorPair {
     /// La couleur du caractère.
     pub foreground: AirColor,
     /// La couleur du fond.
     pub background: AirColor,
+    /// Les attributs de rendu — graisse, italique, souligné.
+    pub attributes: AirAttributes,
 }
 
 impl AirColorPair {
-    /// Construit un couple de couleurs.
+    /// Construit un couple de couleurs sans attribut.
+    ///
+    /// Sans attribut, et non « avec ceux qu'on précisera » : c'est le cas de l'immense
+    /// majorité des rôles — le thème Turbo Vision n'en pose aucun, les seize couleurs du
+    /// VGA portant déjà la distinction vive/sombre dans l'index lui-même.
     #[must_use]
     pub const fn new(foreground: AirColor, background: AirColor) -> Self {
         Self {
             foreground,
             background,
+            attributes: AirAttributes::NONE,
         }
+    }
+
+    /// Le même couple, avec des attributs.
+    #[must_use]
+    pub const fn with_attributes(mut self, attributes: AirAttributes) -> Self {
+        self.attributes = attributes;
+        self
+    }
+
+    /// Une cellule portant un caractère, peinte à cette présentation.
+    ///
+    /// C'est par ici que les attributs d'un rôle atteignent la grille. Un widget qui
+    /// construirait sa cellule avec `AirCell::new` et les deux champs de couleur
+    /// perdrait l'attribut **en silence**, et le thème ne ressemblerait pas au skin : le
+    /// défaut ne serait visible que sur les vingt skins qui en posent un, c'est-à-dire
+    /// jamais pendant le développement.
+    #[must_use]
+    pub const fn cell(self, character: char) -> AirCell {
+        AirCell::new(character, self.foreground, self.background).with_attributes(self.attributes)
     }
 }
 
@@ -226,7 +261,7 @@ pub const fn pair_from_vga_attribute(attribute: u8) -> AirColorPair {
 
 /// Les assiettes d'une palette, nommées.
 ///
-/// Elle existe pour que l'artefact généré nomme ce qu'il pose : huit assiettes passées à
+/// Elle existe pour que l'artefact généré nomme ce qu'il pose : onze assiettes passées à
 /// la file se relisent mal, et un groupe échangé avec son voisin ne se verrait pas. Les
 /// longueurs fixes gardent le décompte au compilateur — un groupe de cinq couples là où
 /// il en faut six ne compile pas.
@@ -284,12 +319,12 @@ pub struct AirPalette {
 }
 
 impl AirPalette {
-    /// Assemble une palette à partir de ses huit assiettes.
+    /// Assemble une palette à partir de ses onze assiettes.
     ///
     /// Ce constructeur existe pour les thèmes **compilés** : l'artefact que produit
     /// `cargo xtask import-mc-skin` vit dans `theme/skins/` et n'a pas accès aux champs
     /// privés. Il est `pub(crate)` pour que l'assemblage reste une affaire interne — un
-    /// thème s'obtient par son nom, jamais en posant trente-deux couples à la main.
+    /// thème s'obtient par son nom, jamais en posant trente-huit couples à la main.
     pub(crate) const fn from_parts(parts: &AirPaletteParts) -> Self {
         Self {
             desktop_background: parts.desktop_background,
