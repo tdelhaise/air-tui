@@ -68,36 +68,12 @@ const TURN_TIMEOUT: Duration = Duration::from_millis(250);
 /// Le délai laissé au terminal pour répondre à la négociation du protocole clavier.
 const PROTOCOL_TIMEOUT: Duration = Duration::from_millis(100);
 
-/// Le thème que la ligne de commande demande.
+/// Le thème par défaut, quand la ligne de commande n'en nomme pas.
 ///
-/// Deux thèmes, nommés plutôt que numérotés : `--theme 2` ne dirait rien à personne.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-enum ThemeChoice {
-    /// Turbo Vision, le thème par défaut.
-    #[default]
-    TurboVision,
-    /// Midnight Commander, compilé depuis son skin par défaut.
-    MidnightCommander,
-}
-
-impl ThemeChoice {
-    /// Le thème que désigne un nom, s'il en désigne un.
-    fn from_name(name: &str) -> Option<Self> {
-        match name {
-            "tv" | "turbo-vision" => Some(Self::TurboVision),
-            "mc" | "midnight-commander" => Some(Self::MidnightCommander),
-            _ => None,
-        }
-    }
-
-    /// Le thème lui-même.
-    fn theme(self) -> AirTheme {
-        match self {
-            Self::TurboVision => AirTheme::turbo_vision(),
-            Self::MidnightCommander => AirTheme::midnight_commander(),
-        }
-    }
-}
+/// Nommé plutôt que numéroté : `--theme 2` ne dirait rien à personne. La résolution d'un
+/// nom en thème vit dans `air-tui`, parce que les deux applications la demandent — écrite
+/// deux fois, elle finirait par ne plus l'être qu'une.
+const DEFAULT_THEME: &str = "tv";
 
 /// Ce que la ligne de commande demande.
 #[derive(Debug, PartialEq, Eq)]
@@ -106,11 +82,13 @@ enum Request {
     Edit {
         /// Le fichier à ouvrir, s'il y en a un.
         path: Option<PathBuf>,
-        /// Le thème demandé.
-        theme: ThemeChoice,
+        /// Le nom du thème demandé, déjà validé.
+        theme: String,
     },
     /// Afficher le mode d'emploi.
     Usage,
+    /// Afficher les noms de thèmes acceptés.
+    ListThemes,
     /// Afficher la version.
     Version,
     /// Une option inconnue.
@@ -125,14 +103,17 @@ enum Request {
 /// promettrait des onglets qui n'existent pas.
 fn parse(arguments: &[String]) -> Request {
     let mut path: Option<PathBuf> = None;
-    let mut theme = ThemeChoice::default();
+    let mut theme = DEFAULT_THEME.to_owned();
     let mut awaiting_theme = false;
     for argument in arguments {
         if awaiting_theme {
-            let Some(choice) = ThemeChoice::from_name(argument) else {
+            // Le nom est validé ici, et non au moment de peindre : une option refusée
+            // doit l'être avant que le terminal passe en mode brut, sinon le message
+            // s'affiche sur un écran déjà effacé.
+            if AirTheme::from_command_line_name(argument).is_none() {
                 return Request::UnknownTheme(argument.clone());
-            };
-            theme = choice;
+            }
+            theme.clone_from(argument);
             awaiting_theme = false;
             continue;
         }
@@ -140,6 +121,7 @@ fn parse(arguments: &[String]) -> Request {
             "-h" | "--help" => return Request::Usage,
             "-V" | "--version" => return Request::Version,
             "--theme" => awaiting_theme = true,
+            "--list-themes" => return Request::ListThemes,
             other if other.starts_with('-') => return Request::Unknown(other.to_owned()),
             other => {
                 if path.is_none() {
@@ -159,13 +141,14 @@ fn parse(arguments: &[String]) -> Request {
 /// Le mode d'emploi.
 fn usage() -> String {
     format!(
-        "usage : redit [--theme tv|mc] [FICHIER]\n\
+        "usage : redit [--theme <nom>] [--list-themes] [FICHIER]\n\
          \n\
          Éditeur de texte en mode terminal, bâti sur air-tui.\n\
          \n\
            -h, --help     affiche ce message\n\
            -V, --version  affiche la version\n\
-               --theme    tv (Turbo Vision, par défaut) ou mc (Midnight Commander)\n\
+               --theme    tv (défaut), mc, ou mc:<skin> pour un skin compilé\n\
+               --list-themes  énumère les noms acceptés\n\
          \n\
          Touches : F2 enregistrer, F3 ouvrir, F10 quitter, Ctrl+Y supprimer la ligne.\n\
          Version {}\n",
@@ -217,6 +200,21 @@ fn main() -> ExitCode {
             print!("{}", usage());
             ExitCode::SUCCESS
         }
+        Request::ListThemes => {
+            // Les noms exacts à taper, et leur description quand le thème vient d'un
+            // skin : c'est cette liste qui fait foi, puisque le nom d'un skin est
+            // transposé en identifiant Rust à la compilation.
+            for name in AirTheme::command_line_names() {
+                match name
+                    .strip_prefix("mc:")
+                    .and_then(AirTheme::compiled_description)
+                {
+                    Some(description) => println!("{name:<24} {description}"),
+                    None => println!("{name:<24} Turbo Vision"),
+                }
+            }
+            ExitCode::SUCCESS
+        }
         Request::Version => {
             println!("redit {}", env!("CARGO_PKG_VERSION"));
             ExitCode::SUCCESS
@@ -238,7 +236,13 @@ fn main() -> ExitCode {
             if let Some(path) = path.as_deref() {
                 editor.open(path);
             }
-            match run(editor, theme.theme()) {
+            let Some(resolved) = AirTheme::from_command_line_name(&theme) else {
+                // Inatteignable : le nom est validé par `parse`. Refuser plutôt que de
+                // retomber sur un défaut, pour que l'écart se voie s'il arrivait.
+                eprintln!("redit : thème « {theme} » introuvable");
+                return ExitCode::FAILURE;
+            };
+            match run(editor, resolved) {
                 Ok(()) => ExitCode::SUCCESS,
                 Err(error) => {
                     // Le terminal a été restauré par la destruction d'`AirApplication`
@@ -255,7 +259,7 @@ fn main() -> ExitCode {
 mod tests {
     use std::path::PathBuf;
 
-    use super::{Request, ThemeChoice, parse, usage};
+    use super::{DEFAULT_THEME, Request, parse, usage};
 
     fn arguments(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| (*value).to_owned()).collect()
@@ -267,7 +271,7 @@ mod tests {
             parse(&arguments(&[])),
             Request::Edit {
                 path: None,
-                theme: ThemeChoice::TurboVision
+                theme: "tv".to_owned()
             }
         );
     }
@@ -278,7 +282,7 @@ mod tests {
             parse(&arguments(&["essai.txt"])),
             Request::Edit {
                 path: Some(PathBuf::from("essai.txt")),
-                theme: ThemeChoice::TurboVision
+                theme: "tv".to_owned()
             }
         );
     }
@@ -290,32 +294,46 @@ mod tests {
             parse(&arguments(&["un.txt", "deux.txt"])),
             Request::Edit {
                 path: Some(PathBuf::from("un.txt")),
-                theme: ThemeChoice::TurboVision
+                theme: "tv".to_owned()
             }
         );
     }
 
     #[test]
     fn le_theme_par_defaut_est_turbo_vision() {
-        assert_eq!(ThemeChoice::default(), ThemeChoice::TurboVision);
+        assert_eq!(DEFAULT_THEME, "tv");
     }
 
     #[test]
-    fn les_deux_themes_ont_un_nom_court_et_un_nom_long() {
-        assert_eq!(ThemeChoice::from_name("tv"), Some(ThemeChoice::TurboVision));
+    fn un_skin_compile_se_demande_par_son_nom() {
+        // C'est l'apport du jalon : le dépôt porte plusieurs skins compilés, et le choix
+        // se fait par un nom, sans que rien soit lu à l'exécution.
         assert_eq!(
-            ThemeChoice::from_name("turbo-vision"),
-            Some(ThemeChoice::TurboVision)
+            parse(&arguments(&["--theme", "mc:modarcon16_defbg", "essai.txt"])),
+            Request::Edit {
+                path: Some(PathBuf::from("essai.txt")),
+                theme: "mc:modarcon16_defbg".to_owned()
+            }
+        );
+    }
+
+    #[test]
+    fn un_skin_qui_n_est_pas_compile_est_refuse_avant_le_mode_brut() {
+        // Refusé par `parse`, donc avant que le terminal passe en mode brut : un message
+        // d'erreur sur un écran déjà effacé ne se lit pas.
+        assert_eq!(
+            parse(&arguments(&["--theme", "mc:inexistant"])),
+            Request::UnknownTheme("mc:inexistant".to_owned())
         );
         assert_eq!(
-            ThemeChoice::from_name("mc"),
-            Some(ThemeChoice::MidnightCommander)
+            parse(&arguments(&["--theme", "borland"])),
+            Request::UnknownTheme("borland".to_owned())
         );
-        assert_eq!(
-            ThemeChoice::from_name("midnight-commander"),
-            Some(ThemeChoice::MidnightCommander)
-        );
-        assert_eq!(ThemeChoice::from_name("borland"), None);
+    }
+
+    #[test]
+    fn list_themes_est_une_demande_a_part() {
+        assert_eq!(parse(&arguments(&["--list-themes"])), Request::ListThemes);
     }
 
     #[test]
@@ -324,7 +342,7 @@ mod tests {
             parse(&arguments(&["--theme", "mc", "essai.txt"])),
             Request::Edit {
                 path: Some(PathBuf::from("essai.txt")),
-                theme: ThemeChoice::MidnightCommander
+                theme: "mc".to_owned()
             }
         );
     }
@@ -335,7 +353,7 @@ mod tests {
             parse(&arguments(&["essai.txt", "--theme", "mc"])),
             Request::Edit {
                 path: Some(PathBuf::from("essai.txt")),
-                theme: ThemeChoice::MidnightCommander
+                theme: "mc".to_owned()
             }
         );
     }
@@ -348,7 +366,7 @@ mod tests {
             parse(&arguments(&["--theme", "mc"])),
             Request::Edit {
                 path: None,
-                theme: ThemeChoice::MidnightCommander
+                theme: "mc".to_owned()
             }
         );
     }
@@ -407,7 +425,11 @@ mod tests {
     #[test]
     fn le_mode_d_emploi_cite_les_touches_et_la_version() {
         let text = usage();
-        assert!(text.contains("redit [--theme tv|mc] [FICHIER]"));
+        assert!(text.contains("redit [--theme <nom>] [--list-themes] [FICHIER]"));
+        assert!(
+            text.contains("mc:<skin>"),
+            "les skins compilés doivent être cités"
+        );
         assert!(text.contains("F10"));
         assert!(text.contains(env!("CARGO_PKG_VERSION")));
     }

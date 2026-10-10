@@ -36,12 +36,12 @@ L'**avancement** vit dans [`etat-avancement.md`](etat-avancement.md), l'**histor
 |---|---|---|
 | `crates/air-tui-platform` | le contrat : traits, types portables | 0.1.0 |
 | `crates/air-tui-platform-posix` | implémentation POSIX — le seul `unsafe`, le seul C | 0.2.0 |
-| `crates/air-tui` | le cœur, dépend uniquement du contrat | 0.12.0 |
-| `crates/redit` | l'éditeur de texte — le seul endroit qui choisit une plateforme | 0.3.0 |
-| `crates/rmc` | la coquille à deux panneaux — même règle pour la plateforme | 0.1.6 |
+| `crates/air-tui` | le cœur, dépend uniquement du contrat | 0.13.0 |
+| `crates/redit` | l'éditeur de texte — le seul endroit qui choisit une plateforme | 0.4.0 |
+| `crates/rmc` | la coquille à deux panneaux — même règle pour la plateforme | 0.2.0 |
 | `crates/air-tui-platform-air` | implémentation `linux-air` | **à écrire** |
 | `fuzz/` | cibles `cargo-fuzz`, espace de travail séparé (nightly) | `ansi_decoder` |
-| `xtask/` | outillage du dépôt, en Rust | 0.6.0 — tables Unicode, conformité des segmentations, **les six contrôles de conventions**, le DCO, et l'importeur de skins MC |
+| `xtask/` | outillage du dépôt, en Rust | 0.7.0 — tables Unicode, conformité des segmentations, **les six contrôles de conventions**, le DCO, et l'importeur de skins MC avec son registre |
 | `tools/` | outillage qui ne peut pas être en Rust sans un appel C de plus | `pty-drive.py` |
 
 ## Les modules d'`air-tui`
@@ -60,7 +60,7 @@ L'**avancement** vit dans [`etat-avancement.md`](etat-avancement.md), l'**histor
 | `model::history` | le journal de remplacements : fusion par geste, borne, point d'enregistrement | M7h |
 | `clipboard` | `AirClipboard` — le presse-papiers interne, possédé par le contrôleur | M7d |
 | `theme` | palette par rôles (trente-huit, **avec attributs**), glyphes, quantificateur, **deux thèmes** | M5, M7, M7g |
-| `theme::skins` | les thèmes compilés depuis un skin de Midnight Commander — **généré** | M7 |
+| `theme::skins` | les thèmes compilés depuis un skin de Midnight Commander, et leur **registre** — **générés** | M7, M7i |
 | `widgets` | panneau, étiquette, fenêtre, bouton, barre de menu, barre de statut, champ de saisie, ascenseur, vue d'édition, dialogue de saisie, liste, **cases à cocher et boutons radio** | M5, M5b, M6, M7b, M7f |
 | `model` | `AirModel`, `AirChangeSet`, `AirGeneration`, `AirTextBuffer`, sa **sélection** et son **historique d'annulation** — la couche MVC | M6, M7d, M7h |
 | `application` | `AirApplication`, `AirScreen`, `AirDesktop` — la boucle et le chrome | M6 |
@@ -76,6 +76,7 @@ L'**avancement** vit dans [`etat-avancement.md`](etat-avancement.md), l'**histor
 | `naming` | `check-naming` — le balayage lexical des sites de déclaration (ADR-004) |
 | `mc_skin` | le décodeur des skins de Midnight Commander — à 100 % de couverture (ADR-012) |
 | `mc_theme` | la table de correspondance vers les rôles d'air-tui, et l'émetteur de l'artefact |
+| `skin_registry` | l'émetteur du registre des thèmes compilés, et la transposition d'un nom de skin en module |
 | `versions` | `check-versions` — l'incrément par crate et la dérive des dépendances (ADR-009) |
 | `codec_coverage` | `check-codec-coverage` — les 100 % exigés des codecs (ADR-012) |
 | `dco` | `check-dco` — la signature de chaque commit, et aucun agent parmi les auteurs |

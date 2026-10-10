@@ -16,11 +16,12 @@ terminal veut bien les donner.
 ## Ce qui le distingue
 
 - **Thèmes graphiques.** Le look and feel est une donnée, pas du code. Le thème par
-  défaut reproduit celui de Turbo Vision ; un second est **compilé** depuis un skin de
-  Midnight Commander par un outil du dépôt, et non recopié à la main — les trente-neuf
-  skins livrés avec `mc` 4.8.33 sont importables. Un thème est aujourd'hui un couple
-  palette + glyphes ; la troisième assiette que l'ADR-008 décrit, les décorations, n'est
-  pas écrite.
+  défaut reproduit celui de Turbo Vision ; les autres sont **compilés** depuis des skins de
+  Midnight Commander par un outil du dépôt, et non recopiés à la main — les trente-neuf
+  skins livrés avec `mc` 4.8.33 sont importables, et le choix se fait par un nom
+  (`--theme mc:<skin>`) sans que rien soit lu à l'exécution. Un thème est aujourd'hui un
+  couple palette + glyphes ; la troisième assiette que l'ADR-008 décrit, les décorations,
+  n'est pas écrite.
 - **Screens, Windows, Views.** Une hiérarchie explicite : l'application empile des
   `AirScreen` (surfaces plein écran commutables), chacune organise un `AirDesktop` de
   `AirWindow`, composés d'`AirView`.

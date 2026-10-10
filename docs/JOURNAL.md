@@ -6,6 +6,60 @@ tête. On ajoute, on ne réécrit jamais une entrée passée.
 Une entrée par campagne, pas par commit. Répartition des rôles : `etat-avancement.md` est
 l'état vivant, ce journal est la trace figée, `INDEX.md` est la carte structurelle.
 
+## 2026-10-10 — Jalon M7i : plusieurs skins compilés, et le choix par un nom
+
+- **La limite que M7g avait laissée.** Les trente-neuf skins livrés avec `mc` étaient
+  importables, mais pas **ensemble** : le dépôt ne portait qu'un artefact, et importer le
+  second effaçait le premier. Une capacité qu'on ne peut employer qu'une fois à la fois
+  n'est pas tout à fait une capacité.
+- **La décision qui ne touche pas à l'ADR-008, et c'est le point.** `theme/skins/mod.rs`
+  est devenu un **registre généré** qui déclare les modules et les nomme, et
+  `AirTheme::from_command_line_name` résout trois formes : `tv`, `mc`, et `mc:<nom>`. Rien
+  n'est lu à l'exécution — le choix est une clef dans une table construite à la
+  compilation, pas un fichier ouvert au démarrage. L'espace de noms `mc:` dit d'où vient
+  un thème, ce qu'un nom nu ne dirait pas.
+- **Le registre est généré parce que deux listes disent la même chose.** La liste des
+  modules et la table des noms divergeraient si on les tenait à la main : un artefact
+  ajouté sans son entrée serait du code mort que `clippy` signalerait, une entrée sans son
+  artefact ne compilerait pas. Les deux sortent du même balayage du répertoire, à chaque
+  import.
+- **J'ai mesuré avant de décider combien de skins reprendre.** Les trente-neuf coûtent
+  395 Kio de source générée et **deux dixièmes de seconde** de compilation — 1,03 s contre
+  1,26 s sur cette machine. C'est peu, et ce n'est donc pas le coût technique qui tranche :
+  ce qui tranche est que reprendre trente-neuf skins d'un projet sous GPLv3 dans un dépôt
+  sous MPL-2.0 ressemble à vendorer son répertoire de skins, et que l'argument du `NOTICE`
+  — « ce qui est repris est la donnée de configuration, pas du code » — est une décision
+  de l'auteur du dépôt, pas la mienne. J'en ai donc repris **trois**, chacun pour ce qu'il
+  démontre, et écrit le chiffre à côté de la décision pour qu'elle reste ouverte.
+- **Une régression que j'ai introduite et rattrapée en relisant.** En remplaçant le
+  `ThemeChoice` des deux applications par un nom, j'ai donné `tv` pour défaut aux deux —
+  alors que `rmc` s'ouvre aux couleurs de `mc`, ce que son propre doc-comment disait :
+  « une coquille qui s'appelle `rmc` s'ouvre aux couleurs de `mc` ». Trouvée en relisant le
+  mode d'emploi que je venais de modifier, pas par un essai : aucun n'affirmait le défaut
+  de `rmc` autrement que par une comparaison à `ThemeChoice::default()`, qui disparaissait
+  avec le type. L'essai qui le dit maintenant compare à `DEFAULT_THEME`.
+- **La résolution d'un nom est dans `air-tui`, et pas dans les deux applications.** Elles
+  la demandaient toutes les deux, et `ThemeChoice` était déjà écrit deux fois — une fois
+  dans chaque `main.rs`, avec des défauts différents. Écrite deux fois, une règle finit par
+  ne plus l'être qu'une.
+- **Une arête du dépôt, payée deux fois en écrivant ce jalon.** `xtask` dépend d'`air-tui`,
+  donc un registre désaccordé de ses fichiers **empêche l'outil de se bâtir** — et c'est
+  l'outil qui écrit le registre. Retirer un artefact demande donc de corriger `mod.rs` à la
+  main une fois avant de relancer un import. C'est le prix d'un espace de travail unique
+  (ADR-005), et il est écrit dans `CLAUDE.md` plutôt que redécouvert.
+- **Le nom d'un thème est le nom du skin transposé en identifiant Rust**, minuscules
+  comprises : `seasons-autumn16M.ini` donne `mc:seasons_autumn16m`. Un module Rust n'admet
+  ni tiret ni majuscule, et `clippy -D warnings` refuse `non_snake_case` — ce que j'ai
+  appris en voyant la compilation échouer sur `seasons_autumn16M`. Plutôt que de faire
+  porter au registre deux noms à tenir d'accord, `--list-themes` donne les noms exacts et
+  fait foi.
+- **Vérifié sur les octets émis, les quatre thèmes dans le même binaire** : `tv` donne
+  `38;5;0;48;5;7`, `mc:default` donne `38;5;0;48;5;6`, `mc:modarcon16_defbg` donne
+  `38;5;15;48;5;2` avec seize `;49m` — le fond du terminal —, et `mc:seasons_autumn16m`
+  donne `38;2;0;0;0;48;2;255;201;12` avec trois soulignés. Un seul exécutable, quatre
+  apparences, rien de lu au démarrage.
+- **1296 essais**, 7 codecs toujours à 100 %.
+
 ## 2026-10-10 — Les deux derniers gates de conventions, et la frontière que personne ne tenait
 
 - **Les six contrôles de `docs/CONVENTIONS-fr.md` sont écrits.** La section « À outiller »
