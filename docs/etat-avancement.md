@@ -164,6 +164,15 @@ boucle et l'arbre sont montés à la main par l'application, comme le fait l'exe
   le compte rendu par `poll` — qui l'a révélée au premier lancement. Les deux
   comportements sont couverts par un test sous `cfg`.
 
+### Défauts ouverts
+
+- ⛔ **macOS : `poll` sur `/dev/tty` rend `POLLNVAL`.** `PosixTerminal::open` ouvre
+  `/dev/tty`, donc `wait_for_input` échoue d'emblée et toute application sort aussitôt.
+  Mesuré hors d'air-tui : `poll` sur le descripteur 0 du même terminal fonctionne, `select`
+  sur `/dev/tty` fonctionne, et sur Linux les trois fonctionnent. Correctif prévu : se
+  servir des descripteurs standards quand ce sont des terminaux. **Bloquant sur une cible
+  tier-1.**
+
 ### Pas fait — et à ne pas annoncer comme fait
 
 - Le double clic : il demande une horloge, donc il n'a pas sa place dans un décodeur pur.

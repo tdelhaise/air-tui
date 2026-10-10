@@ -50,8 +50,20 @@ l'état vivant, ce journal est la trace figée, `INDEX.md` est la carte structur
   interdit **ne consomme pas** — une frappe qui disparaît sans effet est pire qu'une
   frappe ignorée.
 - **L'exemple `frame` est devenu une vraie boucle d'événements** et a été exécuté dans un
-  pty, pas seulement compilé : `Alt`+`F` ouvre bien le menu — le cadre apparaît dans le
-  flux de sortie — le curseur est posé à chaque image, et `F10` quitte avec le code 0.
+  pty, pas seulement compilé : `Alt`+`F` ouvre bien le menu — le cadre du menu déroulant
+  apparaît dans le flux de sortie — et le curseur est posé à chaque image.
+- **Un défaut bloquant sur macOS, trouvé par ce même essai, et pas corrigé ici.** La
+  première lecture des traces m'a fait écrire que `F10` quittait l'exemple avec le code 0.
+  C'était faux : le code 0 venait d'une autre branche de sortie. En instrumentant les
+  quatre sorties de la boucle, le coupable est apparu — `wait_for_input` rend
+  `InvalidDevice`, c'est-à-dire que `poll` a rendu `POLLNVAL`. Mesuré hors d'air-tui, le
+  comportement est net : sur macOS, `poll` sur un descripteur ouvert sur **`/dev/tty`**
+  rend `POLLNVAL`, alors que `poll` sur le descripteur **0** du même terminal fonctionne,
+  et que `select` sur `/dev/tty` fonctionne aussi. Sur Linux, les trois fonctionnent. Or
+  `PosixTerminal::open` ouvre `/dev/tty` : **toute application air-tui sort immédiatement
+  sur macOS**, cible tier-1. Le correctif — employer les descripteurs standards quand ce
+  sont des terminaux, comme le font ncurses et Turbo Vision — fait l'objet de la PR
+  suivante, pour ne pas mêler un correctif de couche 0 à des widgets.
 - Des documents nettoyés de ce qui était devenu faux : la section « Pas fait — et à ne pas
   annoncer comme fait » de `etat-avancement.md` listait encore les tables Unicode, l'arbre
   de vues, les widgets et le découpage par vue, tous faits depuis. Une section qui porte ce
