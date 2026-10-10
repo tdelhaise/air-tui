@@ -8,9 +8,8 @@
 //! groupe, un dialogue est un groupe. Le groupe ne sait rien de ce qu'il contient, et ce
 //! qu'il contient ne sait rien de lui.
 
-use crate::theme::AirTheme;
 use crate::view::painter::AirPainter;
-use crate::view::{AirView, AirViewId, AirViewState};
+use crate::view::{AirDrawContext, AirView, AirViewId, AirViewState};
 
 /// Une vue qui contient d'autres vues.
 ///
@@ -130,10 +129,10 @@ impl AirView for AirGroup {
         &mut self.state
     }
 
-    fn draw_content(&self, painter: &mut AirPainter<'_>, theme: &AirTheme) {
+    fn draw_content(&self, painter: &mut AirPainter<'_>, context: &AirDrawContext<'_>) {
         // Un groupe n'a pas de contenu propre : ses enfants sont dessinés par la
         // traversée, après cet appel.
-        let _ = (painter, theme);
+        let _ = (painter, context);
     }
 
     fn children(&self) -> &[Box<dyn AirView>] {
@@ -161,9 +160,8 @@ impl core::fmt::Debug for AirGroup {
 mod tests {
     use super::AirGroup;
     use crate::geometry::AirRectangle;
-    use crate::theme::AirTheme;
     use crate::view::painter::AirPainter;
-    use crate::view::{AirView, AirViewId, AirViewState};
+    use crate::view::{AirDrawContext, AirView, AirViewId, AirViewState};
 
     fn identifier(value: u32) -> AirViewId {
         AirViewId::new(value).expect("un identifiant non nul")
@@ -179,7 +177,7 @@ mod tests {
         fn state_mut(&mut self) -> &mut AirViewState {
             &mut self.0
         }
-        fn draw_content(&self, _painter: &mut AirPainter<'_>, _theme: &AirTheme) {}
+        fn draw_content(&self, _painter: &mut AirPainter<'_>, _context: &AirDrawContext<'_>) {}
     }
 
     fn leaf(value: u32) -> Box<dyn AirView> {

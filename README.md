@@ -30,9 +30,15 @@ terminal veut bien les donner.
 
 ## État
 
-**Préliminaire — rien n'est utilisable à ce stade.** L'avancement réel, jalon par jalon,
-est tenu dans [`docs/etat-avancement.md`](docs/etat-avancement.md). Ce README décrit
-l'intention du projet, pas ce qui est livré.
+**En construction, et déjà exécutable.** `cargo run --example frame` ouvre une interface
+en style Turbo Vision qui répond : des menus déroulants, un champ de saisie qui édite par
+grappes de graphème, une barre de statut à raccourcis, et le curseur du terminal à la
+bonne colonne.
+
+Ce qui manque encore : les applications `redit` et `rmc`, le thème Midnight Commander,
+l'éditeur de texte et les listes. L'avancement réel, jalon par jalon, est tenu dans
+[`docs/etat-avancement.md`](docs/etat-avancement.md) — et ce README décrit l'intention du
+projet, qui va plus loin que ce qui est livré.
 
 ## Cibles
 

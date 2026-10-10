@@ -6,6 +6,58 @@ tête. On ajoute, on ne réécrit jamais une entrée passée.
 Une entrée par campagne, pas par commit. Répartition des rôles : `etat-avancement.md` est
 l'état vivant, ce journal est la trace figée, `INDEX.md` est la carte structurelle.
 
+## 2026-10-10 — M5b, barre de menu, barre de statut, champ de saisie, curseur
+
+- **La surimpression annoncée au jalon M5 n'était pas nécessaire.** C'est la découverte du
+  jalon, et elle vient d'avoir lu le code avant d'écrire le mécanisme : `draw_view`
+  parcourt les enfants de l'arrière vers l'avant, `dispatch_positional` de l'avant vers
+  l'arrière, et un test de M4 — `un_clic_va_a_la_vue_du_premier_plan` — le vérifiait déjà.
+  Une sœur au premier plan recouvre donc, au dessin comme au routage. `AirMenuBar`
+  **grandit** quand elle s'ouvre, son menu reste dans ses propres limites, et le découpage
+  par vue garde zéro exception. La contrainte qui reste est réelle et documentée dans
+  l'en-tête du module : la barre doit être insérée **en dernier**.
+- **Un défaut de fond trouvé chez moi, et corrigé à la cause.** J'avais écrit dans
+  `AirMenuBar` une fonction `is_command_enabled()` qui rendait `true` sans condition, avec
+  un commentaire la présentant comme une couture — alors que `ARCHITECTURE-fr.md`
+  affirmait depuis M5 que « chaque vue interroge le jeu de commandes au moment où elle se
+  dessine ». Le chemin de dessin ne recevait pas ce jeu. C'est exactement le NO GO n° 2.
+  La correction n'est pas le commentaire : c'est `AirDrawContext`, qui porte le thème
+  **et** le jeu de commandes jusqu'à `draw_content`. Le grisage et le refus d'activer
+  lisent désormais la même source et ne peuvent plus diverger. Changement de rupture,
+  donc `air-tui` passe en 0.6.0.
+- **Le curseur matériel manquait**, et sans lui un champ de saisie n'est pas utilisable.
+  La règle est portée par la traversée, pas par la vue : `AirView::cursor` répond en
+  coordonnées de contenu, `draw_view` ne retient la réponse que d'une vue **focalisée**,
+  garde celle du descendant le plus profond, et jette un curseur qui ne passe pas le
+  découpage — il irait clignoter sur la vue qui recouvre. Le rendu l'émet **après** les
+  cellules, parce que l'écriture de la dernière cellule a laissé le curseur matériel là où
+  elle s'est terminée.
+- **`AirInputLine` édite par grappes de graphème**, pas par caractère. `é` décomposé est
+  deux caractères et une touche effacée ; une famille d'emoji est sept caractères et une
+  touche effacée. Se déplacer « d'un caractère » couperait entre une lettre et son accent.
+  Les tables de M3 servent enfin à ce pour quoi elles ont été écrites. Le curseur est un
+  décalage en octets sur une frontière de grappe : stable à l'insertion comme à la
+  suppression, là où un indice de grappe demanderait de recompter tout le texte.
+- Un détail trouvé en écrivant le défilement : il doit avancer **par grappes**, pas par
+  colonnes. Avec un idéogramme à deux colonnes, avancer d'une colonne couperait le glyphe
+  en deux. Et la dernière colonne du champ est réservée au curseur, sans quoi taper en
+  bout de champ le placerait hors de la vue.
+- **Les deux barres sont dans des phases opposées, et pour des raisons opposées.**
+  `AirMenuBar` est en pré-traitement : aucun champ de saisie n'a d'usage pour `Alt`+lettre.
+  `AirStatusLine` est en post-traitement : elle publie des touches de fonction, et les
+  prendre d'abord reviendrait à les voler à la vue focalisée. Deux conséquences testées :
+  fermée, la barre de menu ne consomme **rien** ; et la touche d'un item de barre de statut
+  interdit **ne consomme pas** — une frappe qui disparaît sans effet est pire qu'une
+  frappe ignorée.
+- **L'exemple `frame` est devenu une vraie boucle d'événements** et a été exécuté dans un
+  pty, pas seulement compilé : `Alt`+`F` ouvre bien le menu — le cadre apparaît dans le
+  flux de sortie — le curseur est posé à chaque image, et `F10` quitte avec le code 0.
+- Des documents nettoyés de ce qui était devenu faux : la section « Pas fait — et à ne pas
+  annoncer comme fait » de `etat-avancement.md` listait encore les tables Unicode, l'arbre
+  de vues, les widgets et le découpage par vue, tous faits depuis. Une section qui porte ce
+  titre et mentionne des choses faites est le défaut même que les NO GO visent. Et
+  `widgets/mod.rs` annonçait toujours « deux widgets seulement ».
+
 ## 2026-10-10 — M5, moteur de thèmes et premiers widgets
 
 - **La palette est transcrite, pas approchée.** Plutôt que d'approcher le look Borland de

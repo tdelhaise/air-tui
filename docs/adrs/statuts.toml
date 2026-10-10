@@ -47,12 +47,12 @@ note   = "largeur et graphèmes faits (M3, Unicode 18.0.0) ; segmentation en mot
 ["007"]
 objet  = "MVC par journal de changements, sans Observer ni Rc/RefCell"
 statut = "en-cours"
-note   = "mécanisme 3 fait (AirCommandSet, M4) ; le journal de changements attend M6"
+note   = "mécanisme 3 fait et complété (AirDrawContext porte le jeu de commandes au dessin, M5b) ; le journal de changements attend M6"
 
 ["008"]
 objet  = "Moteur de thèmes : palette par rôles, glyphes, décorations ; thèmes compilés"
 statut = "en-cours"
-note   = "palette transcrite de Borland et quantificateur faits (M5) ; thème MC et importeur de skins en M7"
+note   = "palette transcrite de Borland, quantificateur et huit widgets colorés par rôles faits (M5, M5b) ; thème MC et importeur de skins en M7"
 
 ["009"]
 objet  = "Versionnement semver, par crate, incrémenté à chaque PR qui touche la crate"
@@ -62,7 +62,7 @@ note   = "gate check-versions à écrire ; règle tenue à la main en attendant"
 ["010"]
 objet  = "Bordure par défaut sur les vues, retirable par border = false"
 statut = "fait"
-note   = "arbre de vues écrit (M4) ; content_bounds et le retrait par les petits contrôles en place"
+note   = "arbre de vues écrit (M4) ; content_bounds en place, et cinq petits contrôles retirent la bordure dans leur constructeur (M5b)"
 
 ["011"]
 objet  = "Couture de plateforme par traits, une crate d'implémentation par plateforme"

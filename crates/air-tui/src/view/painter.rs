@@ -67,6 +67,16 @@ impl<'surface> AirPainter<'surface> {
     }
 
     /// La position absolue d'une position de vue, si elle passe le découpage.
+    ///
+    /// Publique pour le curseur : c'est la seule chose qu'une vue produit en coordonnées
+    /// locales et que le terminal consomme en coordonnées absolues. Un curseur hors du
+    /// découpage rend `None` — il ne doit pas apparaître sur le voisin qui recouvre.
+    #[must_use]
+    pub fn absolute_position(&self, point: AirPoint) -> Option<AirPoint> {
+        self.absolute(point)
+    }
+
+    /// La position absolue d'une position de vue, si elle passe le découpage.
     fn absolute(&self, point: AirPoint) -> Option<AirPoint> {
         if point.column.value() >= self.bounds.size.columns
             || point.row.value() >= self.bounds.size.rows

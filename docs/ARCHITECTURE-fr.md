@@ -113,6 +113,11 @@ AirApplication                 boucle, terminal, thème, jeu de commandes
      └─ AirStatusLine
 ```
 
+Ce que cette hiérarchie décrit est la **cible**. Au jalon M5b, `AirMenuBar`, `AirWindow`,
+`AirStatusLine` et `AirView` existent ; `AirApplication`, `AirScreen` et `AirDesktop` non.
+L'application monte sa boucle et son arbre à la main sur `AirGroup`, comme le fait
+l'exemple `frame` — et c'est au jalon M6, avec `redit`, que ces trois pièces viennent.
+
 Et la couche basse, nommée pour ne pas entrer en collision avec `AirScreen` :
 
 | Type | Rôle |
@@ -157,6 +162,45 @@ les siennes.
 Le focus est **exclusif entre sœurs**, tenu par le groupe : le garder à un seul endroit est
 la façon la plus sûre de ne pas le voir se dédoubler.
 
+**Le contexte de dessin.** `AirDrawContext` porte ce qu'une vue a besoin de savoir pour se
+dessiner et qui ne lui appartient pas : le **thème** et le **jeu de commandes**. Le second
+a été ajouté au jalon M5b pour corriger un défaut de fond — ce document affirmait déjà que
+chaque vue interroge le jeu au moment où elle se dessine, mais le chemin de dessin ne
+recevait que le thème, et le grisage d'un item de menu reposait sur une fonction qui
+rendait toujours `true`. Le grisage et le refus d'activer lisent désormais la même source.
+
+### Pas de surimpression, et pourquoi
+
+Un menu déroulant devait demander un mécanisme de surimpression : se dessiner par-dessus
+ce qui est déjà là, hors des limites de son propriétaire. Il n'en faut aucun.
+
+Le dessin parcourt les enfants de **l'arrière vers l'avant** — le dernier inséré écrit par
+dessus — et le routage positionnel les parcourt de **l'avant vers l'arrière** — le premier
+plan reçoit le clic d'abord. Une vue au premier plan recouvre donc déjà ses sœurs, au
+dessin comme au routage, sans rien savoir d'elles. `AirMenuBar` **grandit** quand elle
+s'ouvre : ses limites couvrent la zone du menu, et tout reste à l'intérieur. Le découpage
+par vue ne souffre aucune exception.
+
+La contrainte qui en découle est réelle : la barre de menu doit être insérée **en dernier**
+dans son groupe. Insérée ailleurs, elle serait recouverte par ce qui vient après.
+
+### Le curseur
+
+Une vue répond à `AirView::cursor` en coordonnées de sa zone de contenu. `draw_view` rend
+la position **absolue** du curseur, et trois règles sont appliquées par la traversée et non
+par la vue :
+
+- seule une vue **focalisée** voit sa réponse retenue — deux champs ne peuvent donc pas
+  revendiquer le curseur en même temps, et un champ peut répondre sans savoir s'il a le
+  focus ;
+- c'est le curseur du descendant **le plus profond** qui gagne ;
+- un curseur qui ne passe pas le **découpage** n'en est pas un : il irait clignoter sur la
+  vue qui recouvre.
+
+`AirTerminal::set_cursor` le pose, et le rendu l'émet **après** les cellules : l'écriture
+de la dernière cellule a laissé le curseur matériel là où elle s'est terminée. Aucun
+curseur réclamé signifie un curseur caché.
+
 ## Les commandes
 
 `AirCommandSet` est le mécanisme 3 de l'ADR-007, et il mérite d'être signalé parce qu'il
@@ -174,8 +218,9 @@ sous-vue, **toute `AirView` a une bordure par défaut** et la retire par `border
 `content_bounds()` rend les limites moins une cellule de chaque côté quand la bordure est
 présente, et c'est elle que le dessin d'un widget doit viser.
 
-Les petits contrôles — bouton, étiquette, groupe de cases — posent `border = false` dans
-leur constructeur : le défaut profite aux conteneurs.
+Les petits contrôles posent `border = false` dans leur constructeur : le défaut profite
+aux conteneurs. Au jalon M5b, cinq le font — `AirStaticText`, `AirButton`, `AirInputLine`,
+`AirMenuBar` et `AirStatusLine` — et deux gardent la bordure : `AirPanel` et `AirWindow`.
 
 ## L'entrée, à deux étages
 
