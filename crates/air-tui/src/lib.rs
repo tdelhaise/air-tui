@@ -39,6 +39,7 @@ pub mod input;
 pub mod surface;
 pub mod terminal;
 pub mod theme;
+pub mod unicode;
 
 pub use air_tui_platform::{InputReadiness, PlatformError, PlatformErrorKind, TerminalDevice};
 pub use cell::{AirAttributes, AirCell, AirColor};
@@ -51,3 +52,8 @@ pub use input::{
 pub use surface::AirSurface;
 pub use terminal::AirTerminal;
 pub use theme::AirTheme;
+pub use unicode::{
+    AirGraphemeBreak, AirGraphemes, AirIndicConjunctBreak, UNICODE_VERSION, display_width,
+    grapheme_break, grapheme_width, graphemes, indic_conjunct_break, is_extended_pictographic,
+    text_width,
+};

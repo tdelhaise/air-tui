@@ -1,0 +1,4 @@
+# `cargo xtask …` plutôt qu'un script : l'outillage du dépôt est du Rust, compilé par la
+# même toolchain pinnée que le reste, et il se teste comme le reste.
+[alias]
+xtask = "run --package xtask --"

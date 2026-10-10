@@ -18,6 +18,7 @@ members = [
     "crates/air-tui-platform",
     "crates/air-tui-platform-posix",
     "crates/air-tui",
+    "xtask",
 ]
 
 [workspace.package]

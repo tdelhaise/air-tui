@@ -79,6 +79,28 @@ codec est tenu à **100 % de couverture** (ADR-012). Deux existent : l'encodeur 
 l'écriture décimale qu'il emploie. Les décodeurs à venir — séquences ANSI d'entrée,
 protocole Kitty, graphèmes Unicode — porteront chacun une cible `cargo-fuzz`.
 
+## Unicode
+
+Écrit au jalon M3 (`air-tui/src/unicode/`), avec des tables **générées depuis le
+référentiel et committées** (ADR-006), édition 18.0.0 — `cargo xtask
+generate-unicode-tables`.
+
+Deux propriétés que `std` ne donne pas, et dont une interface texte ne peut pas se passer :
+
+- la **largeur d'affichage**. Sans elle, un `漢` compté pour une colonne décale la bordure
+  droite de sa fenêtre. `AirSurface::draw_text` écrit donc une **cellule de continuation**
+  après une grappe large, et le rendu la saute : l'émettre écraserait la moitié droite du
+  glyphe que le terminal vient de dessiner ;
+- la **segmentation en graphèmes** (annexe 29). Sans elle, `Backspace` démembre un
+  `👨‍👩‍👧‍👦` en quatre personnages. Les règles `GB3` à `GB13` sont implémentées, **y
+  compris `GB9c`** — la coupure conjointe indienne, sans laquelle le curseur coupe au
+  milieu d'un `क्ष` devanagari.
+
+Un choix à connaître : la largeur d'une grappe est le **maximum** des largeurs de ses
+caractères, pas leur somme. Une famille d'emoji soudée par des jointures occupe deux
+colonnes, pas huit — c'est ce que font les terminaux modernes, et la seule définition qui
+garde le curseur et le rendu d'accord entre eux.
+
 ## La hiérarchie d'objets
 
 ```

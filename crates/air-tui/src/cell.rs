@@ -106,6 +106,15 @@ pub struct AirCell {
     pub background: AirColor,
     /// Les attributs de rendu.
     pub attributes: AirAttributes,
+    /// Vrai si cette cellule est la **seconde moitié** d'un caractère large.
+    ///
+    /// Un idéogramme ou un emoji occupe deux colonnes de la grille mais ne porte qu'un
+    /// seul caractère. La cellule qui suit est marquée ainsi, et le rendu la **saute** :
+    /// l'émettre écraserait la moitié droite du glyphe que le terminal vient de dessiner.
+    ///
+    /// Un booléen nommé plutôt qu'un caractère sentinelle : l'ADR-021 §1 refuse les
+    /// sentinelles, et `'\0'` dans un champ `character` serait exactement cela.
+    pub is_continuation: bool,
 }
 
 impl AirCell {
@@ -116,6 +125,22 @@ impl AirCell {
             foreground,
             background,
             attributes: AirAttributes::NONE,
+            is_continuation: false,
+        }
+    }
+
+    /// La seconde moitié d'un caractère large, qui reprend sa présentation.
+    ///
+    /// Elle porte une espace : si le terminal ne sait pas dessiner le glyphe large, la
+    /// cellule reste au moins de la bonne couleur au lieu d'afficher un résidu.
+    #[must_use]
+    pub const fn continuation_of(wide: Self) -> Self {
+        Self {
+            character: ' ',
+            foreground: wide.foreground,
+            background: wide.background,
+            attributes: wide.attributes,
+            is_continuation: true,
         }
     }
 
@@ -142,6 +167,19 @@ mod tests {
         let cell = AirCell::default();
         assert_eq!(cell.character, ' ');
         assert_eq!(cell.attributes, AirAttributes::NONE);
+        assert!(!cell.is_continuation);
+    }
+
+    #[test]
+    fn une_continuation_reprend_la_presentation_du_caractere_large() {
+        let wide = AirCell::new('漢', AirColor::WHITE, AirColor::BLUE)
+            .with_attributes(AirAttributes::NONE.with_bold());
+        let continuation = AirCell::continuation_of(wide);
+        assert!(continuation.is_continuation);
+        assert_eq!(continuation.character, ' ');
+        assert_eq!(continuation.foreground, AirColor::WHITE);
+        assert_eq!(continuation.background, AirColor::BLUE);
+        assert!(continuation.attributes.bold);
     }
 
     #[test]

@@ -131,6 +131,23 @@ types ne font pas partie du modèle d'objets de l'interface.
 
 ---
 
+# Fichiers générés
+
+`crates/air-tui/src/unicode/tables.rs` est **produit** par
+`cargo xtask generate-unicode-tables` et ne s'édite **jamais** à la main (ADR-006). Une
+modification manuelle serait écrasée à la génération suivante, et
+`cargo xtask generate-unicode-tables --ucd-directory <répertoire> --check` la refuse.
+
+Un fichier généré passe les **mêmes contrôles** que le code écrit à la main : `fmt`,
+`clippy -D warnings`, documentation de chaque élément public. C'est au générateur de s'y
+plier — constaté le 2026-10-10, où les doc-comments émis manquaient d'accents graves
+autour des noms de règles et faisaient échouer clippy.
+
+Mettre à jour une édition d'Unicode est donc une campagne identifiable : télécharger,
+régénérer, committer le diff, relire les tests de largeur et de segmentation.
+
+---
+
 # Codecs
 
 Toute conversion d'un flux de données passe par un codec — un `Decoder`, un `Encoder`, ou

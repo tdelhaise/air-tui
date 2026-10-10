@@ -13,6 +13,7 @@
 
 use crate::cell::{AirAttributes, AirCell, AirColor};
 use crate::geometry::{AirColumn, AirPoint, AirRectangle, AirRow, AirSize};
+use crate::unicode::{grapheme_width, graphemes};
 
 /// Une grille de cellules, avec le souvenir de ce qui est déjà affiché.
 #[derive(Debug, Clone)]
@@ -130,9 +131,24 @@ impl AirSurface {
     /// Écrit une chaîne à partir d'une position, et rend la colonne qui suit le dernier
     /// caractère écrit.
     ///
-    /// Un caractère par cellule : la largeur d'affichage réelle — idéogrammes, emoji,
-    /// combinants — relève des tables UCD du jalon M3 (ADR-006) et n'est **pas** prise en
-    /// compte ici.
+    /// # Ce que cette fonction respecte, et pourquoi
+    ///
+    /// Le texte est parcouru par **grappes de graphème**, pas par caractères : un `e`
+    /// suivi d'un accent combinant occupe une cellule, pas deux, et une famille d'emoji
+    /// soudée par des jointures en occupe deux, pas huit (ADR-006).
+    ///
+    /// Une grappe **large** — idéogramme, emoji — occupe deux colonnes : la seconde reçoit
+    /// une cellule de continuation que le rendu saute. Sans cela, le terminal dessinerait
+    /// le glyphe sur deux colonnes puis air-tui écraserait sa moitié droite.
+    ///
+    /// Une grappe de largeur **nulle** — une marque combinante orpheline — n'avance pas
+    /// la colonne : la poser dans une cellule décalerait tout ce qui suit.
+    ///
+    /// # Découpage
+    ///
+    /// Le découpage se fait sur le bord de la **surface**. Une grappe large qui ne tient
+    /// pas entièrement n'est **pas** écrite : en afficher la moitié produirait un glyphe
+    /// tronqué à la place d'un vide propre.
     pub fn draw_text(
         &mut self,
         origin: AirPoint,
@@ -142,14 +158,31 @@ impl AirSurface {
         attributes: AirAttributes,
     ) -> AirColumn {
         let mut column = origin.column;
-        for character in text.chars() {
+        for cluster in graphemes(text) {
+            let width = grapheme_width(cluster);
+            if width == 0 {
+                // Une marque orpheline : rien à poser, rien à avancer.
+                continue;
+            }
+            let last_needed = column
+                .value()
+                .saturating_add(u16::try_from(width).unwrap_or(u16::MAX).saturating_sub(1));
+            if last_needed >= self.size.columns {
+                // La grappe ne tient pas entière : on s'arrête plutôt que de la tronquer.
+                break;
+            }
+            let character = cluster.chars().next().unwrap_or(' ');
             let cell = AirCell::new(character, foreground, background).with_attributes(attributes);
             let point = AirPoint::new(column, origin.row);
-            if !self.set_cell(point, cell) && column.value() >= self.size.columns {
-                // Sorti par la droite : les caractères suivants ne peuvent pas rentrer.
+            if !self.set_cell(point, cell) {
                 break;
             }
             column = column.next();
+            if width == 2 {
+                let continuation = AirPoint::new(column, origin.row);
+                self.set_cell(continuation, AirCell::continuation_of(cell));
+                column = column.next();
+            }
         }
         column
     }
@@ -305,6 +338,125 @@ mod tests {
         assert_eq!(
             surface.cell(point(2, 0)).map(|found| found.character),
             Some('b')
+        );
+    }
+
+    #[test]
+    fn un_ideogramme_occupe_deux_cellules_dont_une_continuation() {
+        let mut surface = AirSurface::new(AirSize::new(6, 1));
+        let next = surface.draw_text(
+            point(0, 0),
+            "漢",
+            AirColor::WHITE,
+            AirColor::BLUE,
+            AirAttributes::NONE,
+        );
+        assert_eq!(next, AirColumn::new(2));
+        assert_eq!(
+            surface.cell(point(0, 0)).map(|found| found.character),
+            Some('漢')
+        );
+        assert_eq!(
+            surface.cell(point(1, 0)).map(|found| found.is_continuation),
+            Some(true)
+        );
+        // La continuation reprend la présentation : la couleur de fond reste juste même si
+        // le terminal ne sait pas dessiner le glyphe.
+        assert_eq!(
+            surface.cell(point(1, 0)).map(|found| found.background),
+            Some(AirColor::BLUE)
+        );
+    }
+
+    #[test]
+    fn une_grappe_large_qui_ne_tient_pas_n_est_pas_tronquee() {
+        // En écrire la moitié produirait un glyphe coupé ; un vide propre vaut mieux.
+        let mut surface = AirSurface::new(AirSize::new(2, 1));
+        let next = surface.draw_text(
+            point(1, 0),
+            "漢",
+            AirColor::WHITE,
+            AirColor::BLUE,
+            AirAttributes::NONE,
+        );
+        assert_eq!(next, AirColumn::new(1));
+        assert_eq!(
+            surface.cell(point(1, 0)).map(|found| found.character),
+            Some(' ')
+        );
+    }
+
+    #[test]
+    fn une_marque_combinante_ne_consomme_pas_de_cellule() {
+        let mut surface = AirSurface::new(AirSize::new(6, 1));
+        let next = surface.draw_text(
+            point(0, 0),
+            "e\u{301}f",
+            AirColor::WHITE,
+            AirColor::BLUE,
+            AirAttributes::NONE,
+        );
+        // Deux grappes, donc deux cellules — pas trois.
+        assert_eq!(next, AirColumn::new(2));
+        assert_eq!(
+            surface.cell(point(0, 0)).map(|found| found.character),
+            Some('e')
+        );
+        assert_eq!(
+            surface.cell(point(1, 0)).map(|found| found.character),
+            Some('f')
+        );
+    }
+
+    #[test]
+    fn une_marque_orpheline_n_avance_pas_la_colonne() {
+        // La poser décalerait tout ce qui suit.
+        let mut surface = AirSurface::new(AirSize::new(4, 1));
+        let next = surface.draw_text(
+            point(0, 0),
+            "\u{301}a",
+            AirColor::WHITE,
+            AirColor::BLUE,
+            AirAttributes::NONE,
+        );
+        assert_eq!(next, AirColumn::new(1));
+        assert_eq!(
+            surface.cell(point(0, 0)).map(|found| found.character),
+            Some('a')
+        );
+    }
+
+    #[test]
+    fn une_famille_d_emoji_occupe_deux_cellules_et_non_huit() {
+        let mut surface = AirSurface::new(AirSize::new(8, 1));
+        let next = surface.draw_text(
+            point(0, 0),
+            "👨\u{200D}👩\u{200D}👧\u{200D}👦",
+            AirColor::WHITE,
+            AirColor::BLUE,
+            AirAttributes::NONE,
+        );
+        assert_eq!(next, AirColumn::new(2));
+    }
+
+    #[test]
+    fn un_texte_ideographique_n_ecrase_pas_la_bordure_qui_le_suit() {
+        // C'est le défaut que les tables Unicode existent pour empêcher : sans largeur
+        // d'affichage, trois idéogrammes avancent de trois colonnes au lieu de six et la
+        // bordure droite se retrouve recouverte.
+        let mut surface = AirSurface::new(AirSize::new(10, 1));
+        let border = AirCell::new('│', AirColor::WHITE, AirColor::BLUE);
+        assert!(surface.set_cell(point(7, 0), border));
+        surface.draw_text(
+            point(1, 0),
+            "漢字体",
+            AirColor::WHITE,
+            AirColor::BLUE,
+            AirAttributes::NONE,
+        );
+        assert_eq!(
+            surface.cell(point(7, 0)).map(|found| found.character),
+            Some('│')
         );
     }
 

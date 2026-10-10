@@ -294,6 +294,11 @@ impl AirTerminal {
         self.output.extend_from_slice(b"\x1b[?2026h");
 
         for (point, cell) in surface.difference() {
+            if cell.is_continuation {
+                // La seconde moitié d'un caractère large : l'émettre écraserait la moitié
+                // droite du glyphe que le terminal vient de dessiner.
+                continue;
+            }
             // Les coordonnées ANSI comptent depuis un, la grille depuis zéro.
             self.output.extend_from_slice(b"\x1b[");
             push_decimal(&mut self.output, point.row.value().saturating_add(1));
@@ -955,6 +960,33 @@ mod tests {
             "pop inattendu : {emitted:?}"
         );
         assert!(emitted.contains("\u{1b}[?1049l"), "restauration absente");
+    }
+
+    #[test]
+    fn le_rendu_saute_la_continuation_d_un_caractere_large() {
+        // L'émettre écraserait la moitié droite du glyphe que le terminal vient de
+        // dessiner : un seul caractère doit être positionné pour deux cellules.
+        let mut surface = AirSurface::new(AirSize::new(4, 1));
+        surface.mark_presented();
+        surface.draw_text(
+            AirPoint::new(AirColumn::FIRST, AirRow::FIRST),
+            "漢",
+            AirColor::WHITE,
+            AirColor::BLUE,
+            crate::cell::AirAttributes::NONE,
+        );
+
+        let recorder = RecordingDevice {
+            size: Some(WindowSize {
+                columns: 4,
+                rows: 1,
+            }),
+            ..RecordingDevice::default()
+        };
+        let mut terminal = AirTerminal::new(Box::new(recorder)).expect("construction");
+        terminal.present(&mut surface).expect("rendu");
+        let replayed = replay(&terminal.output);
+        assert_eq!(replayed, vec![(1, 1, '漢')]);
     }
 
     #[test]
