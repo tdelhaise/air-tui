@@ -305,7 +305,11 @@ modificateurs complets à travers un pty : sans lui, `Ctrl+Shift+S` et `Ctrl+S` 
 tous deux l'octet `0x13` et sont indiscernables. Il apporte aussi deux choses qu'aucun
 autre étage terminal ne donne :
 
-- les **relâchements de touche**, et la distinction enfoncement / répétition ;
+- les **relâchements de touche**, et la distinction enfoncement / répétition. Le
+  framework les **écarte à la distribution** (`view::dispatch_event`) : une vue qui
+  traiterait un relâchement agirait deux fois par frappe. Une répétition, elle, passe —
+  maintenir une flèche doit répéter le déplacement. Les deux moitiés de cette règle sont
+  éprouvées, parce qu'un filtre trop large passerait la première et casserait la seconde ;
 - la **touche de la disposition de base**, exposée par `AirKeyEvent::base_layout` et
   `shortcut_key()`. C'est ce qui fait fonctionner `Alt+F` pour « Fichier » sur un clavier
   cyrillique comme sur un QWERTY — exactement le problème qu'un framework à menus doit

@@ -50,7 +50,7 @@
 
 use crate::cell::{AirAttributes, AirCell};
 use crate::geometry::{AirColumn, AirPoint, AirRectangle, AirRow};
-use crate::input::event::{AirInputEvent, AirKey, AirKeyState, AirMouseButton, AirMouseEventKind};
+use crate::input::event::{AirInputEvent, AirKey, AirMouseButton, AirMouseEventKind};
 use crate::theme::{AirColorPair, AirRole};
 use crate::unicode::{grapheme_width, graphemes};
 use crate::view::painter::AirPainter;
@@ -418,12 +418,11 @@ impl AirView for AirListBox {
                 if key.modifiers.control || key.modifiers.alternate {
                     return AirOutcome::Ignored;
                 }
-                // Un relâchement n'est pas une frappe. Le protocole clavier Kitty les
-                // rapporte (`\x1b[>23u` demande le type d'événement) : les traiter
-                // ferait descendre le curseur de deux items par appui sur la flèche.
-                if key.state == AirKeyState::Release {
-                    return AirOutcome::Ignored;
-                }
+                // Les relâchements de touche ne parviennent pas ici : la distribution
+                // les écarte avant la descente (`crate::view::dispatch_event`). Ce widget
+                // portait ce filtre au jalon M7b, seul du dépôt à le porter — et il ne
+                // protégeait presque rien, le décodeur rendant alors un enfoncement pour
+                // tout relâchement de flèche.
                 self.handle_key(key.logical)
             }
             AirInputEvent::Mouse(mouse) => {
@@ -678,18 +677,41 @@ mod tests {
     }
 
     #[test]
-    fn un_relachement_de_touche_n_est_pas_une_frappe() {
-        // Le protocole clavier Kitty rapporte les relâchements : sans ce filtre, une
-        // flèche descendrait de deux items.
+    fn un_relachement_de_touche_ne_descend_pas_le_curseur() {
+        // La règle vit dans la distribution (jalon M7c) et non dans ce widget : l'essai
+        // passe donc par `dispatch_event`, le chemin que prend une vraie frappe. Piloter
+        // `handle_event` directement éprouverait un filtre que la liste ne porte plus.
+        let mut list = list(5, 5);
+        let mut commands = AirCommandSet::new();
+        let mut context = AirContext {
+            commands: &mut commands,
+        };
+        let mut event = AirEvent::new(AirInputEvent::Key(AirKeyEvent {
+            logical: AirKey::Down,
+            modifiers: AirModifiers::default(),
+            state: AirKeyState::Release,
+            physical: None,
+            base_layout: None,
+        }));
+        let outcome = crate::view::dispatch_event(&mut list, &mut event, &mut context);
+        assert_eq!(outcome, AirOutcome::Ignored);
+        assert_eq!(list.focused_item(), 0);
+    }
+
+    #[test]
+    fn une_repetition_de_touche_descend_le_curseur() {
+        // Le pendant du précédent, et il compte autant : maintenir la flèche doit
+        // répéter le déplacement. Un filtre qui écarterait « tout ce qui n'est pas un
+        // enfoncement » passerait l'essai du relâchement et casserait celui-ci.
         let mut list = list(5, 5);
         let outcome = send_key(
             &mut list,
             AirKey::Down,
-            AirKeyState::Release,
+            AirKeyState::Repeat,
             AirModifiers::default(),
         );
-        assert_eq!(outcome, AirOutcome::Ignored);
-        assert_eq!(list.focused_item(), 0);
+        assert_eq!(outcome, AirOutcome::Consumed);
+        assert_eq!(list.focused_item(), 1);
     }
 
     #[test]

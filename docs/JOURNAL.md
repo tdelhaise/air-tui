@@ -6,6 +6,79 @@ tête. On ajoute, on ne réécrit jamais une entrée passée.
 Une entrée par campagne, pas par commit. Répartition des rôles : `etat-avancement.md` est
 l'état vivant, ce journal est la trace figée, `INDEX.md` est la carte structurelle.
 
+## 2026-10-10 — Jalon M7c : le type d'événement de touche, décodé puis écarté
+
+- **Le défaut que M7b avait consigné était plus large que sa description, et deux
+  affirmations de M7b étaient fausses.** C'est le résultat principal de cette campagne, et
+  il tient à l'ordre dans lequel les choses ont été faites : mesurer avant d'écrire. Le
+  jalon précédent avait noté « le filtrage des relâchements n'est fait que par
+  `AirListBox` » et rangé cela en défaut ouvert. En l'instruisant, le filtre s'est révélé
+  presque inutile et la cause bien plus en amont.
+- **Le décodeur ignorait le type d'événement partout où il compte.** Le protocole Kitty
+  place le type en sous-paramètre du champ des modificateurs, et cette règle vaut pour
+  *toutes* les formes. `air-tui` ne la lisait que sur la forme `CSI … u` — celle des
+  caractères — et pas sur l'encodage historique des touches spéciales : flèches, `Début`,
+  `Fin`, `Inser`, `Suppr`, `F1` à `F20`. Autrement dit le type était décodé là où il ne
+  sert à presque rien, et perdu là où les widgets vivent. Mesuré avant de corriger :
+  `\x1b[;1:3B` ressortait en **enfoncement** de flèche bas.
+- **Donc le commentaire que j'avais écrit dans `AirListBox` à M7b décrivait un effet que
+  son filtre ne prévenait pas** — « les traiter ferait descendre le curseur de deux items
+  par appui sur la flèche ». La flèche relâchée descendait bien le curseur, et le filtre
+  n'y pouvait rien : l'événement n'arrivait jamais marqué comme un relâchement. Un filtre
+  qui rassure sans protéger est pire qu'un filtre absent, pour la même raison que le NO GO
+  n° 1 : il donne une assurance que personne ne revérifie.
+- **La forme réellement émise omet le numéro de touche**, et la page du protocole ne le
+  montre pas. Elle donne la règle générale — le type est un sous-champ des modificateurs —
+  et aucun exemple de flèche. S'arrêter là aurait laissé une inférence au cœur d'un codec.
+  La vérification est venue de `kitty/key_encoding.py`, qui n'écrit le numéro de touche que
+  s'il diffère de un : la séquence est `CSI ; 1 : 3 B`, **champ vide**. Les deux formes sont
+  décodées et éprouvées, celle avec le numéro comme celle sans.
+- **Le filtre est à la distribution, en un seul endroit.** `view::dispatch_event` écarte un
+  relâchement avant la descente dans l'arbre. Douze widgets qui répètent une règle sont
+  douze endroits où elle peut manquer — c'est précisément ce que M7b avait livré, onze
+  widgets exposés et un protégé pour rien. L'information n'est pas détruite pour autant :
+  une boucle d'application tient l'événement d'entrée avant de le distribuer, donc qui a
+  besoin des relâchements les a encore. C'est l'argument qui a fait préférer cet endroit à
+  la boucle elle-même, que `rmc` et `redit` écrivent chacun de leur côté.
+- **Une répétition passe, et son essai compte autant que l'autre.** Maintenir une flèche
+  doit répéter le déplacement : écarter « tout ce qui n'est pas un enfoncement » aurait été
+  le défaut symétrique, moins visible et plus pénible à l'usage. Les deux moitiés de la
+  règle portent chacune leur essai, dans le décodeur et dans la distribution, parce qu'un
+  filtre trop large passerait l'un et casserait l'autre.
+- **L'essai en pseudo-terminal était possible, contre ce que M7b avait écrit** (« aucun
+  essai ne le voit, il faut un terminal Kitty réel »). Un pty nu ne négocie pas le
+  protocole, mais il n'a pas à le faire : **il suffit d'émettre les octets**, car le
+  décodeur décode ce qu'il reçoit sans égard pour ce qui a été négocié. Les deux essais
+  qu'exige `CLAUDE.md` ont été faits sur un binaire d'avant et un binaire d'après, et ils
+  sont décisifs. Avant : quatre repeints, la marque apparue au troisième et **disparue au
+  quatrième**, le titre portant `4 o` — la flèche relâchée avait descendu le curseur, et le
+  relâchement d'`Inser` avait démarqué. Après : trois repeints, la marque dans le dernier,
+  `2 o`. Le nombre de repeints le dit à lui seul.
+- **Deux pièges de lecture de cette sortie, consignés dans `CLAUDE.md`.** Le titre d'un
+  panneau est tronqué à la moitié de la largeur : monté sous un chemin de bloc-notes
+  temporaire, il n'émet jamais `[1 marqué — 2 o]`, et son absence ressemble à un défaut
+  alors que c'est un titre coupé — première mesure perdue à cela. Et un motif trouvé dans
+  la sortie n'est pas l'état final : chaque frappe produit un repeint, la sortie les porte
+  tous, et `1 marqué` au troisième repeint sur quatre dit que la marque a existé puis
+  disparu. Ma première lecture concluait l'inverse du bon verdict.
+- **L'exigence de couverture a corrigé un essai, et non l'inverse.** L'aide d'essai écrite
+  d'abord extrayait l'événement d'un `match` dont le bras d'échec portait un `panic!` —
+  jamais pris, donc deux régions non couvertes, donc un codec en défaut d'ADR-012 pour du
+  code de test. Réécrite en aide **constructrice**, qui fabrique l'événement attendu au
+  lieu d'inspecter celui qu'on a reçu, elle n'a plus de branche morte et les essais sont
+  revenus au style du fichier. Que le code d'essai compte dans la mesure est voulu, et ce
+  n'est pas la première fois que cela oriente une écriture.
+- **Vérifications** : `fmt`, `clippy -D warnings`, **1064 essais** (dix de plus), `deny
+  check`, `check-naming` (8489 noms, 72 fichiers), `check-versions`,
+  `check-codec-coverage` — **7 codecs à 100 %** de régions, de fonctions et de lignes —, et
+  `import-mc-skin --check` (empreinte `0xefc735864405630c`, inchangée). Fuzzing du décodeur
+  touché : **282 946 exécutions en 61 secondes, aucun plantage**. Essais en pseudo-terminal
+  avec leur contrôle : `frame`, `frame mc`, `redit` (« ABCorigine » écrit) et `rmc` sortent
+  sur leur touche et tiennent sans elle.
+- **Versions** : `air-tui` 0.8.1 — une correction de défaut, aucune API nouvelle, donc `z`
+  et non `y` ; `redit` 0.1.3, `rmc` 0.1.1 et `xtask` 0.3.1, touchées par l'alignement de la
+  dépendance que l'ADR-009 exige d'incrémenter.
+
 ## 2026-10-10 — Jalon M7b : les listes, et la coquille `rmc` à deux panneaux
 
 - **Les deux moitiés que l'ADR-008 sépare existent maintenant séparément.** M7a avait le

@@ -55,6 +55,27 @@ pub struct AirKeyEvent {
 fonctionnerait sur la console de l'auteur et casserait chez tout utilisateur distant. La
 règle est vérifiable : `physical` n'apparaît dans aucun fichier de `src/widgets/`.
 
+### `state`, et où il se lit — précisé au jalon M7c
+
+Le protocole Kitty place le type d'événement en **sous-paramètre du champ des
+modificateurs**, et cette règle vaut pour *toutes* les formes, y compris l'encodage
+historique des touches spéciales : `kitty` écrit `CSI ; 1 : 3 B` pour un relâchement de la
+flèche bas — en omettant le numéro de touche, que la spécification autorise à taire quand
+il vaut un. Vérifié dans `kitty/key_encoding.py`, qui n'écrit le numéro que s'il diffère
+de un ; la page du protocole ne donne que la règle générale et aucun exemple de flèche.
+
+Le décodeur ne lisait ce sous-champ que sur la forme `CSI … u` : le type était donc décodé
+là où il ne sert qu'aux caractères, et **ignoré là où il désigne les touches dont les
+widgets vivent** — flèches, `Début`, `Fin`, `Inser`, `Suppr`, `F1` à `F20`. Un relâchement
+ressortait en enfoncement, et aucun filtre en aval ne pouvait le rattraper, puisque
+l'information avait déjà été perdue au décodage.
+
+**Qui écarte les relâchements :** la distribution, en un seul endroit
+(`view::dispatch_event`), et non chaque widget — douze widgets qui répètent la règle sont
+douze endroits où elle peut manquer. Une **répétition** passe, et c'est voulu : maintenir
+une flèche doit répéter le déplacement. L'information n'est pas détruite pour autant : une
+boucle d'application tient l'événement d'entrée avant de le distribuer.
+
 ## Alternatives écartées
 
 **Un seul étage, evdev partout.** Impossible en SSH, et indésirable : ce serait lire le
