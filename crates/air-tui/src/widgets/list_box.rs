@@ -312,6 +312,18 @@ impl AirListBox {
                 self.focus_item(index);
                 true
             }
+            // Le double clic **ouvre**, comme dans Midnight Commander et dans tout
+            // gestionnaire de fichiers. L'enfoncement qui le précède a déjà posé le
+            // curseur, donc la demande porte sur le bon item sans qu'il faille le
+            // recalculer ici.
+            AirMouseEventKind::DoubleClicked(AirMouseButton::Left) => {
+                let index = self.focused_item;
+                if index >= self.items.len() {
+                    return true;
+                }
+                self.requests.push(AirListRequest::Activate(index));
+                true
+            }
             AirMouseEventKind::WheelUp => {
                 self.scroll_to(self.top_item.saturating_sub(3));
                 true
@@ -961,5 +973,40 @@ mod tests {
             modifiers: AirModifiers::default(),
         }));
         bar.handle_event(&mut event, &mut context);
+    }
+
+    #[test]
+    fn un_double_clic_ouvre_l_item() {
+        // Le geste de Midnight Commander et de tout gestionnaire de fichiers.
+        let mut list = list(5, 10);
+        send_mouse(
+            &mut list,
+            AirMouseEventKind::Pressed(AirMouseButton::Left),
+            3,
+            2,
+        );
+        assert_eq!(list.focused_item(), 2);
+        assert!(!list.has_pending_requests(), "un simple clic n'ouvre pas");
+
+        send_mouse(
+            &mut list,
+            AirMouseEventKind::DoubleClicked(AirMouseButton::Left),
+            3,
+            2,
+        );
+        let requests: Vec<AirListRequest> = list.drain_requests().collect();
+        assert_eq!(requests, vec![AirListRequest::Activate(2)]);
+    }
+
+    #[test]
+    fn un_double_clic_dans_le_vide_n_ouvre_rien() {
+        let mut list = list(5, 0);
+        send_mouse(
+            &mut list,
+            AirMouseEventKind::DoubleClicked(AirMouseButton::Left),
+            1,
+            0,
+        );
+        assert!(!list.has_pending_requests());
     }
 }

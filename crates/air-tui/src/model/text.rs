@@ -170,6 +170,14 @@ pub enum AirTextAction {
     },
     /// Sélectionne tout le texte, et porte le curseur à la fin.
     SelectAll,
+    /// Sélectionne le segment de texte qui couvre le curseur.
+    ///
+    /// Le **segment** et non « le mot », parce que c'est ce que l'UAX #29 découpe : un mot,
+    /// mais aussi une suite d'espaces ou un signe de ponctuation. Un double clic sur un
+    /// espace doit sélectionner les espaces, et non rester sans effet visible.
+    SelectSegment,
+    /// Sélectionne la ligne entière où se trouve le curseur, saut de ligne compris.
+    SelectLine,
     /// Abandonne la sélection sans toucher au texte ni au curseur.
     ClearSelection,
     /// Supprime le texte sélectionné, s'il y en a.
@@ -542,6 +550,38 @@ impl AirTextBuffer {
         self.moved(false);
     }
 
+    /// Sélectionne le segment qui couvre le curseur.
+    fn select_segment(&mut self) {
+        let line = self.cursor.line;
+        let Some(text) = self.line(line) else {
+            return;
+        };
+        let (start, end) = crate::unicode::segment_at(text, self.cursor.offset);
+        self.anchor = Some(AirTextPosition::new(line, start));
+        self.cursor = AirTextPosition::new(line, end);
+        self.selection_generation.advance();
+        self.moved(false);
+    }
+
+    /// Sélectionne la ligne du curseur, saut de ligne compris.
+    ///
+    /// L'ancre se pose au début de la ligne et le curseur au début de la **suivante**
+    /// quand il y en a une : c'est ce qui fait qu'un triple clic suivi d'une suppression
+    /// retire la ligne entière, et non une ligne vide laissée derrière. Sur la dernière
+    /// ligne, il n'y a pas de suivante, et le curseur va à sa fin.
+    fn select_line(&mut self) {
+        let line = self.cursor.line;
+        self.anchor = Some(AirTextPosition::new(line, 0));
+        let next = line.saturating_add(1);
+        self.cursor = if next <= self.last_line() {
+            AirTextPosition::new(next, 0)
+        } else {
+            AirTextPosition::new(line, self.line_length(line))
+        };
+        self.selection_generation.advance();
+        self.moved(false);
+    }
+
     /// Note un déplacement du curseur et met la colonne désirée à jour.
     fn moved(&mut self, keep_desired_column: bool) {
         if !keep_desired_column {
@@ -880,6 +920,8 @@ impl AirModel for AirTextBuffer {
                 self.selection_generation.advance();
                 self.moved(false);
             }
+            AirTextAction::SelectSegment => self.select_segment(),
+            AirTextAction::SelectLine => self.select_line(),
             AirTextAction::ClearSelection => {
                 self.clear_selection();
             }
@@ -1677,5 +1719,72 @@ mod tests {
         let mut buffer = AirTextBuffer::from_text("ab");
         apply_all(&mut buffer, vec![AirTextAction::InsertText(String::new())]);
         assert_eq!(buffer.lines(), ["ab"]);
+    }
+
+    // -------------------------------------- le segment et la ligne entière
+
+    #[test]
+    fn selectionner_le_segment_prend_le_mot_sous_le_curseur() {
+        let mut buffer = AirTextBuffer::from_text("une belle journée");
+        apply_all(
+            &mut buffer,
+            vec![
+                AirTextAction::move_by(AirTextMotion::ToColumn { line: 0, column: 6 }),
+                AirTextAction::SelectSegment,
+            ],
+        );
+        assert_eq!(buffer.selected_text().as_deref(), Some("belle"));
+    }
+
+    #[test]
+    fn selectionner_le_segment_sur_un_espace_prend_les_espaces() {
+        // Rendre « rien » laisserait le double clic sans effet visible.
+        let mut buffer = AirTextBuffer::from_text("une  belle");
+        apply_all(
+            &mut buffer,
+            vec![
+                AirTextAction::move_by(AirTextMotion::ToColumn { line: 0, column: 3 }),
+                AirTextAction::SelectSegment,
+            ],
+        );
+        assert_eq!(buffer.selected_text().as_deref(), Some("  "));
+    }
+
+    #[test]
+    fn selectionner_la_ligne_prend_son_saut_de_ligne() {
+        // L'ancre au début de la ligne, le curseur au début de la **suivante** : c'est ce
+        // qui fait qu'une suppression retire la ligne entière, sans laisser une ligne vide.
+        let mut buffer = AirTextBuffer::from_text("une\ndeux\ntrois");
+        apply_all(
+            &mut buffer,
+            vec![
+                AirTextAction::move_by(AirTextMotion::Down),
+                AirTextAction::SelectLine,
+            ],
+        );
+        assert_eq!(buffer.selected_text().as_deref(), Some("deux\n"));
+
+        apply_all(&mut buffer, vec![AirTextAction::DeleteSelection]);
+        assert_eq!(buffer.lines(), ["une", "trois"]);
+    }
+
+    #[test]
+    fn selectionner_la_derniere_ligne_s_arrete_a_sa_fin() {
+        let mut buffer = AirTextBuffer::from_text("une\ndeux");
+        apply_all(
+            &mut buffer,
+            vec![
+                AirTextAction::move_by(AirTextMotion::DocumentEnd),
+                AirTextAction::SelectLine,
+            ],
+        );
+        assert_eq!(buffer.selected_text().as_deref(), Some("deux"));
+    }
+
+    #[test]
+    fn selectionner_le_segment_d_une_ligne_vide_ne_selectionne_rien() {
+        let mut buffer = AirTextBuffer::new();
+        apply_all(&mut buffer, vec![AirTextAction::SelectSegment]);
+        assert_eq!(buffer.selection(), None);
     }
 }

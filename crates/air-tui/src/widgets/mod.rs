@@ -25,8 +25,7 @@
 //! - [`AirPromptDialog`], une question et sa réponse, à poser en modal par
 //!   [`crate::application::AirScreen::set_modal`].
 //!
-//! Ce qui manque encore : les cases à cocher et les boutons radio, et le **double clic**,
-//! qui demande une horloge — le décodeur est pur, et l'horloge n'y a pas sa place.
+//! Ce qui manque encore : les cases à cocher et les boutons radio.
 //!
 //! # La sélection, et qui la tient
 //!
@@ -39,9 +38,15 @@
 //!
 //! Les deux partagent la même ancre plutôt que deux bornes ordonnées — c'est ce qui
 //! permet de réduire une sélection en revenant en arrière —, les mêmes gestes
-//! (`Maj`+flèches, `Maj`+clic, glisser, `Ctrl`+`A`) et les mêmes trois commandes de
-//! presse-papiers, qu'elles **demandent** sans jamais le toucher : il est au contrôleur
-//! (voir [`crate::clipboard::AirClipboard`]).
+//! (`Maj`+flèches, `Maj`+clic, glisser, `Ctrl`+`A`, **double et triple clic**) et les
+//! mêmes trois commandes de presse-papiers, qu'elles **demandent** sans jamais le
+//! toucher : il est au contrôleur (voir [`crate::clipboard::AirClipboard`]).
+//!
+//! Le double clic sélectionne le segment sous le pointeur et le triple la ligne entière —
+//! dans un champ d'une ligne, tout le texte. [`AirListBox`] l'entend autrement, et c'est
+//! normal : un double clic y **ouvre** l'item, comme dans Midnight Commander. Ni l'un ni
+//! l'autre ne détecte le geste : la boucle d'application le synthétise, parce qu'un double
+//! clic est deux séquences et un délai (voir [`crate::input::clicks`]).
 //!
 //! # La bordure, et qui la retire
 //!

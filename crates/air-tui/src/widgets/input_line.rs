@@ -264,6 +264,18 @@ impl AirInputLine {
         self.scroll_into_view();
     }
 
+    /// Sélectionne le segment de texte qui couvre le curseur.
+    ///
+    /// Le **segment** au sens de l'UAX #29 : un mot, mais aussi une suite d'espaces ou un
+    /// signe de ponctuation. Un double clic sur un espace doit sélectionner les espaces,
+    /// et non rester sans effet visible.
+    pub fn select_segment(&mut self) {
+        let (start, end) = crate::unicode::segment_at(&self.text, self.cursor);
+        self.anchor = Some(start);
+        self.cursor = end;
+        self.scroll_into_view();
+    }
+
     /// Abandonne la sélection, sans toucher au texte ni au curseur.
     pub const fn clear_selection(&mut self) {
         self.anchor = None;
@@ -560,6 +572,15 @@ impl AirView for AirInputLine {
                     // le point d'appui : l'ancre posée par le premier déplacement le tient.
                     AirMouseEventKind::Moved(Some(AirMouseButton::Left)) => {
                         self.select_to_column(mouse.position.column.value());
+                    }
+                    // Le double clic suit son enfoncement, qui a déjà posé le curseur.
+                    AirMouseEventKind::DoubleClicked(AirMouseButton::Left) => {
+                        self.select_segment();
+                    }
+                    // Un champ d'une ligne n'a qu'une ligne à prendre : le triple clic y
+                    // vaut « tout sélectionner », ce qui est ce que fait tout champ.
+                    AirMouseEventKind::TripleClicked(AirMouseButton::Left) => {
+                        self.select_all();
                     }
                     _ => return AirOutcome::Ignored,
                 }
@@ -1231,5 +1252,52 @@ mod tests {
         let mut input_line = field(20).with_maximum_length(3);
         assert!(input_line.insert_text("abcdef"));
         assert_eq!(input_line.text(), "abc");
+    }
+
+    // ------------------------------------------------- le clic multiple
+
+    fn mouse_event(kind: AirMouseEventKind, column: u16) -> AirEvent {
+        AirEvent::new(AirInputEvent::Mouse(AirMouseEvent {
+            position: point(column, 0),
+            kind,
+            modifiers: AirModifiers::NONE,
+        }))
+    }
+
+    #[test]
+    fn un_double_clic_selectionne_le_mot_du_champ() {
+        let mut input_line = field(20);
+        type_text(&mut input_line, "une belle");
+        dispatch(&mut input_line, &mut click(6));
+        dispatch(
+            &mut input_line,
+            &mut mouse_event(AirMouseEventKind::DoubleClicked(AirMouseButton::Left), 6),
+        );
+        assert_eq!(input_line.selected_text(), Some("belle"));
+    }
+
+    #[test]
+    fn un_double_clic_sur_un_espace_selectionne_les_espaces() {
+        let mut input_line = field(20);
+        type_text(&mut input_line, "une  belle");
+        dispatch(&mut input_line, &mut click(3));
+        dispatch(
+            &mut input_line,
+            &mut mouse_event(AirMouseEventKind::DoubleClicked(AirMouseButton::Left), 3),
+        );
+        assert_eq!(input_line.selected_text(), Some("  "));
+    }
+
+    #[test]
+    fn un_triple_clic_selectionne_tout_le_champ() {
+        // Un champ d'une ligne n'a qu'une ligne à prendre.
+        let mut input_line = field(20);
+        type_text(&mut input_line, "une belle");
+        dispatch(&mut input_line, &mut click(6));
+        dispatch(
+            &mut input_line,
+            &mut mouse_event(AirMouseEventKind::TripleClicked(AirMouseButton::Left), 6),
+        );
+        assert_eq!(input_line.selected_text(), Some("une belle"));
     }
 }
