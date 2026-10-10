@@ -41,15 +41,21 @@ cargo run --example frame                    # la démonstration des widgets
 cargo run --example frame -- mc              # la même, au thème Midnight Commander
 cargo run -p redit -- fichier.txt            # l'éditeur
 cargo run -p redit -- --theme mc fichier.txt # l'éditeur, aux couleurs de mc
+cargo run -p rmc                             # la coquille à deux panneaux
+cargo run -p rmc -- --theme tv /usr /etc     # la même, aux couleurs de Turbo Vision
 ```
 
 Les deux lancements d'un même programme dessinent **exactement** les mêmes vues : seules
 la palette et les glyphes changent. C'est la démonstration la plus courte de ce que le
-moteur de thèmes promet — et un avertissement utile : un thème n'est pas une coquille, et
-`redit --theme mc` donne un éditeur aux couleurs de `mc`, pas `mc`.
+moteur de thèmes promet — et les deux moitiés que l'ADR-008 sépare se vérifient en deux
+commandes : `redit --theme mc` donne un éditeur aux couleurs de `mc`, `rmc --theme tv`
+donne la coquille de `mc` aux couleurs de Turbo Vision, et ni l'un ni l'autre n'est `mc`.
+
+`rmc` parcourt, marque et relit ; il **n'exécute aucun programme et ne modifie aucun
+fichier**.
 
 Ce qui manque encore : la **sélection** de texte — donc le copier-coller interne —, les
-listes, la coquille `rmc` à deux panneaux, et l'étage d'entrée natif Linux.
+cases à cocher et les boutons radio, et l'étage d'entrée natif Linux.
 L'avancement réel, jalon par jalon, est tenu dans
 [`docs/etat-avancement.md`](docs/etat-avancement.md) — et ce README décrit l'intention du
 projet, qui va plus loin que ce qui est livré.

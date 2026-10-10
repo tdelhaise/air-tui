@@ -256,12 +256,7 @@ impl AirView for AirScrollBar {
         put(painter, 0, first, true);
         put(painter, length.saturating_sub(1), last, true);
         if let Some(thumb) = self.thumb_offset() {
-            put(
-                painter,
-                thumb.saturating_add(1),
-                glyphs.close_box_mark,
-                true,
-            );
+            put(painter, thumb.saturating_add(1), glyphs.scroll_thumb, true);
         }
     }
 

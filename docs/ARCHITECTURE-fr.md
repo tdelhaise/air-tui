@@ -161,7 +161,10 @@ Et la couche basse, nommée pour ne pas entrer en collision avec `AirScreen` :
 d'application figé. En faire un objet empilable et commutable donne ce que Turbo Vision ne
 savait pas faire : un écran d'accueil, un assistant multi-étapes, et surtout la
 cohabitation de deux chromes radicalement différents — `redit` en style Turbo Vision,
-`rmc` en style Midnight Commander — sur le même moteur.
+`rmc` en style Midnight Commander — sur le même moteur. Les deux existent depuis le jalon
+M7b, et c'est ce qui vérifie l'affirmation : la même boucle, le même bureau et les mêmes
+barres servent un éditeur à une fenêtre et un gestionnaire à deux panneaux, et aucune des
+deux applications ne monte sa propre disposition.
 
 ## L'arbre de vues
 
@@ -427,7 +430,7 @@ arithmétique en flottant qu'ADR-005 ne permet pas.
 Ce qui fait reconnaître Midnight Commander est sa **coquille** — deux panneaux, ligne de
 commande, barre F1-F10 — pas sa palette. `AirTheme` porte palette, glyphes et décorations ;
 la composition du chrome relève de l'`AirScreen` que l'application choisit. D'où deux
-applications d'exemple à venir, `redit` et `rmc`, et non une application à deux thèmes.
+applications `redit` et `rmc`, et non une application à deux thèmes.
 
 Les thèmes sont **compilés, pas analysés au runtime** : l'importeur de skins Midnight
 Commander sera un `xtask` qui compile un `.ini` en artefact Rust committé (Principe 11

@@ -20,6 +20,7 @@ members = [
     "crates/air-tui-platform-posix",
     "crates/air-tui",
     "crates/redit",
+    "crates/rmc",
     "xtask",
 ]
 

@@ -7,9 +7,15 @@
 //! # État
 //!
 //! **Deux thèmes, et c'est ce qui fait de ce module un moteur.** La palette indexée par
-//! rôles sémantiques (vingt-huit rôles), le jeu de glyphes et le quantificateur de
+//! rôles sémantiques (trente-deux rôles), le jeu de glyphes et le quantificateur de
 //! couleurs existent depuis le jalon M5 ; le thème Midnight Commander et l'importeur de
-//! skins qui le produit, depuis M7.
+//! skins qui le produit, depuis M7a ; les quatre rôles de liste, depuis M7b.
+//!
+//! Ces quatre derniers rôles sont la première **extension** de la palette depuis que le
+//! second thème existe, et c'est à cette occasion que le moteur a été éprouvé plutôt que
+//! décrit : ajouter un rôle demande une valeur dans chacun des deux thèmes, et celle du
+//! thème compilé vient d'une clef du skin que la table de correspondance d'`xtask`
+//! désigne — pas d'une valeur écrite à la main dans l'artefact.
 //!
 //! Un thème est un **couple** `palette` + `glyphs`. L'ADR-008 décrit un **triplet**, la
 //! troisième assiette étant `AirDecorations` — ombres, style de trait, style des touches
@@ -140,7 +146,7 @@ mod tests {
     }
 
     #[test]
-    fn les_vingt_huit_roles_repondent_dans_les_deux_themes() {
+    fn les_trente_deux_roles_repondent_dans_les_deux_themes() {
         // Un rôle sans valeur serait un trou dans la palette, et le compilateur ne le
         // verrait pas : `color_pair` est exhaustif par construction, mais une palette
         // compilée depuis un skin pourrait porter des couples laissés à zéro.
@@ -173,8 +179,12 @@ mod tests {
             AirRole::ButtonShadow,
             AirRole::ScrollBarPage,
             AirRole::ScrollBarControls,
+            AirRole::ListNormal,
+            AirRole::ListSelected,
+            AirRole::ListMarked,
+            AirRole::ListMarkedSelected,
         ];
-        assert_eq!(roles.len(), 28);
+        assert_eq!(roles.len(), 32);
         let midnight = AirTheme::midnight_commander();
         let mut distinct = Vec::new();
         for role in roles {
@@ -191,6 +201,33 @@ mod tests {
     #[test]
     fn le_theme_compile_porte_la_description_de_son_skin() {
         assert_eq!(AirTheme::midnight_commander_description(), "Standard skin");
+    }
+
+    #[test]
+    fn les_deux_themes_marquent_un_item_en_jaune() {
+        // Deux traditions indépendantes tombent sur la même teinte : `[core] marked` du
+        // skin de mc est `yellow;blue`, et `cpAppColor[59]` de Borland porte le jaune
+        // vif en avant-plan. Ce n'est pas une transcription de l'une vers l'autre.
+        for theme in [AirTheme::turbo_vision(), AirTheme::midnight_commander()] {
+            let marked = theme.palette.color_pair(AirRole::ListMarked);
+            assert_eq!(marked.foreground, crate::cell::AirColor::Indexed(11));
+        }
+    }
+
+    #[test]
+    fn l_item_sous_le_curseur_se_distingue_de_l_item_ordinaire() {
+        // Un thème qui les confondrait rendrait une liste inutilisable : on ne saurait
+        // plus où on est. Les deux thèmes doivent les séparer, et pour les quatre rôles.
+        for theme in [AirTheme::turbo_vision(), AirTheme::midnight_commander()] {
+            let normal = theme.palette.color_pair(AirRole::ListNormal);
+            let selected = theme.palette.color_pair(AirRole::ListSelected);
+            let marked = theme.palette.color_pair(AirRole::ListMarked);
+            let marked_selected = theme.palette.color_pair(AirRole::ListMarkedSelected);
+            assert_ne!(normal, selected);
+            assert_ne!(normal, marked);
+            assert_ne!(marked, marked_selected);
+            assert_ne!(selected, marked_selected);
+        }
     }
 
     #[test]

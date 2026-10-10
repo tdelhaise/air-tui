@@ -52,7 +52,7 @@ note   = "les quatre mécanismes existent et redit les emploie tous (M6) : journ
 ["008"]
 objet  = "Moteur de thèmes : palette par rôles, glyphes, décorations ; thèmes compilés"
 statut = "en-cours"
-note   = "palette transcrite de Borland, quantificateur, onze widgets colorés par rôles, thème MC et importeur de skins faits (M5, M5b, M6, M7). Reste : AirDecorations, la troisième assiette du triplet, que l'ombre portée demande et que le découpage du peintre interdit aujourd'hui ; et la coquille rmc"
+note   = "palette transcrite de Borland (trente-deux rôles depuis M7b), quantificateur, douze widgets colorés par rôles, thème MC et importeur de skins faits (M5, M5b, M6, M7a), coquille rmc faite (M7b) : les deux moitiés que l'ADR sépare existent séparément et se vérifient en deux lignes de commande. Reste : AirDecorations, la troisième assiette du triplet, que l'ombre portée demande et que le découpage du peintre interdit aujourd'hui ; et les deux limites qui refusent vingt-neuf skins sur trente-neuf — un attribut par rôle, une couleur défaut du terminal"
 
 ["009"]
 objet  = "Versionnement semver, par crate, incrémenté à chaque PR qui touche la crate"

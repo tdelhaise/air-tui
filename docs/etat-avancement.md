@@ -3,9 +3,8 @@
 Document de suivi **vivant** : où en est-on, quelle est la prochaine tâche. Il se met à
 jour à chaque session. L'historique figé est dans [`JOURNAL.md`](JOURNAL.md).
 
-**Dernière mise à jour : 2026-10-10** (jalon M7a — le thème Midnight Commander et son
-importeur de skins ; jalon M6b — les trois contrôles de conventions et l'intégration
-continue).
+**Dernière mise à jour : 2026-10-10** (jalon M7b — les listes et la coquille `rmc` à deux
+panneaux ; jalon M7a — le thème Midnight Commander et son importeur de skins).
 
 ## Dépôt
 
@@ -28,16 +27,62 @@ contrôle, donc **aucun essai en pseudo-terminal** n'y tourne, et le fuzzing exi
 
 ## Où en est-on
 
-Jalons **M0 à M7a terminés**. Le dépôt porte ses conventions, ses ADR fondateurs, le socle
-de rendu, le décodeur d'entrée, l'arbre de vues, onze widgets, la **couche MVC** de
-l'ADR-007, la hiérarchie d'objets complète, et une **application** : `redit` ouvre un
-fichier, l'édite et l'enregistre.
+Jalons **M0 à M7b terminés**. Le dépôt porte ses conventions, ses ADR fondateurs, le socle
+de rendu, le décodeur d'entrée, l'arbre de vues, douze widgets, la **couche MVC** de
+l'ADR-007, la hiérarchie d'objets complète, deux thèmes dont un **compilé**, et deux
+**applications** : `redit` ouvre un fichier, l'édite et l'enregistre ; `rmc` parcourt deux
+arborescences côte à côte.
 
 Ce qui manque pour que ce soit un framework complet : la **sélection** de texte — donc le
-copier-coller interne —, les listes et les cases à cocher, le thème Midnight Commander et
-la coquille `rmc` (M7), et l'étage d'entrée natif Linux (M8).
+copier-coller interne —, les cases à cocher et les boutons radio, et l'étage d'entrée natif
+Linux (M8).
 
 ### Fait
+
+- **M7b — les listes, et la coquille `rmc` à deux panneaux** :
+  - **Quatre rôles de liste dans la palette** — `ListNormal`, `ListSelected`,
+    `ListMarked`, `ListMarkedSelected` —, première extension depuis qu'un second thème
+    existe. C'est ce qui a éprouvé le moteur de thèmes plutôt que de le décrire : ajouter
+    un rôle demande une valeur dans chacun des deux thèmes, et celle du thème compilé vient
+    d'une clef du skin que la table d'`xtask` désigne, non d'une valeur écrite à la main
+    dans l'artefact. `mc` nomme les quatre (`[core] _default_`, `selected`, `marked`,
+    `markselect`) ; Turbo Vision n'en nomme que trois dans `cpListViewer`, et le quatrième
+    est composé.
+  - **Deux pièges de transcription, écrits plutôt que subis** : Borland appelle *Focused*
+    l'item sous le curseur et *Selected* un item marqué, là où air-tui emploie `Selected`
+    pour ce qui est sous le curseur — comme `MenuSelected` le fait depuis M5 ; et le
+    décompte des indices de `cpAppColor` ne se fait pas à la main. C'est
+    `examples/tvdemo/tvdemo2.cpp` qui nomme ses propres entrées — « List normal » pour 57,
+    « List focused » pour 58, « List selected » pour 59 —, et les six entrées des boutons
+    transcrites à M5 portent les mêmes numéros que ce fichier leur donne. Le décompte est
+    donc validé par une source indépendante du calcul.
+  - **`AirListBox`** tient son curseur et son défilement, mais ne marque rien : elle
+    produit une `AirListRequest::ToggleMark` que le contrôleur applique, et reçoit en
+    retour l'état de marquage. Marquer un fichier est un fait que l'application garde, pas
+    une affaire d'affichage. Elle ne connaît pas son ascenseur et l'ascenseur ne la connaît
+    pas : le contrôleur les accorde en deux lignes, et un essai les exécute pour que la
+    documentation du module ne soit pas une promesse.
+  - **`rmc`** : deux panneaux, `Tab` pour passer de l'un à l'autre, `Entrée` pour
+    descendre, `Inser` pour marquer, `F5` pour relire, `F10` pour sortir. Thème par défaut
+    celui de `mc`, `--theme tv` pour la même coquille aux couleurs de Turbo Vision. Les
+    deux moitiés que l'ADR-008 sépare existent donc séparément, et la séparation n'est plus
+    une affirmation de l'ADR : c'est une ligne de commande.
+  - **Trois défauts que les essais ont trouvés**, et qu'une relecture n'aurait pas vus : le
+    marquage ne faisait pas avancer la génération du modèle, donc la marque était comptée
+    dans le titre et invisible dans la liste ; poser le curseur sur le répertoire d'où l'on
+    remonte ne peut pas se faire au moment de la commande, puisque la liste reflète encore
+    le répertoire précédent — c'est devenu une intention, appliquée après le reflet ; et le
+    curseur d'ascenseur empruntait `close_box_mark`, ce qui mettait un `X` au milieu de la
+    glissière dans le thème de `mc`, dont le skin ferme ses fenêtres par un `X`. Le jeu de
+    glyphes a donc gagné `scroll_thumb`. **Seul un second thème pouvait faire apparaître ce
+    dernier** : les deux glyphes coïncident dans Turbo Vision.
+  - **Mesure des trente-neuf skins : dix importables**, contre douze à M7a. Les deux perdus
+    posent `bold` sur `[core] marked`, une clef que la table n'employait pas avant les
+    rôles de liste : le compte baisse parce que le modèle s'est enrichi.
+  - Vérifié en pseudo-terminal sur les **octets émis** : `rmc` sort sur `F10` (`exit:0`) et
+    tient sans elle (`timeout`) ; `Tab`, flèche bas puis `Inser` donnent
+    `38;5;11;48;5;6` — jaune sur cyan, l'item marqué sous le curseur du skin de `mc` — et
+    le titre du panneau affiche « 1 marqué ».
 
 - **M7a — le thème Midnight Commander, et l'importeur qui le produit** :
   - **`cargo xtask import-mc-skin`** compile un `.ini` de skin en artefact Rust committé.
@@ -302,9 +347,20 @@ la coquille `rmc` (M7), et l'étage d'entrée natif Linux (M8).
   numérique, touches multimédia, touches modificatrices seules. Hors table, donc consommées
   sans événement — et la table a été écrite d'après la spécification, **pas vérifiée contre
   un terminal réel**.
-- La coquille **`rmc`** à deux panneaux. Le thème MC existe depuis M7a, et l'ADR-008
-  prévient que « ce qui fait reconnaître Midnight Commander est sa coquille, pas sa
-  palette » : `redit --theme mc` donne un éditeur aux couleurs de `mc`, pas `mc`.
+- Dans `rmc` : il **n'exécute aucun programme** et ne modifie aucun fichier. Ni ligne de
+  commande, ni `F3` pour voir, ni `F4` pour éditer, ni copie, ni déplacement, ni
+  suppression ; `Entrée` sur un fichier ne fait rien. Il ne lit pas la configuration de
+  `mc`, ne connaît pas ses systèmes de fichiers virtuels, et n'affiche ni droits, ni
+  propriétaire, ni date. La barre de touches ne publie que `Tab`, `F5` et `F10` : en
+  annoncer dix dont sept ne feraient rien serait ce que le NO GO n° 2 interdit.
+- Les **colonnes multiples** d'une liste : `mc` sait afficher un répertoire sur deux ou
+  trois colonnes, et `TListViewer` portait un `numCols`. Une colonne suffit à un panneau de
+  fichiers, et la seconde demande de décider ce que `Page bas` veut dire.
+- Le **filtrage des relâchements de touche** n'est fait que par `AirListBox`. Le protocole
+  clavier Kitty les rapporte (`\x1b[>23u` demande le type d'événement), et aucun autre
+  widget ne les écarte. L'essai en pseudo-terminal ne peut pas le voir, puisqu'un pty nu ne
+  négocie pas le protocole. **C'est un défaut à trancher** : le bon endroit est
+  probablement la distribution, pas chaque widget.
 - **`AirDecorations`**, la troisième assiette du triplet de l'ADR-008. `AirTheme` est un
   couple. Le style de trait vit déjà dans les glyphes ; l'**ombre portée** ne peut pas être
   dessinée, parce qu'elle tombe hors des limites de la vue qui la projette et que le
@@ -312,8 +368,8 @@ la coquille `rmc` (M7), et l'étage d'entrée natif Linux (M8).
   palette, transcrit de Borland comme de `mc`, et **aucun widget ne le lit**. Une assiette
   qui décrirait une ombre que rien ne dessine annoncerait une capacité absente.
 - Un **attribut par rôle** dans la palette, et une couleur « défaut du terminal » dans
-  `AirColor` : les deux lèveraient les vingt-sept refus de l'importeur de skins.
-- Les **listes, cases à cocher et boutons radio**.
+  `AirColor` : les deux lèveraient les vingt-neuf refus de l'importeur de skins.
+- Les **cases à cocher et boutons radio**.
 - La **sélection** de texte, dans la vue d'édition comme dans le champ de saisie :
   `Maj`+flèche, le copier-coller interne, la surbrillance, et le double-clic qui en
   dépend. Les deux n'ont qu'un curseur, pas d'étendue sélectionnée. C'est la plus grosse
@@ -349,28 +405,36 @@ la coquille `rmc` (M7), et l'étage d'entrée natif Linux (M8).
 
 ## Prochaine tâche
 
-**M7b — la coquille `rmc` à deux panneaux.** Le moteur de thèmes a fait sa preuve : deux
-thèmes, dont un **compilé** depuis une source extérieure, et les mêmes vues rendues
-différemment. Ce qui reste est l'autre moitié de ce que l'ADR-008 sépare — la coquille.
+**À trancher.** Le plan de jalons mène à M8 — l'étage d'entrée natif Linux —, mais M8 est
+**bloqué par une vérification impossible à distance** : `evdev`, `TIOCLINUX` et `gpm`
+demandent une console physique, inaccessible par SSH. Écrire du code qu'on ne peut pas
+vérifier est exactement ce que ce dépôt refuse. Les candidats, du plus petit au plus gros :
 
-Elle demandera les **listes**, qu'un panneau de fichiers ne peut pas éviter, et avec elles
-les ascenseurs qu'elles pilotent. Elle exercera `AirScreen` comme chrome commutable, ce que
-`redit` n'exerce pas avec son unique fenêtre.
+1. **Le filtrage des relâchements de touche**, défaut trouvé au jalon M7b. Le protocole
+   clavier Kitty rapporte le type d'événement, et seul `AirListBox` l'écarte : les autres
+   widgets traitent un appui et son relâchement comme deux frappes. Un pty nu ne négocie
+   pas le protocole, donc aucun essai ne le voit — il faut un terminal Kitty réel pour le
+   constater. Petit à écrire, mais il demande de décider **où** : la distribution plutôt
+   que chaque widget.
+2. **Les deux limites du thème** : un attribut par rôle dans la palette, une couleur
+   « défaut du terminal » dans `AirColor`. Chiffré : les vingt-neuf skins refusés sur
+   trente-neuf deviendraient importables. C'est de la donnée, pas de l'architecture.
+3. **Les cases à cocher et les boutons radio**, qui complètent les contrôles de dialogue
+   avec `AirPromptDialog`.
+4. **La sélection de texte** — la plus grosse absence de `redit`. Elle débloque d'un coup
+   `Maj`+flèche, le copier-coller interne, la surbrillance et le double-clic, et elle
+   touche la vue d'édition comme le champ de saisie. C'est le plus gros chantier de la
+   liste, et le plus visible à l'usage.
+5. **La peinture hors des limites d'une vue**, décision d'architecture dont dépendent
+   `AirDecorations` et l'ombre portée. À trancher avant d'écrire la troisième assiette du
+   triplet de l'ADR-008, pas après.
 
-Deux dettes que M7a laisse, chiffrées :
-
-- un **attribut par rôle** dans la palette et une couleur « défaut du terminal » dans
-  `AirColor` rendraient importables les vingt-sept skins aujourd'hui refusés sur
-  trente-neuf ;
-- `AirDecorations` demande de trancher si une vue peut peindre **hors de ses limites**.
-  C'est une décision d'architecture, pas de thème, et elle commande l'ombre portée.
-
-Une dette plus ancienne : remonter la couverture de `air-tui-platform-posix` par des tests
-sous pty. Et deux vérifications encore absentes : la **console Linux native**, inaccessible
-par SSH et dont dépend tout l'étage natif du jalon M8 ; et le protocole Kitty **contre un
-vrai terminal** — il est décodé et négocié d'après la spécification, et les tests le
-pilotent avec un périphérique en mémoire, ce qui prouve le code mais pas la table des
-numéros de touches fonctionnelles.
+Dettes plus anciennes, inchangées : remonter la couverture de `air-tui-platform-posix` par
+des tests sous pty ; les trois gates `check-licence-headers`, `check-safety-comments` et
+`check-dco` ; la **console Linux native**, dont dépend tout M8 ; et le protocole Kitty
+**contre un vrai terminal** — il est décodé et négocié d'après la spécification, et les
+tests le pilotent avec un périphérique en mémoire, ce qui prouve le code mais pas la table
+des numéros de touches fonctionnelles.
 
 ## Jalons
 
@@ -386,5 +450,5 @@ numéros de touches fonctionnelles.
 | M6 | `redit` — équivalent de `tvedit`, couche MVC, hiérarchie d'objets | **fait** |
 | M6b | les trois contrôles de conventions, et l'intégration continue | **fait** |
 | M7a | thème Midnight Commander et importeur de skins | **fait** |
-| M7b | la coquille `rmc` à deux panneaux, et les listes | à faire |
+| M7b | la coquille `rmc` à deux panneaux, et les listes | **fait** |
 | M8 | étage natif Linux : evdev, `TIOCLINUX`, gpm | à faire |
