@@ -27,17 +27,16 @@
 //! thème compilé vient d'une clef du skin que la table de correspondance d'`xtask`
 //! désigne — pas d'une valeur écrite à la main dans l'artefact.
 //!
-//! Un thème est un **couple** `palette` + `glyphs`. L'ADR-008 décrit un **triplet**, la
-//! troisième assiette étant `AirDecorations` — ombres, style de trait, style des touches
-//! rapides. Elle n'existe pas, et l'écart est assumé plutôt que comblé par une structure
-//! vide : le style de trait vit déjà dans le jeu de glyphes, qui porte un cadre de
-//! fenêtre et un cadre de dialogue distincts, et l'ombre portée ne peut pas être dessinée
-//! aujourd'hui — elle tombe **hors** des limites de la vue qui la projette, ce que le
-//! découpage du peintre refuse sans exception (M4, M5b). Tant qu'aucune vue ne dessine
-//! d'ombre, une assiette qui en décrirait une annoncerait une capacité absente.
+//! Un thème est le **triplet** que l'ADR-008 décrit : `palette`, `glyphs`,
+//! `decorations`. Il a été un **couple** pendant quatre jalons, et l'écart était assumé
+//! plutôt que comblé par une structure vide : la seule décoration que l'assiette aurait
+//! portée est l'ombre portée, qui tombe **hors** des limites de la vue qui la projette —
+//! ce que le découpage du peintre refusait sans exception (M4, M5b). L'ADR-015 a tranché
+//! la question au jalon M7j sans toucher à l'invariant : ce qui dépasse d'une vue est
+//! peint par le propriétaire de la surface où cela dépasse.
 //!
-//! Le rôle `AirRole::ButtonShadow` est dans la palette pour la même raison inverse : il
-//! est transcrit de Borland et de `mc`, et **aucun widget ne le lit** encore.
+//! Le rôle `AirRole::ButtonShadow` reste dans la palette sans lecteur : il est l'ombre
+//! d'un **bouton** — `cpButton[8]` —, et les boutons n'en projettent pas encore.
 
 /// Le nom du skin de Midnight Commander que `AirTheme::midnight_commander` rend.
 ///
@@ -46,11 +45,13 @@
 /// serait à changer.
 pub const DEFAULT_SKIN: &str = "default";
 
+pub mod decorations;
 pub mod glyphs;
 pub mod palette;
 pub mod quantize;
 pub(crate) mod skins;
 
+pub use decorations::{AirDecorations, AirShadow};
 pub use glyphs::{AirClusterGlyphs, AirFrameGlyphs, AirGlyphSet};
 pub use palette::{AirColorPair, AirPalette, AirRole};
 pub use quantize::{AirColorDepth, quantize};
@@ -86,6 +87,13 @@ pub struct AirTheme {
     pub palette: AirPalette,
     /// Les caractères de dessin.
     pub glyphs: AirGlyphSet,
+    /// Les décorations — l'ombre portée.
+    ///
+    /// La troisième assiette que l'ADR-008 décrit depuis le jalon M5. Elle était absente
+    /// jusqu'au jalon M7j, et l'écart était assumé : la seule décoration qu'elle aurait
+    /// portée tombe hors des limites de la vue qui la projette, ce que le découpage du
+    /// peintre refusait. L'ADR-015 a tranché la question sans toucher à l'invariant.
+    pub decorations: AirDecorations,
 }
 
 impl AirTheme {
@@ -95,6 +103,7 @@ impl AirTheme {
         Self {
             palette: AirPalette::turbo_vision(),
             glyphs: AirGlyphSet::turbo_vision(),
+            decorations: AirDecorations::turbo_vision(),
         }
     }
 
@@ -131,6 +140,7 @@ impl AirTheme {
         Some(Self {
             palette: (entry.palette)(),
             glyphs: (entry.glyphs)(),
+            decorations: AirDecorations::midnight_commander(),
         })
     }
 
@@ -202,6 +212,7 @@ mod tests {
     use crate::model::text::{AirTextAction, AirTextBuffer};
     use crate::model::{AirChangeSet, AirModel};
     use crate::surface::AirSurface;
+    use crate::theme::decorations::AirDecorations;
     use crate::theme::glyphs::AirGlyphSet;
     use crate::theme::palette::{AirColorPair, AirPalette, AirPaletteParts, AirRole};
     use crate::view::AirDrawContext;
@@ -233,6 +244,7 @@ mod tests {
             editor: [pair; 1],
             input_line: [pair; 2],
             cluster: [pair; 3],
+            shadow: pair,
         })
     }
 
@@ -360,6 +372,9 @@ mod tests {
         let theme = AirTheme {
             palette: bold_everywhere(),
             glyphs: AirGlyphSet::turbo_vision(),
+            // Sans ombre : elle recolore ce qui est dessous, donc elle brouillerait la
+            // mesure d'un essai qui vérifie autre chose.
+            decorations: AirDecorations::turbo_vision().without_shadow(),
         };
         let commands = AirCommandSet::new();
         for (name, view) in every_widget() {

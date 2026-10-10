@@ -6,6 +6,66 @@ tête. On ajoute, on ne réécrit jamais une entrée passée.
 Une entrée par campagne, pas par commit. Répartition des rôles : `etat-avancement.md` est
 l'état vivant, ce journal est la trace figée, `INDEX.md` est la carte structurelle.
 
+## 2026-10-10 — Jalon M7j : la peinture hors des limites, et l'invariant qui n'a pas bougé
+
+- **La question posée était « une vue peut-elle peindre hors de ses limites ? ». La réponse
+  est non, et c'est le meilleur résultat du jalon.** Ce qui dépasse d'une vue est peint par
+  le **propriétaire de la surface où cela dépasse** : l'ombre appartient au bureau, pas à la
+  fenêtre, et c'est donc le bureau qui l'écrit — dans ses propres limites, juste avant de
+  dessiner la fenêtre. Le découpage du peintre reste sans exception, donc rien de ce que M4
+  et M5b garantissent n'est à revérifier.
+- **Le dépôt employait déjà une solution de cette famille sans l'avoir nommée**, et c'est
+  ce qui m'a convaincu que la troisième stratégie n'était pas nécessaire : la barre de menu
+  **agrandit ses propres limites** à l'ouverture d'un menu, depuis le jalon M5b. Le
+  découpage est respecté parce qu'il n'y a plus rien dehors.
+- **Agrandir ne convenait pas à l'ombre, et la raison est concrète** : la zone d'ombre
+  entrerait dans les limites de la fenêtre, donc dans sa **détection de clic** et dans le
+  calcul de son intérieur. Cliquer sur l'ombre activerait la fenêtre, et son contenu serait
+  disposé dans un rectangle plus grand que ce que l'on voit. L'ombre n'appartient pas à la
+  fenêtre : elle appartient à ce qui est derrière.
+- **La troisième stratégie — une marge de débordement déclarée par la vue — est la plus
+  courte à écrire et la plus chère.** Elle rend l'invariant **conditionnel** : « cette vue
+  a-t-elle une marge ? » devient une question qu'on se pose partout. Elle ouvre aussi la
+  porte à une vue qui peindrait sur ses sœurs sans que l'ordre de dessin le dise, ce qui est
+  précisément ce que le découpage empêchait.
+- **`AirTheme` est enfin le triplet que l'ADR-008 décrit depuis le jalon M5.** L'écart avait
+  été assumé pendant quatre jalons, et pour une raison qui n'était pas de la paresse : une
+  assiette qui aurait décrit une ombre que rien ne dessine aurait annoncé une capacité
+  absente. Elle en décrit maintenant une que l'on dessine.
+- **Deux champs ne sont pas dans l'assiette, et c'est délibéré.** Le style de trait vit
+  déjà dans le jeu de glyphes — c'est par là que les dialogues en trait simple de `mc` se
+  distinguent des `╔═╗` de Borland —, et le marqueur `~X~` des touches rapides est le même
+  dans les deux thèmes. Une assiette ne gagne un champ que le jour où deux thèmes le
+  remplissent différemment.
+- **Une convergence que je n'attendais pas, et qui s'est mesurée toute seule.** La couleur
+  de l'ombre de Turbo Vision n'est **pas** transcriptible d'une chaîne de palette : l'ombre
+  d'une fenêtre n'a pas d'entrée dans `cpAppColor`, seule celle d'un bouton en a une
+  (`cpButton[8]`, déjà transcrite et toujours lue par personne). J'ai donc retenu l'attribut
+  VGA `0x08` en écrivant que ce n'était pas une transcription. Puis l'importeur a compilé
+  `[core] shadow` du skin par défaut de `mc` : `gray;black`, c'est-à-dire `pair(8, 0)` —
+  exactement la même valeur. Deux apparences qui concordent ne font pas une source, mais
+  elles font un repère, et le pseudo-terminal l'a confirmé : les deux thèmes émettent la
+  même séquence `38;5;8;48;5;0`, douze fois chacun.
+- **L'ombre recolore ce qui est dessous en gardant le caractère**, et c'est ce qui en fait
+  une ombre plutôt qu'un rectangle collé à la fenêtre. Vérifié sur les octets émis de la
+  façon la plus directe : le **seul** caractère que l'exemple `frame` peint à la couleur
+  d'ombre est `░`, le motif du bureau.
+- **Un essai que j'ai dû corriger parce que sa prémisse était fausse.** J'avais écrit
+  « l'ombre garde le caractère » en remplissant la surface d'un motif avant de dessiner — et
+  le panneau conteneur repeint son fond d'espaces par-dessus. Le seul conteneur qui montre
+  l'effet est le **vrai bureau**, qui remplit du `░` de Turbo Vision. L'essai le dit
+  maintenant, et il est meilleur : il éprouve le cas réel au lieu d'un montage.
+- **Trois rôles de l'assiette, et la palette passe à trente-neuf.** `AirViewState::casts_shadow`
+  dit quelle vue en projette une — faux par défaut, parce qu'une ombre sur chaque vue
+  couvrirait l'écran de gris —, `AirDecorations` dit sa taille, la palette dit sa couleur.
+  Un thème sans ombre les éteint toutes d'un seul endroit.
+- **1307 essais**, dont sept pour l'ombre : les deux bandes, le non-recouvrement de la
+  fenêtre, le caractère conservé, le thème sans ombre, la vue sans ombre, le découpage au
+  bord du bureau, et l'ordre à deux temps entre deux fenêtres superposées.
+- Il reste que les **boutons** ne projettent pas d'ombre, et que `AirRole::ButtonShadow` est
+  toujours lu par personne. Le mécanisme y suffirait — un bouton est l'enfant d'une fenêtre,
+  qui possède donc la zone où son ombre tomberait — et c'est écrit comme pas fait.
+
 ## 2026-10-10 — Jalon M7i : plusieurs skins compilés, et le choix par un nom
 
 - **La limite que M7g avait laissée.** Les trente-neuf skins livrés avec `mc` étaient

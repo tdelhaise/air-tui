@@ -40,7 +40,7 @@ pub use painter::AirPainter;
 use crate::command::{AirCommand, AirCommandSet};
 use crate::geometry::{AirColumn, AirPoint, AirRectangle, AirRow, AirSize};
 use crate::input::event::{AirInputEvent, AirKeyState};
-use crate::theme::{AirFrameGlyphs, AirRole, AirTheme};
+use crate::theme::{AirColorPair, AirFrameGlyphs, AirRole, AirTheme};
 
 /// L'identifiant d'une vue.
 ///
@@ -298,6 +298,12 @@ pub struct AirViewState {
     pre_process: bool,
     /// Vrai si la vue voit les événements après celle qui a le focus.
     post_process: bool,
+    /// Vrai si la vue projette une ombre portée.
+    ///
+    /// Faux par défaut : une ombre sur chaque vue couvrirait l'écran de gris. Ce n'est
+    /// **pas** cette vue qui la dessine — elle tombe hors de ses limites, et son
+    /// propriétaire la peint pour elle (ADR-015).
+    casts_shadow: bool,
 }
 
 impl AirViewState {
@@ -309,6 +315,7 @@ impl AirViewState {
             bounds,
             border: true,
             border_style: AirBorderStyle::Single,
+            casts_shadow: false,
             visible: true,
             focused: false,
             enabled: true,
@@ -363,6 +370,22 @@ impl AirViewState {
     #[must_use]
     pub const fn border_style(&self) -> AirBorderStyle {
         self.border_style
+    }
+
+    /// Vrai si la vue projette une ombre portée.
+    #[must_use]
+    pub const fn casts_shadow(&self) -> bool {
+        self.casts_shadow
+    }
+
+    /// Décide si la vue projette une ombre portée.
+    ///
+    /// La vue ne la dessine pas : elle tombe hors de ses limites, et c'est son
+    /// propriétaire qui la peint (ADR-015). Le thème décide de sa taille et la palette de
+    /// sa couleur, donc une vue qui en projette n'en projette pas dans un thème qui n'en
+    /// a pas.
+    pub const fn set_casts_shadow(&mut self, casts_shadow: bool) {
+        self.casts_shadow = casts_shadow;
     }
 
     /// Choisit le style de bordure.
@@ -564,6 +587,12 @@ pub fn draw_view(
         None
     };
     for child in view.children() {
+        // L'ombre d'abord, l'enfant ensuite, et dans l'ordre arrière-vers-avant de la
+        // boucle : l'ombre d'une fenêtre de premier plan tombe donc sur celles d'en
+        // dessous, et le corps d'une fenêtre de premier plan recouvre l'ombre qu'une
+        // autre y aurait projetée. Une passe globale des ombres ne saurait pas distinguer
+        // les deux (ADR-015).
+        draw_child_shadow(&mut interior_painter, child.as_ref(), context);
         if let Some(mut child_painter) = interior_painter.child(child.state().bounds())
             && let Some(found) = draw_view(child.as_ref(), &mut child_painter, context)
         {
@@ -571,6 +600,58 @@ pub fn draw_view(
         }
     }
     cursor
+}
+
+/// Peint l'ombre d'un enfant, dans les limites du **propriétaire**.
+///
+/// C'est la décision de l'ADR-015 : une vue ne peint pas hors de ses limites, et ce qui
+/// dépasse d'elle est peint par le propriétaire de la surface où cela dépasse. Le peintre
+/// reçu est donc celui du parent, et son découpage s'applique tel quel — une fenêtre
+/// contre le bord du bureau ne projette qu'un morceau d'ombre, ce qui est juste.
+///
+/// L'ombre **recolore** ce qui est dessous en gardant le caractère : c'est ce qui lui donne
+/// l'aspect d'une ombre sur le motif du bureau plutôt que d'un rectangle collé à la
+/// fenêtre.
+fn draw_child_shadow(
+    painter: &mut AirPainter<'_>,
+    child: &dyn AirView,
+    context: &AirDrawContext<'_>,
+) {
+    if !child.state().is_visible() || !child.state().casts_shadow() {
+        return;
+    }
+    let Some(shadow) = context.theme.decorations.shadow else {
+        return;
+    };
+    let colors = context.theme.palette.color_pair(AirRole::WindowShadow);
+    let bounds = child.state().bounds();
+    // La zone d'ombre est la vue **décalée**, moins la vue elle-même : les cellules qui
+    // restent dessous vont être recouvertes, et les recolorer serait du travail perdu.
+    let shadowed = AirRectangle::new(
+        AirPoint::new(
+            AirColumn::new(bounds.left().saturating_add(shadow.columns)),
+            AirRow::new(bounds.top().saturating_add(shadow.rows)),
+        ),
+        bounds.size,
+    );
+    let mut row = shadowed.top();
+    while row < shadowed.bottom_exclusive() {
+        let mut column = shadowed.left();
+        while column < shadowed.right_exclusive() {
+            let point = AirPoint::new(AirColumn::new(column), AirRow::new(row));
+            if !bounds.contains(point) {
+                shade(painter, point, colors);
+            }
+            column = column.saturating_add(1);
+        }
+        row = row.saturating_add(1);
+    }
+}
+
+/// Recolore une cellule aux couleurs de l'ombre, en gardant son caractère.
+fn shade(painter: &mut AirPainter<'_>, point: AirPoint, colors: AirColorPair) {
+    let character = painter.cell(point).map_or(' ', |cell| cell.character);
+    painter.set_cell(point, colors.cell(character));
 }
 
 /// Trace la bordure d'une vue avec les glyphes et les couleurs du thème.
@@ -881,7 +962,8 @@ mod tests {
         AirMouseEvent, AirMouseEventKind,
     };
     use crate::surface::AirSurface;
-    use crate::theme::AirTheme;
+    use crate::theme::{AirRole, AirTheme};
+    use crate::widgets::{AirPanel, AirWindow};
 
     fn identifier(value: u32) -> AirViewId {
         AirViewId::new(value).expect("un identifiant non nul")
@@ -893,6 +975,245 @@ mod tests {
 
     fn point(column: u16, row: u16) -> AirPoint {
         AirPoint::new(AirColumn::new(column), AirRow::new(row))
+    }
+
+    // ------------------------------------------------- l'ombre portée (ADR-015)
+
+    /// Un bureau d'une seule fenêtre, et la surface où il est peint.
+    ///
+    /// Le bureau est **sans bordure** : sans cela, la fenêtre serait décalée d'une cellule
+    /// et chaque attente devrait compter ce décalage.
+    fn desktop_with_window(size: AirSize, window_bounds: AirRectangle) -> (AirSurface, AirTheme) {
+        let theme = AirTheme::turbo_vision();
+        let mut surface = AirSurface::new(size);
+        let mut root = AirPanel::new(state_without_border(
+            1,
+            AirRectangle::new(AirPoint::ORIGIN, size),
+        ));
+        root.insert(Box::new(AirWindow::new(state(2, window_bounds))));
+        {
+            let mut painter = AirPainter::new(&mut surface);
+            draw_view(
+                &root,
+                &mut painter,
+                &AirDrawContext::new(&theme, &AirCommandSet::new()),
+            );
+        }
+        (surface, theme)
+    }
+
+    /// Un état sans bordure, pour un conteneur qui ne doit pas décaler ses enfants.
+    fn state_without_border(value: u32, bounds: AirRectangle) -> AirViewState {
+        let mut state = state(value, bounds);
+        state.set_border(false);
+        state
+    }
+
+    #[test]
+    fn une_fenetre_projette_une_ombre_en_bas_et_a_droite() {
+        // Deux colonnes à droite et une ligne en dessous : l'ADR-008 nomme les deux
+        // colonnes dans son contexte.
+        let (surface, theme) =
+            desktop_with_window(AirSize::new(14, 8), AirRectangle::from_parts(2, 1, 6, 4));
+        let shadow = theme.palette.color_pair(AirRole::WindowShadow);
+        // À droite de la fenêtre, sur une ligne qu'elle occupe.
+        for column in 8..10 {
+            assert_eq!(
+                surface.cell(point(column, 2)).map(|cell| cell.background),
+                Some(shadow.background),
+                "colonne {column} : la bande de droite doit être ombrée"
+            );
+        }
+        // Sous la fenêtre, décalée de deux colonnes.
+        for column in 4..10 {
+            assert_eq!(
+                surface.cell(point(column, 5)).map(|cell| cell.background),
+                Some(shadow.background),
+                "colonne {column} : la bande du bas doit être ombrée"
+            );
+        }
+    }
+
+    #[test]
+    fn l_ombre_ne_couvre_pas_la_fenetre() {
+        // Elle est la vue décalée **moins** la vue : recolorer ce que la fenêtre va
+        // recouvrir serait du travail perdu, et le prouver interdit la régression.
+        let (surface, theme) =
+            desktop_with_window(AirSize::new(14, 8), AirRectangle::from_parts(2, 1, 6, 4));
+        let shadow = theme.palette.color_pair(AirRole::WindowShadow);
+        let frame = theme.palette.color_pair(AirRole::WindowFrameInactive);
+        assert_eq!(
+            surface.cell(point(2, 1)).map(|cell| cell.background),
+            Some(frame.background),
+            "l'angle de la fenêtre doit porter le cadre, pas l'ombre"
+        );
+        assert_ne!(
+            shadow.background, frame.background,
+            "l'essai doit discriminer"
+        );
+    }
+
+    #[test]
+    fn l_ombre_garde_le_caractere_qu_elle_assombrit() {
+        // C'est ce qui fait une ombre plutôt qu'un rectangle, et le vrai bureau est le
+        // seul conteneur qui le montre : il remplit son fond du `░` de Turbo Vision, là
+        // où un panneau le remplit d'espaces.
+        let theme = AirTheme::turbo_vision();
+        let size = AirSize::new(14, 8);
+        let mut surface = AirSurface::new(size);
+        let mut desktop = crate::application::AirDesktop::new(state(
+            1,
+            AirRectangle::new(AirPoint::ORIGIN, size),
+        ));
+        desktop.insert(Box::new(AirWindow::new(state(
+            2,
+            AirRectangle::from_parts(2, 1, 6, 4),
+        ))));
+        {
+            let mut painter = AirPainter::new(&mut surface);
+            draw_view(
+                &desktop,
+                &mut painter,
+                &AirDrawContext::new(&theme, &AirCommandSet::new()),
+            );
+        }
+        let shaded = surface
+            .cell(point(4, 5))
+            .copied()
+            .expect("une cellule ombrée");
+        assert_eq!(
+            shaded.character, theme.glyphs.desktop_fill,
+            "le motif du bureau doit survivre à l'ombre"
+        );
+        assert_eq!(
+            shaded.background,
+            theme.palette.color_pair(AirRole::WindowShadow).background
+        );
+    }
+
+    #[test]
+    fn un_theme_sans_ombre_n_en_peint_aucune() {
+        // L'ombre s'éteint d'un seul endroit, et aucune vue n'a à le savoir.
+        let theme = AirTheme {
+            decorations: AirTheme::turbo_vision().decorations.without_shadow(),
+            ..AirTheme::turbo_vision()
+        };
+        let size = AirSize::new(14, 8);
+        let mut surface = AirSurface::new(size);
+        let mut root = AirPanel::new(state_without_border(
+            1,
+            AirRectangle::new(AirPoint::ORIGIN, size),
+        ));
+        root.insert(Box::new(AirWindow::new(state(
+            2,
+            AirRectangle::from_parts(2, 1, 6, 4),
+        ))));
+        {
+            let mut painter = AirPainter::new(&mut surface);
+            draw_view(
+                &root,
+                &mut painter,
+                &AirDrawContext::new(&theme, &AirCommandSet::new()),
+            );
+        }
+        let shadow = theme.palette.color_pair(AirRole::WindowShadow);
+        assert_ne!(
+            surface.cell(point(4, 5)).map(|cell| cell.background),
+            Some(shadow.background)
+        );
+    }
+
+    #[test]
+    fn une_vue_qui_ne_projette_pas_d_ombre_n_en_projette_pas() {
+        // `casts_shadow` est faux par défaut : une ombre sur chaque vue couvrirait
+        // l'écran de gris.
+        let theme = AirTheme::turbo_vision();
+        let size = AirSize::new(14, 8);
+        let mut surface = AirSurface::new(size);
+        let mut root = AirPanel::new(state_without_border(
+            1,
+            AirRectangle::new(AirPoint::ORIGIN, size),
+        ));
+        root.insert(Box::new(AirPanel::new(state(
+            2,
+            AirRectangle::from_parts(2, 1, 6, 4),
+        ))));
+        {
+            let mut painter = AirPainter::new(&mut surface);
+            draw_view(
+                &root,
+                &mut painter,
+                &AirDrawContext::new(&theme, &AirCommandSet::new()),
+            );
+        }
+        let shadow = theme.palette.color_pair(AirRole::WindowShadow);
+        assert_ne!(
+            surface.cell(point(4, 5)).map(|cell| cell.background),
+            Some(shadow.background),
+            "un panneau ne projette pas d'ombre"
+        );
+    }
+
+    #[test]
+    fn l_ombre_est_decoupee_comme_tout_le_reste() {
+        // Une fenêtre contre le bord du bureau n'en projette qu'un morceau. Ce n'est pas
+        // un cas à traiter : c'est le découpage du peintre, que l'ADR-015 ne touche pas.
+        let (surface, theme) =
+            desktop_with_window(AirSize::new(10, 6), AirRectangle::from_parts(2, 1, 8, 5));
+        let shadow = theme.palette.color_pair(AirRole::WindowShadow);
+        // La bande de droite tomberait aux colonnes 10 et 11, hors de la surface.
+        assert_eq!(surface.cell(point(10, 2)), None, "hors de la surface");
+        // La bande du bas tomberait à la ligne 6, hors de la surface elle aussi.
+        assert_eq!(surface.cell(point(4, 6)), None);
+        // Et rien n'a paniqué : la fenêtre est bien dessinée.
+        assert_ne!(
+            surface.cell(point(2, 1)).map(|cell| cell.background),
+            Some(shadow.background)
+        );
+    }
+
+    #[test]
+    fn l_ombre_d_une_fenetre_de_premier_plan_tombe_sur_celle_d_en_dessous() {
+        // L'ordre à deux temps : les enfants sont dessinés de l'arrière vers l'avant, et
+        // l'ombre de chacun juste avant lui. Une passe globale des ombres ne saurait pas
+        // distinguer « derrière » de « devant » (ADR-015).
+        let theme = AirTheme::turbo_vision();
+        let size = AirSize::new(20, 10);
+        let mut surface = AirSurface::new(size);
+        let mut root = AirPanel::new(state_without_border(
+            1,
+            AirRectangle::new(AirPoint::ORIGIN, size),
+        ));
+        // Celle d'arrière-plan d'abord, celle de premier plan ensuite.
+        root.insert(Box::new(AirWindow::new(state(
+            2,
+            AirRectangle::from_parts(0, 0, 10, 6),
+        ))));
+        root.insert(Box::new(AirWindow::new(state(
+            3,
+            AirRectangle::from_parts(6, 3, 10, 6),
+        ))));
+        {
+            let mut painter = AirPainter::new(&mut surface);
+            draw_view(
+                &root,
+                &mut painter,
+                &AirDrawContext::new(&theme, &AirCommandSet::new()),
+            );
+        }
+        let shadow = theme.palette.color_pair(AirRole::WindowShadow);
+        // (8, 4) est dans la fenêtre de premier plan : son corps l'emporte.
+        assert_ne!(
+            surface.cell(point(8, 4)).map(|cell| cell.background),
+            Some(shadow.background),
+            "le corps du premier plan recouvre tout"
+        );
+        // (8, 9) est sous la fenêtre de premier plan, hors de celle d'arrière-plan.
+        assert_eq!(
+            surface.cell(point(8, 9)).map(|cell| cell.background),
+            Some(shadow.background),
+            "l'ombre du premier plan tombe sur le bureau"
+        );
     }
 
     fn key_event(character: char) -> AirEvent {

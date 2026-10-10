@@ -41,7 +41,11 @@ pub struct AirWindow {
 impl AirWindow {
     /// Une fenêtre vide, bordée en trait simple, avec sa case de fermeture.
     #[must_use]
-    pub const fn new(state: AirViewState) -> Self {
+    pub fn new(mut state: AirViewState) -> Self {
+        // Une fenêtre projette une ombre, et c'est son **propriétaire** qui la peint :
+        // elle tombe hors de ses limites, que le découpage du peintre ne laisse pas
+        // franchir (ADR-015). La vue ne fait que le déclarer.
+        state.set_casts_shadow(true);
         Self {
             group: AirGroup::new(state),
             title: None,

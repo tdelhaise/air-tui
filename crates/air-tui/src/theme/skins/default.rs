@@ -5,7 +5,7 @@
 //! Le thème Midnight Commander — **fichier généré, ne pas éditer**.
 //!
 //! Produit par `cargo xtask import-mc-skin` depuis « Standard skin », fichier
-//! `/usr/local/share/mc/skins/default.ini`. 35 rôles transcrits d'une clef, 3 composés de deux.
+//! `/usr/local/share/mc/skins/default.ini`. 36 rôles transcrits d'une clef, 3 composés de deux.
 //!
 //! Empreinte FNV-1a du skin d'origine : `0xefc735864405630c`. C'est un repère de
 //! dérive, pas une garantie cryptographique : `cargo xtask import-mc-skin --check`
@@ -52,6 +52,9 @@
 //! - **`ListNormal`** — un panneau de mc est l'application elle-même : ses lignes portent
 //!   `[core] _default_`.
 //! - **`ClusterNormal`** — mc ne distingue pas les cases à cocher du fond de leur dialogue.
+//! - **`WindowShadow`** — mc nomme l'ombre, et trente et un des trente-neuf skins livrés la
+//!   définissent. Les huit autres l'héritent de [core] _default_, ce qui la rend invisible
+//!   — c'est ce que mc fait aussi.
 
 use crate::cell::AirColor;
 use crate::theme::glyphs::{AirClusterGlyphs, AirFrameGlyphs, AirGlyphSet};
@@ -126,6 +129,7 @@ pub(crate) const fn palette() -> AirPalette {
             pair(0, 6), // ClusterSelected ← [dialog] dfocus
             pair(4, 7), // ClusterHotkey ← [dialog] dhotnormal
         ],
+        shadow: pair(8, 0), // WindowShadow ← [core] shadow
     })
 }
 

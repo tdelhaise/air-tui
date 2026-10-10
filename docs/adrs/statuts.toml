@@ -51,8 +51,8 @@ note   = "les quatre mécanismes existent et redit les emploie tous (M6) : journ
 
 ["008"]
 objet  = "Moteur de thèmes : palette par rôles, glyphes, décorations ; thèmes compilés"
-statut = "en-cours"
-note   = "palette transcrite de Borland (trente-huit rôles depuis M7f, avec attributs depuis M7g), quantificateur, treize widgets colorés par rôles, thème MC et importeur de skins faits (M5, M5b, M6, M7a), coquille rmc faite (M7b) : les deux moitiés que l'ADR sépare existent séparément et se vérifient en deux lignes de commande. Les trente-neuf skins livrés avec mc 4.8.33 sont importables depuis M7g. Reste : AirDecorations, la troisième assiette du triplet, que l'ombre portée demande et que le découpage du peintre interdit aujourd'hui ; et le choix du skin autrement qu'en recompilant l'artefact, le dépôt n'en portant qu'un à la fois"
+statut = "fait"
+note   = "palette transcrite de Borland (trente-neuf rôles depuis M7j, avec attributs depuis M7g), quantificateur, treize widgets colorés par rôles, thème MC et importeur de skins faits (M5, M5b, M6, M7a), coquille rmc faite (M7b) : les deux moitiés que l'ADR sépare existent séparément et se vérifient en deux lignes de commande. Les trente-neuf skins livrés avec mc 4.8.33 sont importables depuis M7g. Le choix du skin se fait par un nom depuis M7i, et AirDecorations — la troisième assiette du triplet — existe depuis M7j : le thème est enfin le triplet que l'ADR décrit. Reste que les boutons ne projettent pas d'ombre, et que AirRole::ButtonShadow n'est lu par personne"
 
 ["009"]
 objet  = "Versionnement semver, par crate, incrémenté à chaque PR qui touche la crate"
@@ -83,3 +83,8 @@ note   = "find et find_mut rendent une vue avec son type (M6) ; c'est ce qui per
 objet  = "Annulation par journal de remplacements, une seule mutation primitive"
 statut = "fait"
 note   = "AirTextBuffer tient son historique et les sept chirurgies de lignes sont ramenées à une seule, splice (M7h) : le journal est une propriété de l'unique point de mutation, pas une couche posée à côté. Fusion par geste, borne à deux cent cinquante-six pas, drapeau de modification dérivé de l'historique. redit lie Ctrl+Z et Ctrl+R, et grise les deux commandes en pull"
+
+["015"]
+objet  = "Une vue ne peint pas hors de ses limites ; son propriétaire le fait pour elle"
+statut = "fait"
+note   = "l'ombre portée est peinte par le parent dans la boucle où il dessine ses enfants (M7j), et l'invariant du découpage n'a pas bougé. Le dépôt employait déjà la première des trois stratégies — la barre de menu agrandit ses limites pour contenir son déroulant depuis M5b. Les boutons ne projettent pas encore d'ombre"

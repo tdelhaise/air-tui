@@ -466,11 +466,31 @@ atteindre ses propres vues.
 
 ## Les thèmes
 
-Écrit au jalon M5. L'ADR-008 décrit un **triplet** — palette, glyphes, décorations — parce
-que ce qui fait reconnaître un look tient autant aux caractères qu'aux couleurs. `AirTheme`
-est aujourd'hui un **couple** : `AirDecorations` n'existe pas, et l'écart est assumé plutôt
-que comblé par une structure vide. Le style de trait vit déjà dans les glyphes, et l'ombre
-portée ne peut pas être dessinée tant qu'une vue ne peut pas peindre hors de ses limites.
+Écrit au jalon M5. Un thème est le **triplet** que l'ADR-008 décrit — palette, glyphes,
+décorations — parce que ce qui fait reconnaître un look tient autant aux caractères qu'aux
+couleurs. Il a été un **couple** pendant quatre jalons : la seule décoration que la
+troisième assiette aurait portée est l'ombre portée, et elle tombe hors des limites de la
+vue qui la projette. L'ADR-015 a tranché la question au jalon M7j.
+
+### L'ombre portée, et l'invariant qui n'a pas bougé
+
+Le peintre découpe toute écriture aux limites de la vue, sans exception — c'est ce qui fait
+qu'une étiquette trop large ne mange plus la bordure qui l'entoure, ce qu'elle faisait au
+jalon M0. L'ombre d'une fenêtre tombe pourtant **dehors**.
+
+La réponse de l'ADR-015 : ce qui dépasse d'une vue est peint par le **propriétaire de la
+surface où cela dépasse**. L'ombre appartient au bureau, pas à la fenêtre, et c'est donc le
+bureau qui l'écrit — dans ses propres limites, juste avant de dessiner la fenêtre.
+
+Le dépôt employait déjà cette famille de solutions sans l'avoir nommée : la barre de menu
+**agrandit ses propres limites** à l'ouverture d'un menu, depuis le jalon M5b. Agrandir ne
+convenait pas à l'ombre, pour une raison précise — la zone d'ombre entrerait dans la
+détection de clic de la fenêtre et dans le calcul de son intérieur.
+
+L'ombre **recolore** ce qui est dessous en gardant le caractère, ce qui lui donne l'aspect
+d'une ombre sur le motif `░` du bureau plutôt que d'un rectangle collé à la fenêtre. Elle
+est découpée comme tout le reste : une fenêtre contre le bord du bureau n'en projette qu'un
+morceau.
 
 ### Un rôle décrit une présentation, pas un couple de couleurs
 

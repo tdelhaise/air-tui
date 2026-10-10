@@ -5,7 +5,7 @@
 //! Le thème Midnight Commander — **fichier généré, ne pas éditer**.
 //!
 //! Produit par `cargo xtask import-mc-skin` depuis « Four Seasons – Autumn », fichier
-//! `/usr/local/share/mc/skins/seasons-autumn16M.ini`. 35 rôles transcrits d'une clef, 3 composés de deux.
+//! `/usr/local/share/mc/skins/seasons-autumn16M.ini`. 36 rôles transcrits d'une clef, 3 composés de deux.
 //!
 //! Empreinte FNV-1a du skin d'origine : `0x59f52bde5d5b591a`. C'est un repère de
 //! dérive, pas une garantie cryptographique : `cargo xtask import-mc-skin --check`
@@ -52,6 +52,9 @@
 //! - **`ListNormal`** — un panneau de mc est l'application elle-même : ses lignes portent
 //!   `[core] _default_`.
 //! - **`ClusterNormal`** — mc ne distingue pas les cases à cocher du fond de leur dialogue.
+//! - **`WindowShadow`** — mc nomme l'ombre, et trente et un des trente-neuf skins livrés la
+//!   définissent. Les huit autres l'héritent de [core] _default_, ce qui la rend invisible
+//!   — c'est ce que mc fait aussi.
 //! # Ce que ce skin demande au-delà de deux couleurs
 //!
 //! 7 rôles portent un attribut du skin, et 0 ont une
@@ -168,6 +171,7 @@ pub(crate) const fn palette() -> AirPalette {
                 },
             ), // ClusterHotkey ← [dialog] dhotnormal
         ],
+        shadow: AirColorPair::new(rgb(0x7f, 0x7f, 0x55), rgb(0x4c, 0x10, 0x02)), // WindowShadow ← [core] shadow
     })
 }
 
