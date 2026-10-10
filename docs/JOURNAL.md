@@ -6,6 +6,34 @@ tête. On ajoute, on ne réécrit jamais une entrée passée.
 Une entrée par campagne, pas par commit. Répartition des rôles : `etat-avancement.md` est
 l'état vivant, ce journal est la trace figée, `INDEX.md` est la carte structurelle.
 
+## 2026-10-10 — M4, l'arbre de vues
+
+- `air-tui/src/view/` : trait `AirView` et composition `AirViewState`, `AirGroup`
+  composite, routage en trois phases, focus exclusif entre sœurs, ordre de profondeur,
+  bordure par défaut d'ADR-010.
+- **`AirPainter` est la pièce qui fait tout tenir.** Une vue dessine à partir de son propre
+  `(0, 0)` et ne sait pas où elle se trouve ; le peintre traduit et **découpe**. Le défaut
+  du jalon M0 — un contenu trop long qui écrase le cadre qui l'entoure — est devenu
+  impossible, et l'exemple `frame` en fait la démonstration en insérant volontairement une
+  étiquette plus large que sa fenêtre. Vérifié au-delà du test : sur le rendu réel, les
+  bordures tombent aux colonnes 14 et 67 sur **toutes** les lignes, texte accentué et texte
+  débordant compris.
+- Les coordonnées de souris sont traduites à la descente de l'arbre et restaurées à la
+  remontée : une vue reçoit toujours des coordonnées qui sont les siennes, sans savoir où
+  elle est. Déplacer plutôt que cloner évite une allocation par vue traversée.
+- `AirCommandSet` : le mécanisme 3 de l'ADR-007, en *pull*. Personne n'est notifié, chaque
+  vue interroge au dessin. Huit kilooctets de bits couvrent les 65 536 commandes, et un
+  test vérifie que désactiver la commande 5 ne désactive pas la 69.
+- **Une duplication supprimée en cours de route** : le dessin de texte par grappes existait
+  en deux endroits, sur la surface et dans le peintre. `AirSurface::draw_text` délègue
+  désormais au peintre. Deux implémentations de la même règle garantissaient qu'elles
+  divergent.
+- **Périmètre recalé, et dit** : M4 annonçait aussi les widgets de base. Ils passent à M5
+  avec le moteur de thèmes, parce qu'ils se tiennent — un bouton a besoin de rôles de
+  couleur que la palette actuelle n'a pas. Deux widgets seulement sont livrés ici, pour
+  prouver l'arbre : `AirPanel` et `AirStaticText`.
+- 409 tests. `air-tui` passe en 0.4.1 (ajout d'API pure).
+
 ## 2026-10-10 — M3, les tables Unicode
 
 - `xtask/` : l'outillage du dépôt, en Rust et sans dépendance, avec `download-ucd` et

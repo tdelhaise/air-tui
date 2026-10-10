@@ -13,7 +13,7 @@
 
 use crate::cell::{AirAttributes, AirCell, AirColor};
 use crate::geometry::{AirColumn, AirPoint, AirRectangle, AirRow, AirSize};
-use crate::unicode::{grapheme_width, graphemes};
+use crate::view::painter::AirPainter;
 
 /// Une grille de cellules, avec le souvenir de ce qui est déjà affiché.
 #[derive(Debug, Clone)]
@@ -131,24 +131,13 @@ impl AirSurface {
     /// Écrit une chaîne à partir d'une position, et rend la colonne qui suit le dernier
     /// caractère écrit.
     ///
-    /// # Ce que cette fonction respecte, et pourquoi
+    /// Délègue à [`AirPainter`], qui porte **l'unique** implémentation du dessin de texte :
+    /// parcours par grappes de graphème, largeurs d'affichage, cellule de continuation
+    /// après une grappe large (ADR-006). En avoir deux, une ici et une dans le peintre,
+    /// garantissait qu'elles divergent.
     ///
-    /// Le texte est parcouru par **grappes de graphème**, pas par caractères : un `e`
-    /// suivi d'un accent combinant occupe une cellule, pas deux, et une famille d'emoji
-    /// soudée par des jointures en occupe deux, pas huit (ADR-006).
-    ///
-    /// Une grappe **large** — idéogramme, emoji — occupe deux colonnes : la seconde reçoit
-    /// une cellule de continuation que le rendu saute. Sans cela, le terminal dessinerait
-    /// le glyphe sur deux colonnes puis air-tui écraserait sa moitié droite.
-    ///
-    /// Une grappe de largeur **nulle** — une marque combinante orpheline — n'avance pas
-    /// la colonne : la poser dans une cellule décalerait tout ce qui suit.
-    ///
-    /// # Découpage
-    ///
-    /// Le découpage se fait sur le bord de la **surface**. Une grappe large qui ne tient
-    /// pas entièrement n'est **pas** écrite : en afficher la moitié produirait un glyphe
-    /// tronqué à la place d'un vide propre.
+    /// Le découpage se fait sur le bord de la **surface**. Pour découper sur une vue, il
+    /// faut un peintre d'enfant — c'est tout l'objet de l'arbre de vues.
     pub fn draw_text(
         &mut self,
         origin: AirPoint,
@@ -157,34 +146,8 @@ impl AirSurface {
         background: AirColor,
         attributes: AirAttributes,
     ) -> AirColumn {
-        let mut column = origin.column;
-        for cluster in graphemes(text) {
-            let width = grapheme_width(cluster);
-            if width == 0 {
-                // Une marque orpheline : rien à poser, rien à avancer.
-                continue;
-            }
-            let last_needed = column
-                .value()
-                .saturating_add(u16::try_from(width).unwrap_or(u16::MAX).saturating_sub(1));
-            if last_needed >= self.size.columns {
-                // La grappe ne tient pas entière : on s'arrête plutôt que de la tronquer.
-                break;
-            }
-            let character = cluster.chars().next().unwrap_or(' ');
-            let cell = AirCell::new(character, foreground, background).with_attributes(attributes);
-            let point = AirPoint::new(column, origin.row);
-            if !self.set_cell(point, cell) {
-                break;
-            }
-            column = column.next();
-            if width == 2 {
-                let continuation = AirPoint::new(column, origin.row);
-                self.set_cell(continuation, AirCell::continuation_of(cell));
-                column = column.next();
-            }
-        }
-        column
+        let mut painter = AirPainter::new(self);
+        painter.draw_text(origin, text, foreground, background, attributes)
     }
 
     /// Parcourt les cellules qui ont changé depuis le dernier [`Self::mark_presented`].

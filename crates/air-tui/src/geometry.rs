@@ -167,6 +167,62 @@ impl AirRectangle {
         self.top().saturating_add(self.size.rows)
     }
 
+    /// Le rectangle commun à deux rectangles, s'ils se recouvrent.
+    ///
+    /// Rend `None` quand ils sont disjoints, plutôt qu'un rectangle de dimension nulle :
+    /// un découpage vide et un découpage inexistant ne demandent pas le même traitement,
+    /// et l'ADR-021 §1 refuse les sentinelles.
+    #[must_use]
+    pub fn intersection(self, other: Self) -> Option<Self> {
+        let left = self.left().max(other.left());
+        let top = self.top().max(other.top());
+        let right = self.right_exclusive().min(other.right_exclusive());
+        let bottom = self.bottom_exclusive().min(other.bottom_exclusive());
+        if right <= left || bottom <= top {
+            return None;
+        }
+        Some(Self::from_parts(
+            left,
+            top,
+            right.saturating_sub(left),
+            bottom.saturating_sub(top),
+        ))
+    }
+
+    /// Le même rectangle, déplacé de `delta` colonnes et lignes.
+    ///
+    /// Le déplacement sature : un rectangle poussé au-delà du bord de la grille s'y
+    /// arrête, il ne repart pas de l'autre côté.
+    #[must_use]
+    pub fn translated(self, delta: AirPoint) -> Self {
+        Self::new(
+            AirPoint::new(
+                AirColumn::new(self.left().saturating_add(delta.column.value())),
+                AirRow::new(self.top().saturating_add(delta.row.value())),
+            ),
+            self.size,
+        )
+    }
+
+    /// Le même rectangle, rétréci de `margin` cellules sur chaque bord.
+    ///
+    /// Rend `None` quand la marge ne laisse rien : c'est le cas d'une vue bordée trop
+    /// petite pour avoir un intérieur, et l'appelant doit le savoir plutôt que de recevoir
+    /// un rectangle vide (ADR-010).
+    #[must_use]
+    pub fn inset(self, margin: u16) -> Option<Self> {
+        let doubled = margin.checked_mul(2)?;
+        if self.size.columns <= doubled || self.size.rows <= doubled {
+            return None;
+        }
+        Some(Self::from_parts(
+            self.left().saturating_add(margin),
+            self.top().saturating_add(margin),
+            self.size.columns.saturating_sub(doubled),
+            self.size.rows.saturating_sub(doubled),
+        ))
+    }
+
     /// Vrai si la position est à l'intérieur du rectangle.
     pub const fn contains(self, point: AirPoint) -> bool {
         let column = point.column.value();
@@ -211,6 +267,86 @@ mod tests {
         let rectangle = AirRectangle::from_parts(u16::MAX, u16::MAX, 10, 10);
         assert_eq!(rectangle.right_exclusive(), u16::MAX);
         assert_eq!(rectangle.bottom_exclusive(), u16::MAX);
+    }
+
+    #[test]
+    fn deux_rectangles_qui_se_recouvrent_ont_une_intersection() {
+        let first = AirRectangle::from_parts(0, 0, 10, 10);
+        let second = AirRectangle::from_parts(5, 5, 10, 10);
+        assert_eq!(
+            first.intersection(second),
+            Some(AirRectangle::from_parts(5, 5, 5, 5))
+        );
+    }
+
+    #[test]
+    fn l_intersection_est_commutative() {
+        let first = AirRectangle::from_parts(2, 3, 8, 4);
+        let second = AirRectangle::from_parts(4, 1, 3, 9);
+        assert_eq!(first.intersection(second), second.intersection(first));
+    }
+
+    #[test]
+    fn deux_rectangles_disjoints_n_ont_pas_d_intersection() {
+        // `None` et non un rectangle vide : un découpage inexistant et un découpage vide
+        // ne demandent pas le même traitement.
+        let first = AirRectangle::from_parts(0, 0, 5, 5);
+        let far = AirRectangle::from_parts(10, 10, 5, 5);
+        assert_eq!(first.intersection(far), None);
+        // Adjacents sans se toucher : le bord droit exclusif de l'un est l'origine de
+        // l'autre.
+        let adjacent = AirRectangle::from_parts(5, 0, 5, 5);
+        assert_eq!(first.intersection(adjacent), None);
+    }
+
+    #[test]
+    fn un_rectangle_contenu_est_sa_propre_intersection() {
+        let outer = AirRectangle::from_parts(0, 0, 20, 20);
+        let inner = AirRectangle::from_parts(5, 5, 3, 3);
+        assert_eq!(outer.intersection(inner), Some(inner));
+    }
+
+    #[test]
+    fn un_deplacement_translate_l_origine_sans_changer_la_dimension() {
+        let rectangle = AirRectangle::from_parts(2, 3, 4, 5);
+        let moved = rectangle.translated(AirPoint::new(AirColumn::new(10), AirRow::new(20)));
+        assert_eq!(moved, AirRectangle::from_parts(12, 23, 4, 5));
+    }
+
+    #[test]
+    fn un_deplacement_demesure_sature_au_lieu_de_repartir_a_zero() {
+        let rectangle = AirRectangle::from_parts(u16::MAX, 0, 4, 5);
+        let moved = rectangle.translated(AirPoint::new(AirColumn::new(10), AirRow::FIRST));
+        assert_eq!(moved.left(), u16::MAX);
+    }
+
+    #[test]
+    fn un_retrait_d_une_cellule_laisse_un_interieur() {
+        let rectangle = AirRectangle::from_parts(0, 0, 10, 6);
+        assert_eq!(
+            rectangle.inset(1),
+            Some(AirRectangle::from_parts(1, 1, 8, 4))
+        );
+    }
+
+    #[test]
+    fn un_retrait_nul_rend_le_meme_rectangle() {
+        let rectangle = AirRectangle::from_parts(3, 4, 10, 6);
+        assert_eq!(rectangle.inset(0), Some(rectangle));
+    }
+
+    #[test]
+    fn un_retrait_qui_ne_laisse_rien_rend_none() {
+        // Une vue bordée de deux cellules de large n'a pas d'intérieur : l'appelant doit
+        // le savoir (ADR-010).
+        assert_eq!(AirRectangle::from_parts(0, 0, 2, 10).inset(1), None);
+        assert_eq!(AirRectangle::from_parts(0, 0, 10, 2).inset(1), None);
+        assert_eq!(AirRectangle::from_parts(0, 0, 1, 1).inset(1), None);
+    }
+
+    #[test]
+    fn un_retrait_demesure_rend_none_sans_deborder() {
+        assert_eq!(AirRectangle::from_parts(0, 0, 10, 10).inset(u16::MAX), None);
     }
 
     #[test]

@@ -43,6 +43,6 @@ L'**avancement** vit dans [`etat-avancement.md`](etat-avancement.md), l'**histor
 ## Ce qui reste à produire
 
 Les modules annoncés dans l'architecture et **non encore écrits** : `input/evdev` et
-`input/vt` (M8), (tables UCD générées), `view/` (arbre, trois phases,
+`input/vt` (M8), `mvc/`, (tables UCD générées), `view/` (arbre, trois phases,
 focus, découpage, bordures), `widgets/`, `theme/` au-delà du minimum de M0, `mvc/`, les
 applications d'exemple `redit` et `rmc`, la crate `air-tui-platform-air`, et `xtask/`.

@@ -46,8 +46,8 @@ note   = "largeur et graphèmes faits (M3, Unicode 18.0.0) ; segmentation en mot
 
 ["007"]
 objet  = "MVC par journal de changements, sans Observer ni Rc/RefCell"
-statut = "a-faire"
-note   = "aucun module mvc écrit"
+statut = "en-cours"
+note   = "mécanisme 3 fait (AirCommandSet, M4) ; le journal de changements attend M6"
 
 ["008"]
 objet  = "Moteur de thèmes : palette par rôles, glyphes, décorations ; thèmes compilés"
@@ -61,8 +61,8 @@ note   = "gate check-versions à écrire ; règle tenue à la main en attendant"
 
 ["010"]
 objet  = "Bordure par défaut sur les vues, retirable par border = false"
-statut = "a-faire"
-note   = "l'arbre de vues du jalon M4 n'est pas écrit"
+statut = "fait"
+note   = "arbre de vues écrit (M4) ; content_bounds et le retrait par les petits contrôles en place"
 
 ["011"]
 objet  = "Couture de plateforme par traits, une crate d'implémentation par plateforme"
