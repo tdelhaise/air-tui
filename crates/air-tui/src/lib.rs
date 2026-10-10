@@ -36,6 +36,7 @@
 // bruyamment.
 #![cfg_attr(test, allow(clippy::expect_used, clippy::unwrap_used))]
 
+pub mod application;
 pub mod cell;
 pub mod codec;
 pub mod command;
@@ -52,6 +53,7 @@ pub mod widgets;
 pub use air_tui_platform::{
     Decoder, Encoder, InputReadiness, PlatformError, PlatformErrorKind, TerminalDevice,
 };
+pub use application::{AirApplication, AirDesktop, AirPumpOutcome, AirScreen};
 pub use cell::{AirAttributes, AirCell, AirColor};
 pub use codec::{AirCellPresentation, AirSgrEncoder};
 pub use command::{AirCommand, AirCommandSet};
@@ -78,6 +80,6 @@ pub use view::{
     AirViewId, AirViewState, dispatch_event, draw_view,
 };
 pub use widgets::{
-    AirButton, AirInputLine, AirMenu, AirMenuBar, AirMenuItem, AirPanel, AirStaticText,
-    AirStatusItem, AirStatusLine, AirWindow,
+    AirButton, AirEditorView, AirInputLine, AirMenu, AirMenuBar, AirMenuItem, AirOrientation,
+    AirPanel, AirScrollBar, AirStaticText, AirStatusItem, AirStatusLine, AirWindow,
 };
