@@ -6,6 +6,21 @@ tête. On ajoute, on ne réécrit jamais une entrée passée.
 Une entrée par campagne, pas par commit. Répartition des rôles : `etat-avancement.md` est
 l'état vivant, ce journal est la trace figée, `INDEX.md` est la carte structurelle.
 
+## 2026-10-10 — publication et protection de `main`
+
+- Dépôt publié : <https://github.com/tdelhaise/air-tui>, public, MPL-2.0.
+- Identité du projet : les commits portent `thierry.delhaise@air-desktop.org`, signés par
+  la clef `5C6F8A2E20E58061`, déclarée sur le compte GitHub. Les quatre commits d'amorçage
+  sont vérifiés et rattachés au compte.
+- Protection de `main` activée et **éprouvée par un push réel**, refusé avec
+  `GH006 — Changes must be made through a pull request` : pull request obligatoire,
+  applicable aux administrateurs, ni force-push ni suppression de branche, historique
+  linéaire, résolution des fils requise.
+- Deux protections volontairement **absentes**, et pour des raisons distinctes :
+  les contrôles de CI requis, parce qu'aucune CI n'existe — en exiger un qui n'existe pas
+  bloquerait toute fusion ; et `required_signatures`, qu'Air traite comme une décision du
+  BDFL hors du pouvoir d'un agent.
+
 ## 2026-10-10 — amorçage du dépôt
 
 - Création du dépôt et reprise des conventions du projet Air (`~/Code/air`), à une

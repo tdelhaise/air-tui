@@ -3,7 +3,16 @@
 Document de suivi **vivant** : où en est-on, quelle est la prochaine tâche. Il se met à
 jour à chaque session. L'historique figé est dans [`JOURNAL.md`](JOURNAL.md).
 
-**Dernière mise à jour : 2026-10-10.**
+**Dernière mise à jour : 2026-10-10** (publication du dépôt).
+
+## Dépôt
+
+<https://github.com/tdelhaise/air-tui> — public, MPL-2.0, branche `main` protégée : toute
+modification passe par une pull request, y compris pour les administrateurs. Les commits
+sont signés par la clef `5C6F8A2E20E58061` (`thierry.delhaise@air-desktop.org`).
+
+**Aucune CI n'existe à ce jour**, donc aucun contrôle n'est requis à la fusion : les
+vérifications de `CLAUDE.md` sont à exécuter en local avant d'ouvrir une PR.
 
 ## Où en est-on
 
@@ -49,6 +58,7 @@ le socle technique minimal. Rien n'est utilisable comme framework à ce stade.
 - `redit`, `rmc`.
 - Tout gate `cargo xtask` : `check-naming` (ADR-004), `check-versions` (ADR-009),
   `check-codec-coverage` (ADR-012). Les contrôles sont manuels.
+- Toute CI. `main` n'exige donc aucun contrôle à la fusion, faute d'en avoir un à exiger.
 - `air-tui-platform-air`, l'implémentation pour la cible `linux-air`.
 - Toute cible `cargo-fuzz` : aucun décodeur n'existe encore.
 - Le découpage par vue : `draw_text` découpe sur le bord de la **surface**, pas sur celui
