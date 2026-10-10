@@ -420,6 +420,42 @@ Le champ de saisie fait exception, et c'est assumé : il tient sa sélection lui
 qu'il tient déjà son texte. Lui donner un modèle pour une ligne serait payer l'ADR-007 sans
 rien en retirer.
 
+### L'annulation est une propriété de l'unique mutation — jalon M7h
+
+L'ADR-014 tranche entre deux choses qui portent le même nom. Un **instantané** du tampon
+par pas d'annulation est simple et incapable de se tromper, au prix de la taille du
+document à chaque frappe. Un **journal de remplacements** coûte la longueur du texte qui
+change, donc un caractère pour une frappe — mais il n'est juste que si chaque mutation
+produit son inverse exact.
+
+C'est cette contrainte qui a payé. Le tampon portait **sept** chirurgies de lignes écrites
+à la main — frappe, collage, saut de ligne, deux suppressions de grappe, suppression de
+ligne, suppression de sélection. Chacune découpait et joignait les lignes à sa façon, donc
+chacune aurait demandé son inverse. Il n'y en a plus qu'une, `splice`, à laquelle les sept
+se ramènent par un triplet `(début, fin, texte)`.
+
+L'annulation n'est donc pas une couche posée à côté du tampon : c'est une propriété de son
+unique point de mutation. Un huitième chemin d'édition qui la contournerait ne compilerait
+pas sans toucher aux champs privés.
+
+Deux effets de bord que la refonte a rendus visibles, et qui n'étaient pas prévus :
+
+- **taper sur une sélection était deux gestes** — une suppression, puis une insertion —, et
+  l'utilisateur aurait dû annuler deux fois ce qu'il avait fait une. Les trois insertions
+  remplacent désormais la sélection **dans le même remplacement**, ce qui a aussi retiré un
+  appel à la suppression de sélection sur trois chemins ;
+- **la plage d'une dernière ligne supprimée** part de la fin de la **précédente**, parce que
+  le saut de ligne à emporter est devant elle et non derrière. L'écriture d'origine retirait
+  la ligne du vecteur, ce qui masquait la question ; la refonte l'a posée, et un essai
+  existant a attrapé l'écart.
+
+Le drapeau de modification est **dérivé** de l'historique et non posé à la main : annuler
+jusqu'au point d'enregistrement éteint l'étoile du titre. Un drapeau que seule une édition
+allume y resterait allumé sur un texte revenu à son état enregistré.
+
+Le grisage des deux commandes reste en *pull*, et c'est ce qui fait que ce jalon n'a ajouté
+**aucun** changement structurel à l'ADR-007 : `can_undo` et `can_redo` sont lues au dessin.
+
 ### L'application n'en tient pas plus
 
 `AirApplication::pump` fait **un** tour — attendre, lire, décoder, router — et rend les

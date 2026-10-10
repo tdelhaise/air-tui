@@ -3,8 +3,8 @@
 Document de suivi **vivant** : où en est-on, quelle est la prochaine tâche. Il se met à
 jour à chaque session. L'historique figé est dans [`JOURNAL.md`](JOURNAL.md).
 
-**Dernière mise à jour : 2026-10-10** (le gate `check-dco` ; jalon M7g — les deux limites
-du thème, et une troisième qui n'en était pas une).
+**Dernière mise à jour : 2026-10-10** (jalon M7h — l'annulation dans `redit` ; le gate
+`check-dco` ; jalon M7g — les deux limites du thème).
 
 ## Dépôt
 
@@ -27,7 +27,7 @@ contrôle, donc **aucun essai en pseudo-terminal** n'y tourne, et le fuzzing exi
 
 ## Où en est-on
 
-Jalons **M0 à M7g terminés**. Le dépôt porte ses conventions, ses ADR fondateurs, le socle
+Jalons **M0 à M7h terminés**. Le dépôt porte ses conventions, ses ADR fondateurs, le socle
 de rendu, le décodeur d'entrée, l'arbre de vues, treize widgets, la **couche MVC** de
 l'ADR-007, la hiérarchie d'objets complète, deux thèmes dont un **compilé**, et deux
 **applications** : `redit` ouvre un fichier, l'édite et l'enregistre ; `rmc` parcourt deux
@@ -616,6 +616,58 @@ affirmations de M7b se sont révélées fausses. Elles sont corrigées ici plut�
   annonçait le quantificateur « prévu au jalon M5 et **n'est pas écrit** », celui
   d'`AirCell` les tables UCD de même. Les deux existent depuis M5 et M3.
 
+### Fait au jalon M7h — l'annulation, et la mutation unique qu'elle a imposée
+
+- **Un journal de remplacements, pas des instantanés** (ADR-014). Un instantané du tampon
+  coûterait la taille du document à chaque frappe ; une entrée de journal coûte la longueur
+  du texte qui change. Le prix du choix est que le journal n'est juste que si chaque
+  mutation produit son inverse exact.
+- **Et c'est ce prix qui a payé : sept chirurgies de lignes ramenées à une.** Le tampon
+  portait sept écritures à la main — frappe, collage, saut de ligne, deux suppressions de
+  grappe, suppression de ligne, suppression de sélection —, chacune découpant les lignes à
+  sa façon. Elles se ramènent toutes à `splice(début, fin, texte)`, qui fait la chirurgie,
+  avance les générations et consigne l'entrée. L'annulation n'est donc pas une couche posée
+  à côté du tampon : c'est une propriété de son **unique** point de mutation.
+- **Le geste est l'unité, et ses bords sont écrits parce qu'ils sont arbitraires.** Une
+  insertion se fond dans la précédente si elle commence là où l'autre finissait ; un retour
+  arrière de même, vers la gauche. Tout le reste coupe : déplacement, changement de
+  sélection, saut de ligne, collage, suppression de sélection ou de ligne, enregistrement,
+  chargement. Un collage est donc **un** pas, et `Entrée` une frontière.
+- **Un défaut trouvé par les essais de l'annulation elle-même** : taper sur une sélection
+  faisait deux pas — une suppression, puis une insertion —, et l'utilisateur aurait dû
+  annuler deux fois un geste qu'il n'avait fait qu'une. Les trois insertions remplacent
+  désormais la sélection dans le **même** remplacement, et annuler rend la sélection.
+- **Un second défaut trouvé par un essai existant pendant la refonte** : la plage d'une
+  **dernière** ligne supprimée part de la fin de la précédente, parce que le saut de ligne
+  à emporter est devant elle et non derrière. L'écriture d'origine retirait la ligne du
+  vecteur, ce qui masquait la question. Le filet de plus de cent essais du tampon a attrapé
+  l'écart au premier passage.
+- **Le drapeau de modification est dérivé de l'historique**, et non posé à la main :
+  annuler jusqu'au point d'enregistrement éteint l'étoile du titre. Un drapeau que seule une
+  édition allume y resterait allumé sur un texte revenu à son état enregistré. Le point
+  d'enregistrement suit la borne du journal, et devient **injoignable** si l'entrée qui y
+  menait est oubliée — c'est le seul endroit où la borne se voit, et il porte son essai.
+- **Journal borné à deux cent cinquante-six pas**, la plus ancienne entrée oubliée au-delà.
+  Un journal non borné est une fuite lente dans une session longue ; une borne est une
+  capacité qu'on annonce plutôt qu'une mémoire qu'on promet.
+- **`Ctrl`+`Z` et `Ctrl`+`R`, le second choisi après vérification et non de mémoire.**
+  `Ctrl`+`Y` est déjà liée à la suppression de ligne de Turbo Vision, et la reprendre
+  casserait un geste transcrit ; `Ctrl`+`Maj`+`Z` est indistinguable de `Ctrl`+`Z` sur un
+  terminal qui ne négocie pas le protocole Kitty, donc le rétablissement marcherait sur
+  certains terminaux et pas sur d'autres. `Ctrl`+`Z` n'interrompt pas le processus parce
+  que `cfmakeraw` efface `ISIG` — vérifié dans la crate POSIX, pas supposé.
+- **Aucun changement structurel ajouté à l'ADR-007** : le grisage des deux commandes est en
+  *pull*, lu au dessin comme celui de `COPY` depuis M7d. Les deux touches sortent par le
+  canal des **intentions**, pas des commandes, parce que l'historique est dans le modèle que
+  la vue adresse déjà ; les commandes `UNDO` et `REDO` n'existent que pour la barre de menu.
+- **1263 essais** (soixante de plus), 7 codecs toujours à 100 %.
+- **Vérifié en pseudo-terminal, par paires** : `ABC` puis `Ctrl`+`Z` rend « origine » ;
+  `ABC`, `Ctrl`+`Z`, `Ctrl`+`R` rend « ABCorigine ». Le contrôle du rétablissement est
+  l'essai d'annulation seule, et non un essai sans touche — sans `Ctrl`+`Z` le fichier porte
+  déjà « ABCorigine », donc un rétablissement muet donnerait le même fichier qu'un
+  rétablissement qui marche. Un troisième essai montre la coupure du geste : « ab », `Début`,
+  « z », `Ctrl`+`Z` rend « aborigine ».
+
 ### Fait après M7g — le gate `check-dco`
 
 - **Le troisième des trois contrôles « à outiller » est écrit.** `cargo xtask check-dco`
@@ -694,9 +746,10 @@ affirmations de M7b se sont révélées fausses. Elles sont corrigées ici plut�
   différents, dont le dernier est refusé par défaut par la plupart des terminaux et les
   deux premiers demandent de lancer un programme. Le couper-coller fonctionne **dans**
   l'application, et c'est tout ce qui est promis.
-- Dans `redit` : pas de **recherche**, pas d'**annulation**, pas de **tabulation** — elle
-  demande de choisir des taquets et de les appliquer au rendu comme au calcul de colonne —,
-  et pas de seconde fenêtre. Le bureau sait en tenir plusieurs, rien ne les crée.
+- Dans `redit` : pas de **recherche**, pas de **tabulation** — elle demande de choisir des
+  taquets et de les appliquer au rendu comme au calcul de colonne —, et pas de seconde
+  fenêtre. Le bureau sait en tenir plusieurs, rien ne les crée. L'annulation est faite
+  (M7h).
 - Le **glissement** du curseur d'un ascenseur : il demande de suivre un bouton maintenu
   entre deux événements, donc une capture de souris que l'arbre de vues n'a pas. Les
   flèches, les pages et la molette couvrent le reste.
@@ -730,10 +783,14 @@ affirmations de M7b se sont révélées fausses. Elles sont corrigées ici plut�
 demandent une console physique, inaccessible par SSH. Écrire du code qu'on ne peut pas
 vérifier est exactement ce que ce dépôt refuse. Les candidats, du plus petit au plus gros :
 
-1. **L'annulation** dans `redit` — `Ctrl`+`Z`. La sélection a ajouté des opérations dont
-   l'inverse n'est pas évident (remplacer une sélection par un collage est deux gestes en
-   un), donc le moment est bon pour décider si le modèle tient un journal d'annulation ou
-   des instantanés. C'est une décision de conception, et elle mérite un ADR avant du code.
+1. **Les deux gates restants** — `check-licence-headers` et `check-safety-comments`.
+   Chiffrés avant d'être proposés : **zéro manquement** aujourd'hui, sur 76 fichiers `.rs`
+   tous pourvus de l'en-tête MPL, et 11 blocs `unsafe {` pour 11 commentaires `// SAFETY:`,
+   la concordance tenant fichier par fichier. Le motif est frais — `dco.rs` vient d'être
+   écrit —, mais la mesure dit que ce sont de la **prévention pure**, là où `check-dco` a
+   trouvé un trou réel dès son premier passage. La seule vraie question de conception est
+   celle du second : « un bloc `unsafe` » n'est pas une seule forme syntaxique, et le dépôt
+   porte aussi un `unsafe extern`.
 2. **Choisir le skin ailleurs qu'à la compilation.** L'ADR-008 interdit d'analyser un thème
    à l'exécution, et le dépôt porte **un** artefact à la fois : les trente-neuf skins sont
    importables, mais pas simultanément. Compiler plusieurs artefacts nommés — le choix se
@@ -771,4 +828,5 @@ des numéros de touches fonctionnelles.
 | M7e | le double et le triple clic, synthétisés par la boucle | **fait** |
 | M7f | les cases à cocher et les boutons radio | **fait** |
 | M7g | les attributs par rôle, la couleur du terminal, la clef absente héritée | **fait** |
+| M7h | l'annulation par journal de remplacements, et la mutation unique | **fait** |
 | M8 | étage natif Linux : evdev, `TIOCLINUX`, gpm | à faire |

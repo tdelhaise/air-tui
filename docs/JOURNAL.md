@@ -6,6 +6,75 @@ tête. On ajoute, on ne réécrit jamais une entrée passée.
 Une entrée par campagne, pas par commit. Répartition des rôles : `etat-avancement.md` est
 l'état vivant, ce journal est la trace figée, `INDEX.md` est la carte structurelle.
 
+## 2026-10-10 — Jalon M7h : l'annulation, et la mutation unique qu'elle a imposée
+
+- **La décision à trancher était entre deux choses qui portent le même nom.** Un
+  **instantané** du tampon par pas d'annulation est bête et incapable de se tromper, au prix
+  de la taille du document à chaque frappe — un fichier d'un mégaoctet coûterait un
+  mégaoctet par caractère tapé. Un **journal de remplacements** coûte la longueur du texte
+  qui change, donc un caractère pour une frappe. Le rapport entre les deux n'est pas un
+  facteur constant : il est la taille du document. L'ADR-014 choisit le journal, et nomme ce
+  qu'on paie en le choisissant — il n'est juste que si chaque mutation produit son inverse
+  exact.
+- **Et c'est ce prix qui a payé, mieux que la fonctionnalité elle-même.** Le tampon portait
+  **sept** chirurgies de lignes écrites à la main, chacune découpant et joignant à sa façon.
+  Sept chemins de mutation, c'est sept inverses à tenir d'accord. Il n'y en a plus qu'un :
+  `splice(début, fin, texte)`, auquel les sept se ramènent par un triplet. L'annulation
+  n'est donc pas une couche posée à côté du tampon — c'est une propriété de son unique point
+  de mutation, et un huitième chemin d'édition qui la contournerait ne compilerait pas.
+- **Deux défauts trouvés, et aucun des deux n'était dans ce que j'écrivais.** Le premier
+  par un essai **existant** : la plage d'une dernière ligne supprimée doit partir de la fin
+  de la **précédente**, parce que le saut de ligne à emporter est devant elle et non
+  derrière. L'écriture d'origine retirait la ligne du vecteur, ce qui masquait entièrement la
+  question ; la ramener à un remplacement l'a posée, et le filet de plus de cent essais du
+  tampon a attrapé l'écart au premier passage. C'est exactement ce qu'on attend d'une
+  refonte : qu'elle fasse apparaître les questions que l'ancienne forme ne posait pas.
+- **Le second par les essais de l'annulation elle-même, et il était de conception.** Taper
+  sur une sélection faisait **deux** pas — une suppression, puis une insertion —, donc
+  l'utilisateur aurait dû annuler deux fois un geste qu'il n'avait fait qu'une. J'avais écrit
+  l'essai pour vérifier que les deux revenaient « dans le bon ordre », et c'est en le lisant
+  que le défaut m'est apparu : l'ordre était juste, le nombre de pas était faux. Les trois
+  insertions remplacent désormais la sélection dans le **même** remplacement — ce qui a
+  aussi retiré un appel sur trois chemins, et fait qu'annuler rend la surbrillance.
+- **Le geste est l'unité, et j'ai écrit ses bords parce qu'ils sont arbitraires.** Midnight
+  Commander annule caractère par caractère, Turbo Vision ne garde qu'un seul pas : ni l'un ni
+  l'autre n'est un argument. Ce qui en est un, c'est qu'un collage de dix lignes annulé en
+  dix fois serait un défaut, et qu'une ligne tapée annulée d'un coup en serait un autre. La
+  règle de fusion tient en deux cas — une insertion dans une insertion contiguë, un retour
+  arrière dans un retour arrière contigu — et tout le reste coupe.
+- **Le drapeau de modification est devenu dérivé, et c'était nécessaire.** Un drapeau que
+  seule une édition allume reste allumé sur un texte revenu à son état enregistré : annuler
+  tout aurait laissé l'étoile dans le titre de `redit`. Il se lit maintenant de
+  l'historique, par comparaison avec le point d'enregistrement — qui suit la borne du
+  journal et devient **injoignable** si l'entrée qui y menait est oubliée. C'est le seul
+  endroit où la borne de deux cent cinquante-six pas se voit, et il porte son essai.
+- **Le choix de la seconde touche s'est fait après vérification, et mon premier texte était
+  faux.** L'ADR, dans sa première écriture, affirmait que « `redit` n'a jamais lié
+  `Ctrl`+`Y` ». C'est faux : la vue d'édition la lie à la suppression de ligne depuis M6,
+  avec un commentaire qui cite Turbo Vision. J'ai relu le code avant de publier, corrigé la
+  phrase, et choisi `Ctrl`+`R`. `Ctrl`+`Maj`+`Z` a été écarté pour une raison mesurable et
+  non par goût : un terminal qui ne négocie pas le protocole Kitty ne le distingue pas de
+  `Ctrl`+`Z`, donc le rétablissement marcherait sur certains terminaux et pas sur d'autres.
+- **`Ctrl`+`Z` ne suspend pas le processus, et je l'ai vérifié au lieu de l'espérer.**
+  `cfmakeraw` efface `ISIG`, ce que le commentaire de `ffi.rs` nomme déjà. Sans cela, la
+  touche la plus évidente de ce jalon aurait mis l'éditeur en arrière-plan.
+- **Aucun mécanisme de plus dans l'ADR-007, et c'est un résultat.** Le grisage des deux
+  commandes est en *pull*, lu au dessin comme celui de `COPY` depuis M7d ; aucun changement
+  structurel n'a été ajouté. Les deux touches sortent par le canal des **intentions** et non
+  des commandes, parce que l'historique vit dans le modèle que la vue adresse déjà — l'exact
+  inverse du presse-papiers, qui est au contrôleur parce qu'il est partagé. Les deux
+  décisions suivent la même règle : une chose appartient à qui la connaît.
+- **Vérifié en pseudo-terminal par paires**, et la paire compte ici plus qu'ailleurs : le
+  contrôle du rétablissement est l'essai d'**annulation seule**, pas un essai sans touche.
+  Sans `Ctrl`+`Z`, le fichier porte déjà « ABCorigine » — un rétablissement muet donnerait
+  donc le même fichier qu'un rétablissement qui marche. Un troisième essai montre la coupure
+  du geste : « ab », `Début`, « z », `Ctrl`+`Z` rend « aborigine » et non « origine ».
+- **1263 essais**, dont soixante nouveaux, 7 codecs toujours à 100 %.
+- Trois notes périmées corrigées dans `statuts.toml` : l'ADR-008 y annonçait « trente-deux
+  rôles » et les deux limites de thème comme restant à lever, l'ADR-012 « six codecs » là où
+  il y en a sept. Le fichier d'avancement des ADR dérive comme n'importe quel décompte en
+  prose, et c'est le troisième jalon de suite qui en trouve.
+
 ## 2026-10-10 — Le gate `check-dco`, écrit par le défaut qu'il ne pouvait pas empêcher
 
 - **Le troisième des trois contrôles « à outiller » est écrit**, et c'est le commit de

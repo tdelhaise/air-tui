@@ -100,6 +100,30 @@ son texte, et lui donner un modèle pour une ligne serait payer cet ADR sans rie
 retirer. La frontière n'est pas « tout widget a un modèle », elle est « ce qui est partagé
 ou persistant a un modèle ».
 
+## Éprouvé au jalon M7h : l'annulation n'a demandé aucun mécanisme de plus
+
+C'est le résultat qui compte ici, et il est négatif au bon sens du terme : l'annulation
+(ADR-014) n'a ajouté **ni** canal, **ni** changement structurel, **ni** mécanisme.
+
+- l'historique vit dans le **modèle**, parce que seul lui connaît le texte qu'une opération
+  retire, donc seul lui peut produire l'inverse. C'est l'exact inverse du presse-papiers,
+  qui est au contrôleur parce qu'il est **partagé** entre deux widgets. Les deux décisions
+  suivent la même règle : une chose appartient à qui la connaît ;
+- `Ctrl`+`Z` sort par le canal des **intentions** et non par celui des commandes, puisque la
+  vue d'édition adresse déjà le modèle. Les commandes `UNDO` et `REDO` n'existent que pour
+  la barre de menu, qui ne sait émettre que des commandes ;
+- le grisage des deux items est en **pull** — mécanisme 3 — : `can_undo` et `can_redo` sont
+  lues au moment du dessin. Rien n'est consigné quand le journal se remplit ou se vide, et
+  il n'en faut rien : une vue qui demande au moment où elle peint ne peut pas afficher un
+  état périmé ;
+- le drapeau de modification, lui, **est** un changement structurel — il l'était déjà —, et
+  il bascule désormais dans les deux sens. Il est dérivé de l'historique, de sorte
+  qu'annuler jusqu'au point d'enregistrement l'éteigne.
+
+Le seul endroit où l'annulation a touché le découpage de cet ADR est le compteur de
+génération du texte : annuler l'avance, comme une édition, parce que la vue doit repeindre
+pour la même raison.
+
 ## Alternatives écartées
 
 **`Rc<RefCell<Model>>` partagé entre les vues.** Panic au premier dessin où deux vues
