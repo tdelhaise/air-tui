@@ -417,6 +417,20 @@ mod tests {
     }
 
     #[test]
+    fn un_message_qui_cite_le_trailer_n_en_porte_pas_un() {
+        // Le cas que les messages de commit de ce contrôle produisent eux-mêmes : ils
+        // citent `Co-Authored-By` et `Claude-Session` pour dire qu'ils les refusent. Une
+        // clef n'est un trailer qu'en **début** de ligne et suivie d'un deux-points.
+        for line in [
+            "`Co-Authored-By` nommant Claude ou Anthropic, et `Claude-Session`.",
+            "il refuse Co-Authored-By quand la valeur nomme Claude",
+            "voir Claude-Session dans la liste",
+        ] {
+            assert!(agent_trace(line).is_none(), "pour « {line} »");
+        }
+    }
+
+    #[test]
     fn le_trailer_de_session_est_refuse() {
         let detail =
             agent_trace("Claude-Session: https://claude.ai/code/session_x").expect("refus attendu");
