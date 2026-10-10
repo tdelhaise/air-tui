@@ -118,10 +118,10 @@ pub(crate) const fn palette() -> AirPalette {
 
 /// Le jeu de glyphes, compilé depuis la section `[Lines]` du skin.
 ///
-/// Quatre glyphes ne viennent pas du skin, parce qu'aucun skin ne les décrit : le
+/// Cinq glyphes ne viennent pas du skin, parce qu'aucun skin ne les décrit : le
 /// remplissage du bureau — `mc` n'a pas de bureau, ses panneaux couvrent l'écran —,
 /// les deux crochets de la case de fermeture, dont `mc` ne donne que la marque, et
-/// les deux flèches d'ascenseur, que `mc` n'a pas.
+/// les deux flèches d'ascenseur et son curseur, que `mc` n'a pas.
 pub(crate) const fn glyphs() -> AirGlyphSet {
     AirGlyphSet {
         window_frame: AirFrameGlyphs {
@@ -146,5 +146,6 @@ pub(crate) const fn glyphs() -> AirGlyphSet {
         close_box_right: ']',
         scroll_arrow_up: '▲',
         scroll_arrow_down: '▼',
+        scroll_thumb: '█',
     }
 }

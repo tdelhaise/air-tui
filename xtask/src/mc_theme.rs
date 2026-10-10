@@ -689,10 +689,10 @@ fn emit(emission: &Emission) -> String {
         output,
         "/// Le jeu de glyphes, compilé depuis la section `[Lines]` du skin.\n\
          ///\n\
-         /// Quatre glyphes ne viennent pas du skin, parce qu'aucun skin ne les décrit : le\n\
+         /// Cinq glyphes ne viennent pas du skin, parce qu'aucun skin ne les décrit : le\n\
          /// remplissage du bureau — `mc` n'a pas de bureau, ses panneaux couvrent l'écran —,\n\
          /// les deux crochets de la case de fermeture, dont `mc` ne donne que la marque, et\n\
-         /// les deux flèches d'ascenseur, que `mc` n'a pas.\n\
+         /// les deux flèches d'ascenseur et son curseur, que `mc` n'a pas.\n\
          pub(crate) const fn glyphs() -> AirGlyphSet {{\n    \
          AirGlyphSet {{\n"
     );
@@ -705,7 +705,8 @@ fn emit(emission: &Emission) -> String {
          close_box_mark: '{close_mark}', // [widget-editor] window-close-char\n        \
          close_box_right: ']',\n        \
          scroll_arrow_up: '▲',\n        \
-         scroll_arrow_down: '▼',\n    \
+         scroll_arrow_down: '▼',\n        \
+         scroll_thumb: '█',\n    \
          }}\n}}\n"
     );
     output

@@ -62,6 +62,14 @@ pub struct AirGlyphSet {
     pub scroll_arrow_up: char,
     /// La flèche d'ascenseur vers le bas.
     pub scroll_arrow_down: char,
+    /// Le curseur d'ascenseur, posé sur la glissière.
+    ///
+    /// Il a son propre glyphe depuis le jalon M7b. Jusque-là, l'ascenseur empruntait la
+    /// marque de la case de fermeture : c'était le même `■` dans le thème de Turbo
+    /// Vision, et un `X` en plein milieu de la glissière dans celui de Midnight
+    /// Commander, dont le skin donne `X` pour fermer une fenêtre. Deux usages sans
+    /// rapport ne peuvent pas partager un glyphe de thème.
+    pub scroll_thumb: char,
 }
 
 impl AirGlyphSet {
@@ -80,6 +88,7 @@ impl AirGlyphSet {
             close_box_right: ']',
             scroll_arrow_up: '▲',
             scroll_arrow_down: '▼',
+            scroll_thumb: '■',
         }
     }
 }
@@ -87,9 +96,9 @@ impl AirGlyphSet {
 impl AirGlyphSet {
     /// Le jeu de glyphes de Midnight Commander, compilé depuis son skin par défaut.
     ///
-    /// Quatre glyphes n'en viennent pas, faute d'être décrits par un skin : le
-    /// remplissage du bureau, les deux crochets de la case de fermeture et les deux
-    /// flèches d'ascenseur. L'artefact généré dit lesquels et pourquoi.
+    /// Cinq glyphes n'en viennent pas, faute d'être décrits par un skin : le remplissage
+    /// du bureau, les deux crochets de la case de fermeture, les deux flèches
+    /// d'ascenseur et son curseur. L'artefact généré dit lesquels et pourquoi.
     #[must_use]
     pub const fn midnight_commander() -> Self {
         crate::theme::skins::midnight_commander::glyphs()
@@ -135,6 +144,20 @@ mod tests {
         let glyphs = AirGlyphSet::turbo_vision();
         assert_eq!(glyphs.scroll_arrow_up, '▲');
         assert_eq!(glyphs.scroll_arrow_down, '▼');
+    }
+
+    #[test]
+    fn le_curseur_d_ascenseur_ne_partage_pas_le_glyphe_de_la_case_de_fermeture() {
+        // Ils coïncident dans Turbo Vision, et c'est ce qui a caché le partage jusqu'au
+        // jalon M7b : le thème de Midnight Commander ferme avec un `X`, qui se retrouvait
+        // au milieu de la glissière.
+        let turbo = AirGlyphSet::turbo_vision();
+        assert_eq!(turbo.scroll_thumb, '■');
+        let midnight = AirGlyphSet::midnight_commander();
+        assert_ne!(
+            midnight.scroll_thumb, midnight.close_box_mark,
+            "le curseur d'ascenseur a repris le glyphe de la case de fermeture"
+        );
     }
 
     #[test]

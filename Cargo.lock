@@ -30,6 +30,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "rmc"
+version = "0.1.0"
+dependencies = [
+ "air-tui",
+ "air-tui-platform-posix",
+]
+
+[[package]]
 name = "xtask"
 version = "0.3.0"
 dependencies = [
