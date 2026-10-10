@@ -1,0 +1,126 @@
+# Intégration continue d'air-tui.
+#
+# Ce fichier exécute les contrôles que `CLAUDE.md` demande de passer en local. Il ne les
+# remplace pas : il les rend obligatoires. Jusqu'à son écriture, `main` n'exigeait aucun
+# contrôle à la fusion, faute d'en avoir un à exiger.
+#
+# # Deux tâches, et pourquoi elles sont séparées
+#
+# `controles` tient les contrôles qui ne demandent que la toolchain pinnée, sur les deux
+# systèmes de la cible tier-1 (ADR-001). `outillage` tient ceux qui demandent un outil à
+# installer ou le référentiel Unicode à télécharger : les isoler évite qu'une minute
+# d'installation s'ajoute à chaque matrice.
+#
+# # Ce que cette CI ne fait pas
+#
+# - Pas d'`aarch64` Linux : GitHub n'en offre pas de coureur gratuit. La vérification sur
+#   cette architecture reste manuelle, sur `neon` — et c'est elle qui a prouvé la
+#   déclaration variadique d'`ioctl` au jalon M0.
+# - Pas d'essai en pseudo-terminal : `tools/pty-drive.py` demande un vrai terminal de
+#   contrôle, et un coureur n'en a pas. Les deux essais restent dans la liste locale.
+# - Pas de fuzzing : il exige nightly, et le dépôt est pinné sur stable.
+
+name: controles
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  controles:
+    name: ${{ matrix.systeme }}
+    runs-on: ${{ matrix.coureur }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - systeme: linux x86_64
+            coureur: ubuntu-24.04
+          - systeme: macos aarch64
+            coureur: macos-15
+    steps:
+      # `fetch-depth: 0` est requis par `check-versions` : sans l'historique, il n'y a pas
+      # de base de comparaison à laquelle confronter les versions.
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: toolchain pinnée
+        run: rustup show
+
+      - name: cargo fmt
+        run: cargo fmt --all --check
+
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: cargo test
+        run: cargo test --workspace
+
+      - name: cargo build --locked
+        run: cargo build --workspace --locked
+
+      - name: nommage sans abréviation (ADR-004)
+        run: cargo xtask check-naming
+
+      # Sur une poussée vers `main`, la base de comparaison **est** HEAD : le contrôle
+      # n'aurait rien à comparer et passerait à vide. Il n'a de sens que sur une PR.
+      - name: versionnement par crate (ADR-009)
+        if: github.event_name == 'pull_request'
+        run: cargo xtask check-versions --base origin/${{ github.base_ref }}
+
+  outillage:
+    name: codecs, dépendances, Unicode
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: toolchain pinnée
+        run: rustup show
+
+      # Les deux outils sont compilés depuis les sources, `--locked`, et mis en cache sur
+      # leur version : aucune dépendance tierce n'entre dans le graphe du framework
+      # (ADR-005), et l'installation ne se refait qu'à un changement de version.
+      - name: cache des outils cargo
+        id: cache-outils
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/cargo-deny
+            ~/.cargo/bin/cargo-llvm-cov
+          key: outils-cargo-deny-0.18-llvm-cov-0.9
+
+      - name: installer cargo-deny et cargo-llvm-cov
+        if: steps.cache-outils.outputs.cache-hit != 'true'
+        run: |
+          cargo install --locked cargo-deny
+          cargo install --locked cargo-llvm-cov
+
+      - name: politique de dépendances
+        run: cargo deny check
+
+      # La mesure est prise une fois, puis contrôlée : `check-codec-coverage` sait lire un
+      # relevé déjà produit, ce qui évite de mesurer deux fois.
+      - name: mesurer la couverture
+        run: cargo llvm-cov --workspace --summary-only --json > couverture.json
+
+      - name: couverture intégrale des codecs (ADR-012)
+        run: cargo xtask check-codec-coverage --report couverture.json
+
+      # Le référentiel est téléchargé à la version, jamais `latest` : une génération doit
+      # pouvoir être rejouée à l'identique (ADR-025 d'Air).
+      - name: télécharger le référentiel Unicode
+        run: cargo xtask download-ucd --version 18.0.0 --output-directory ucd
+
+      - name: tables Unicode identiques à l'octet (ADR-006)
+        run: cargo xtask generate-unicode-tables --ucd-directory ucd --check
+
+      - name: conformité des segmentations à l'annexe 29
+        run: cargo xtask check-segmentation --ucd-directory ucd

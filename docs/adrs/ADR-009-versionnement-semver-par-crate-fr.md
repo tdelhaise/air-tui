@@ -46,9 +46,18 @@ au plus tôt après le jalon M6, quand `redit` aura prouvé que les widgets tien
   `air-tui-sys = { path = "../air-tui-sys", version = "0.1.0" }`. Le `path` sert au
   développement local, la `version` à la publication.
 - Une PR qui ne touche que `docs/` n'incrémente rien.
-- Un gate `check-versions` est **à écrire** : comparer les crates modifiées sur la plage
-  `origin/main..HEAD` aux versions incrémentées, et refuser une PR qui touche du code sans
-  avancer le numéro. Tant qu'il n'existe pas, la règle est tenue à la main.
+- Le gate `check-versions` **existe** depuis le jalon M6b : `cargo xtask check-versions`
+  compare les crates touchées sur la plage `origin/main..HEAD` aux versions déclarées, et
+  refuse une crate touchée dont le numéro n'avance pas. L'arbre de travail est **joint** à
+  la plage : un contrôle qui ne regarderait que ce qui est committé passerait en silence
+  sur un travail en cours, c'est-à-dire au pire moment pour rassurer. Une crate absente de
+  la base est neuve, et n'a rien à dépasser.
+- Il contrôle aussi la **cohérence des dépendances par chemin** : `version = "0.7.0"` doit
+  être la version que porte réellement la crate visée. Cargo ne voit que
+  l'incompatible — il refuse `^0.6.0` pour une crate en 0.7.0 — et laisse passer la dérive
+  compatible : déclarer `0.7.0` alors que la crate porte `0.7.1` compile sans un mot, et
+  c'est la publication qui livrerait une borne fausse, bien plus tard. C'est ce cas-là que
+  le gate attrape.
 - `CHANGELOG.md` par crate reste à décider ; la question n'est pas tranchée par cet ADR.
 
 ## Alternatives écartées

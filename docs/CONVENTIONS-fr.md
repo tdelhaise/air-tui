@@ -206,23 +206,35 @@ Toute `AirView` a une **bordure par défaut** ; on la retire par `border = false
 
 ---
 
+# Outillé
+
+Cinq contrôles existent dans `cargo xtask`, et l'intégration continue les exécute sur
+chaque PR (`.github/workflows/ci.yml`) :
+
+| Commande | Ce qu'elle refuse |
+|---|---|
+| `generate-unicode-tables --check` | une table qui ne correspond plus au référentiel |
+| `check-segmentation` | un écart aux fichiers d'essais de l'annexe 29 |
+| `check-naming` | une abréviation du glossaire ci-dessus dans un nom **déclaré** (ADR-004) |
+| `check-versions` | une crate touchée dont la version n'avance pas (ADR-009) |
+| `check-codec-coverage` | un codec sous 100 % de régions, de fonctions ou de lignes (ADR-012) |
+
+Deux précisions sur `check-naming`, parce qu'un contrôle dont on ignore la portée donne
+une fausse assurance :
+
+- il inspecte les **sites de déclaration**, pas les emplois. `value.len()` est un nom
+  imposé par `std` ; `fn len()` serait un nom choisi ici. Sans cette distinction,
+  `u32::MAX` ferait échouer chaque fichier ;
+- son **angle mort connu** est la liaison d'un bras de `match` — `Some(index) => …`. La
+  reconnaître demanderait de distinguer un motif d'une expression, donc une analyse
+  syntaxique que le contrôle ne porte pas. La règle reste tenue à la main là.
+
 # À outiller
 
-Aucun des contrôles ci-dessous n'est écrit. Ils sont à exécuter à la main, et **ne doivent
-pas être annoncés comme automatisés** avant de l'être (NO GO n° 1).
+Les trois contrôles ci-dessous ne sont **pas** écrits. Ils sont à exécuter à la main, et
+**ne doivent pas être annoncés comme automatisés** avant de l'être (NO GO n° 1).
 
-Deux vérifications **existent** en revanche dans `cargo xtask`, et elles ne figurent pas
-dans cette liste pour cette raison : `generate-unicode-tables --check`, qui refuse une
-table qui ne correspond plus au référentiel, et `check-segmentation`, qui confronte les
-deux segmentations de l'annexe 29 aux fichiers d'essais du Consortium.
-
-- `check-naming` — balayer les identifiants déclarés et refuser le glossaire ci-dessus,
-  avec les quatre exceptions en liste blanche.
 - `check-licence-headers` — en-tête MPL présent sur chaque `.rs`.
 - `check-safety-comments` — un `// SAFETY:` par bloc `unsafe` dans
   `air-tui-platform-posix`.
 - `check-dco` — `Signed-off-by` sur chaque commit, aucun `Co-Authored-By: Claude`.
-- `check-versions` — refuser une PR qui modifie le code d'une crate sans incrémenter sa
-  version (ADR-009).
-- `check-codec-coverage` — mesurer par fichier et refuser qu'un module de `codec/`
-  descende sous 100 % (ADR-012).

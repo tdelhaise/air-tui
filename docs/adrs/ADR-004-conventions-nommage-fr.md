@@ -44,5 +44,14 @@ bibliothèques ; et il translittère le `T` de Turbo Vision pour qui vient de l�
   `AirCol`, `AirChangeDirectoryDialog` et non `AirChDirDialog`, `command::SAVE` et non
   `cmd::SAVE`.
 - `AirViewId` conserve `Id` : précédent direct dans Air (`AirInputId`, `AirMonotonicId`).
-- Un gate `check-naming` est **à écrire**. Tant qu'il n'existe pas, la règle est tenue à la
-  main et ne doit pas être annoncée comme automatisée.
+- Le gate `check-naming` **existe** depuis le jalon M6b : `cargo xtask check-naming` balaye
+  les sites de déclaration du dépôt, refuse le glossaire, et tient les quatre exceptions en
+  liste blanche — les noms imposés par `std`, et les corps de bloc `extern "C"`, exemptés
+  entiers. L'intégration continue l'exécute sur chaque PR.
+- Son **angle mort** est nommé, parce qu'un contrôle dont on ignore la portée donne une
+  fausse assurance : la liaison d'un bras de `match` — `Some(index) => …` — demanderait de
+  distinguer un motif d'une expression, donc une analyse syntaxique que le balayage ne
+  porte pas. La règle y reste tenue à la main.
+- Le contrôle porte sur ce que le dépôt **nomme**, pas sur ce qu'il **appelle** :
+  `value.len()` est l'emploi d'un nom imposé par `std`, `fn len()` serait un nom choisi
+  ici. Sans cette distinction, `u32::MAX` ferait échouer chaque fichier.

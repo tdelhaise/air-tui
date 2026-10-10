@@ -32,7 +32,7 @@ note   = "étage terminal et protocole Kitty écrits et fuzzés (M1, M2) ; étag
 ["004"]
 objet  = "Conventions de nommage : aucune abréviation, préfixe Air sur le modèle d'objets"
 statut = "permanent"
-note   = "gate check-naming à écrire ; règle tenue à la main en attendant"
+note   = "gate check-naming écrit et exécuté en CI (M6b) : il balaye les sites de déclaration, avec les quatre exceptions en liste blanche. Angle mort assumé : la liaison d'un bras de match"
 
 ["005"]
 objet  = "Zéro dépendance : std plus six symboles de la libc déjà liée"
@@ -57,7 +57,7 @@ note   = "palette transcrite de Borland, quantificateur et onze widgets colorés
 ["009"]
 objet  = "Versionnement semver, par crate, incrémenté à chaque PR qui touche la crate"
 statut = "permanent"
-note   = "gate check-versions à écrire ; règle tenue à la main en attendant"
+note   = "gate check-versions écrit et exécuté en CI (M6b) : incrément des crates touchées, et cohérence des versions déclarées sur les dépendances par chemin"
 
 ["010"]
 objet  = "Bordure par défaut sur les vues, retirable par border = false"
@@ -72,7 +72,7 @@ note   = "le contrat et l'implémentation POSIX existent ; air-tui-platform-air 
 ["012"]
 objet  = "Toute conversion de flux passe par un codec, tenu à 100 % de couverture"
 statut = "en-cours"
-note   = "les trois codecs sont à 100 % et le décodeur est fuzzé ; gate check-codec-coverage à écrire"
+note   = "six codecs à 100 % des trois mesures, le décodeur est fuzzé, et le gate check-codec-coverage l'exige en CI (M6b)"
 
 ["013"]
 objet  = "Accès typé dans l'arbre de vues : AirView hérite de Any"

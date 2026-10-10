@@ -6,6 +6,67 @@ tête. On ajoute, on ne réécrit jamais une entrée passée.
 Une entrée par campagne, pas par commit. Répartition des rôles : `etat-avancement.md` est
 l'état vivant, ce journal est la trace figée, `INDEX.md` est la carte structurelle.
 
+## 2026-10-10 — Jalon M6b : les trois contrôles de conventions, et la CI qui les exige
+
+- **Trois règles contraignantes cessent de reposer sur la bonne volonté.** `check-naming`
+  (ADR-004), `check-versions` (ADR-009) et `check-codec-coverage` (ADR-012) étaient
+  annoncées « à écrire » depuis le premier jour, et tenues à la main. Elles sont écrites,
+  et l'intégration continue les exécute sur chaque PR. Le choix de les écrire **avant** M7
+  n'est pas un détour : l'importeur de skins MC lit un format de fichier, donc c'est un
+  codec au sens de l'ADR-012, donc 100 % de couverture — et sans gate, cette conformité
+  n'aurait reposé que sur ma parole au moment où je l'écris.
+- **Le premier résultat du contrôle de nommage est un non-événement, et c'est une bonne
+  nouvelle** : 6866 noms déclarés inspectés dans 64 fichiers, aucune abréviation. La règle
+  tenue à la main l'était réellement. Ce qui ne rend pas le gate inutile — il protège les
+  quarante prochains fichiers, pas les soixante-quatre premiers.
+- **La distinction qui rend le contrôle de nommage possible** : il inspecte ce que le dépôt
+  **nomme**, pas ce qu'il **appelle**. `u32::MAX`, `.min(other)` et `.len()` sont des noms
+  imposés par `std`, employés et non choisis ; `fn len()` serait un nom choisi ici. Sans
+  cette frontière, le glossaire ferait échouer chaque fichier et le gate serait désactivé
+  dans la semaine. Son angle mort — la liaison d'un bras de `match` — est écrit dans
+  l'en-tête du module, dans l'ADR et dans les conventions : un contrôle dont on ignore la
+  portée donne une assurance fausse.
+- **Chaque gate est éprouvé sur un refus, pas seulement sur un succès.** Un gate qui dit
+  toujours oui est pire qu'un gate absent, parce qu'il interdit de se poser la question. Le
+  contrôle de nommage a été lancé contre un fichier fautif posé exprès dans
+  `crates/air-tui/src/` — il l'a cité avec sa ligne et sorti en code 1, puis le fichier a
+  été retiré. Le contrôle de versions a trouvé sa première vraie infraction sur sa propre
+  branche : `xtask` touchée sans incrément, d'où 0.2.0 → 0.2.1.
+- **Ce que cargo laisse passer et que le contrôle de versions attrape.** Déclarer
+  `version = "0.6.0"` pour une crate en 0.7.0, cargo le refuse tout seul. Déclarer
+  `"0.7.0"` pour une crate en 0.7.1, il l'accepte sans un mot — `^0.7.0` est satisfait —
+  et c'est la publication qui livrerait une borne fausse, des semaines plus tard. C'est
+  cette dérive **compatible** que le gate existe pour voir.
+- **La mesure de couverture a tranché un point que je n'avais pas vu venir.** Deux modules
+  nommés `codec` ne peuvent pas être soumis à la règle des 100 %, et il fallait le dire
+  plutôt que de les glisser dans la liste : `codec/mod.rs` est une façade sans une ligne
+  exécutable, que `llvm-cov` ne relève pas du tout — l'exiger reviendrait à exiger une
+  mesure qui ne peut pas exister. Et `air-tui-platform/src/codec.rs`, qui porte le contrat,
+  est à 84/90 régions : ses six régions manquantes sont les fermetures
+  `|item| collected.push(item)` de deux essais où le décodeur ne doit **rien** produire,
+  donc où la fermeture ne peut pas être appelée. Exiger 100 % là mesurerait le double
+  d'essai et non un codec. Les deux exclusions sont motivées dans le gate, avec la mesure.
+- **Un fichier absent du relevé est un manquement, pas un succès.** C'est le cas qui compte
+  dans un contrôle de couverture par liste : un fichier renommé sans que la liste suive
+  sortirait silencieusement de la règle, et le gate dirait que tout va bien. Il a son
+  essai, et c'est lui qui a révélé que `codec/mod.rs` n'était pas mesurable.
+- **Zéro dépendance, ici aussi** (ADR-005). Le balayage lexical remplace `syn`, et la
+  lecture du relevé `llvm-cov` est un extracteur de trois résumés plutôt qu'un analyseur
+  JSON général. Les deux pièges de la lecture par sous-chaîne ont leur essai :
+  `rust-version` ne doit pas répondre pour `version`, et `notcovered` ne doit pas répondre
+  pour `covered`.
+- **La CI dit ce qu'elle ne fait pas.** Pas d'`aarch64` Linux — GitHub n'en offre pas de
+  coureur gratuit, donc `neon` reste vérifiée à la main. Pas d'essai en pseudo-terminal —
+  un coureur n'a pas de terminal de contrôle, et c'est l'essai qui avait trouvé le
+  `POLLNVAL` de macOS. Pas de fuzzing — il exige nightly, et le dépôt est pinné sur stable.
+  Ces trois absences sont dans l'en-tête du fichier de workflow, pour qu'on ne lise pas la
+  CI comme une garantie qu'elle n'offre pas.
+- **Le README corrigé d'une demi-ligne** : il écrivait au présent qu'« un second thème
+  reproduit celui de Midnight Commander ». La section *État* démentait trois paragraphes
+  plus bas, mais l'affirmation restait écrite au présent. Elle est passée au futur.
+- Versions : `xtask` 0.2.0 → **0.2.1** (ajout de commandes, donc `z` — en `0.y.z`, seule
+  une rupture avance `y`). 894 essais au vert, dont 49 nouveaux.
+
 ## 2026-10-10 — Jalon M6 : `redit`, la couche MVC, et la hiérarchie complète
 
 - **L'ADR-007 a cessé d'être une intention.** La couche modèle existe : `AirModel` à une

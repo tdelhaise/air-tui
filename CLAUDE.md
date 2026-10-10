@@ -75,11 +75,17 @@ ses préconditions.
 
 ## Ce qui n'existe pas encore
 
-`cargo xtask` porte **deux** commandes de vérification — `generate-unicode-tables --check`
-et `check-segmentation` —, et aucune des trois de `docs/CONVENTIONS-fr.md` :
-`check-naming` (ADR-004), `check-versions` (ADR-009) et `check-codec-coverage` (ADR-012)
-sont à exécuter **à la main**. Ne pas écrire qu'elles tournent avant qu'elles tournent
-(NO GO n° 1).
+`cargo xtask` porte **cinq** commandes de vérification — `generate-unicode-tables --check`,
+`check-segmentation`, `check-naming` (ADR-004), `check-versions` (ADR-009) et
+`check-codec-coverage` (ADR-012) —, et l'intégration continue les exécute sur chaque PR.
+
+Trois contrôles de `docs/CONVENTIONS-fr.md` restent **à écrire**, donc à tenir à la main :
+`check-licence-headers`, `check-safety-comments` et `check-dco`. Ne pas écrire qu'ils
+tournent avant qu'ils tournent (NO GO n° 1).
+
+Portée de `check-naming`, à connaître avant de s'y fier : il inspecte les **sites de
+déclaration** et non les emplois, et son angle mort est la liaison d'un bras de `match`
+— `Some(index) => …`, qu'il ne voit pas.
 
 ## Contrôles à passer en local avant de pousser
 
@@ -88,7 +94,15 @@ cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 cargo deny check
+cargo xtask check-naming
+cargo xtask check-versions          # compare à origin/main, arbre de travail compris
+cargo xtask check-codec-coverage    # prend la mesure lui-même, ~1 min
 ```
+
+Ces contrôles tournent aussi en intégration continue sur chaque PR
+(`.github/workflows/ci.yml`), sur Linux `x86_64` et macOS `aarch64`. La CI ne remplace
+pas la liste locale : elle ne sait **pas** faire les essais en pseudo-terminal, qui
+demandent un vrai terminal de contrôle, ni le fuzzing, qui exige nightly.
 
 Et, quand la modification touche un codec (ADR-012) :
 
