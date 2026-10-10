@@ -3,8 +3,8 @@
 Document de suivi **vivant** : où en est-on, quelle est la prochaine tâche. Il se met à
 jour à chaque session. L'historique figé est dans [`JOURNAL.md`](JOURNAL.md).
 
-**Dernière mise à jour : 2026-10-10** (jalon M7d — la sélection de texte, le presse-papiers
-interne et le collage encadré ; jalon M7c — le type d'événement de touche).
+**Dernière mise à jour : 2026-10-10** (jalon M7e — le double et le triple clic ; jalon M7d
+— la sélection de texte, le presse-papiers interne et le collage encadré).
 
 ## Dépôt
 
@@ -27,15 +27,14 @@ contrôle, donc **aucun essai en pseudo-terminal** n'y tourne, et le fuzzing exi
 
 ## Où en est-on
 
-Jalons **M0 à M7d terminés**. Le dépôt porte ses conventions, ses ADR fondateurs, le socle
+Jalons **M0 à M7e terminés**. Le dépôt porte ses conventions, ses ADR fondateurs, le socle
 de rendu, le décodeur d'entrée, l'arbre de vues, douze widgets, la **couche MVC** de
 l'ADR-007, la hiérarchie d'objets complète, deux thèmes dont un **compilé**, et deux
 **applications** : `redit` ouvre un fichier, l'édite et l'enregistre ; `rmc` parcourt deux
 arborescences côte à côte.
 
 Ce qui manque pour que ce soit un framework complet : les **cases à cocher** et les
-**boutons radio**, le **double clic** — qui demande une horloge —, et l'étage d'entrée
-natif Linux (M8).
+**boutons radio**, et l'étage d'entrée natif Linux (M8).
 
 ### Fait
 
@@ -435,15 +434,65 @@ affirmations de M7b se sont révélées fausses. Elles sont corrigées ici plut�
   importables sur trente-neuf — un de moins qu'à M7b, pour une raison nouvelle au décompte
   et consignée dans l'ADR-008.
 
+### Fait au jalon M7e — le double et le triple clic
+
+- **La décision qui restait à prendre est prise, et elle était de placement.** Un double
+  clic n'est pas une séquence d'octets : c'est **deux séquences et un délai**. Le décodeur
+  est pur, et c'est cette pureté qui permet au fuzzing de vérifier qu'un découpage
+  arbitraire de l'entrée produit la même suite d'événements — y mettre une horloge la
+  détruirait. La synthèse vit donc dans la **boucle d'application**, seul endroit qui voit
+  tous les événements avant l'arbre et qui connaît déjà le temps. Ni dans les widgets, où
+  ce serait la même règle écrite douze fois (leçon de M7c, appliquée avant de la repayer),
+  ni dans `dispatch_event`, qui est une fonction pure et doit le rester.
+- **Le seuil vient de Turbo Vision, il n'est pas inventé.** `TEventQueue::doubleDelay` vaut
+  8 ticks de l'horloge BIOS à 18,2 Hz, soit **440 ms**, et les trois conditions de
+  `tevent.cpp` sont reprises telles quelles : le **même bouton**, **exactement la même
+  cellule**, et le délai. La condition de position est stricte chez Borland — pas de
+  tolérance d'une cellule — et elle le reste ici, une cellule de terminal étant assez
+  grande pour qu'un double clic y tienne.
+- **Le triple clic venait avec**, parce que c'est le même compteur : Borland le gère
+  (`meTripleClick`), et un quatrième clic rapide reste un triple chez lui comme ici.
+- **Le suiveur ne tient pas d'horloge** : l'instant lui est donné, et la mesure d'écart
+  aussi. C'est ce qui rend la règle vérifiable par **treize essais déterministes**, là où un
+  `Instant::now()` à l'intérieur aurait demandé de faire dormir un test — donc un test lent
+  et instable. Les essais emploient un compteur de millisecondes ; la boucle, un vrai
+  instant.
+- **L'événement s'ajoute, il ne remplace pas.** Un double clic produit `Pressed` **puis**
+  `DoubleClicked` : l'ordre compte, parce que c'est l'enfoncement qui place le curseur et le
+  clic multiple qui étend ensuite la sélection. Et un widget qui ignore le geste garde le
+  comportement du simple clic au lieu de ne plus rien recevoir — la rétrocompatibilité est
+  obtenue par construction, pas par précaution.
+- **Un redimensionnement coupe l'enchaînement.** La cellule d'avant ne désigne plus la même
+  chose, et enchaîner dessus ferait un double clic sur un autre widget.
+- **Trois usages, et le troisième n'est pas une sélection** : le double clic sélectionne le
+  segment sous le pointeur et le triple la ligne entière dans la vue d'édition ; dans un
+  champ d'une ligne, le triple vaut « tout sélectionner » ; et dans une **liste**, le double
+  clic **ouvre** l'item, comme dans Midnight Commander. Le même geste, trois sens selon le
+  widget — ce qui est la raison pour laquelle la boucle le synthétise sans décider quoi en
+  faire.
+- **Le segment et non « le mot »** : `unicode::segment_at` rend les bornes du segment au
+  sens de l'UAX #29, donc un mot, mais aussi une suite d'espaces ou un signe de ponctuation.
+  Un double clic sur un espace sélectionne les espaces, parce que rendre « rien » laisserait
+  le geste sans effet visible.
+- **Le triple clic prend le saut de ligne** : l'ancre au début de la ligne, le curseur au
+  début de la **suivante**. C'est ce qui fait qu'une suppression retire la ligne entière,
+  sans laisser une ligne vide derrière.
+- **Vérifié en pseudo-terminal avec son contrôle**, et c'est ce qui prouve la chaîne
+  complète — séquence SGR, décodeur, synthèse, distribution, intention, modèle,
+  enregistrement : deux clics sur « belle » puis `Ctrl`+`X` donnent « une  journee », et un
+  **seul** clic laisse le texte intact.
+- **1161 essais** (trente-sept de plus), 7 codecs toujours à 100 %.
+- Un point de catégorie, écrit pour qu'on n'y voie pas un oubli : `input/clicks.rs` n'est
+  **pas** soumis à la règle des 100 % de l'ADR-012. Ce qui fait un codec est de convertir un
+  flux, pas de vivre sous `input/` — et ce fichier agrège des événements avec une horloge
+  sans en convertir aucun. La note est dans la liste de `xtask`.
+
 ### Défauts ouverts
 
 *(aucun à ce jour)*
 
 ### Pas fait — et à ne pas annoncer comme fait
 
-- Le double clic, qui sélectionnerait un mot : il demande une **horloge**, et le décodeur
-  est pur. C'est désormais le seul geste de sélection qui manque, et la décision à prendre
-  est *où* l'horloge vit — la boucle d'application en a une, le décodeur n'en veut pas.
 - La table des touches fonctionnelles de Kitty au-delà des numéros certains : pavé
   numérique, touches multimédia, touches modificatrices seules. Hors table, donc consommées
   sans événement — et la table a été écrite d'après la spécification, **pas vérifiée contre
@@ -508,20 +557,16 @@ affirmations de M7b se sont révélées fausses. Elles sont corrigées ici plut�
 demandent une console physique, inaccessible par SSH. Écrire du code qu'on ne peut pas
 vérifier est exactement ce que ce dépôt refuse. Les candidats, du plus petit au plus gros :
 
-1. **Le double clic**, dernier geste de sélection qui manque. Il sélectionnerait un mot,
-   et `unicode` sait déjà découper les mots (UAX #29, jalon M6) : tout est là sauf
-   l'**horloge**. La décision est *où* elle vit — la boucle d'application en a une, le
-   décodeur la refuse parce qu'il est pur. Petit à écrire une fois tranché.
-2. **Les deux limites du thème** : un attribut par rôle dans la palette, une couleur
+1. **Les deux limites du thème** : un attribut par rôle dans la palette, une couleur
    « défaut du terminal » dans `AirColor`. Chiffré : vingt-neuf des trente skins refusés
    sur trente-neuf deviendraient importables. C'est de la donnée, pas de l'architecture.
-3. **Les cases à cocher et les boutons radio**, qui complètent les contrôles de dialogue
+2. **Les cases à cocher et les boutons radio**, qui complètent les contrôles de dialogue
    avec `AirPromptDialog`. C'est désormais la plus grosse absence du catalogue de widgets.
-4. **L'annulation** dans `redit` — `Ctrl`+`Z`. La sélection vient d'ajouter des opérations
+3. **L'annulation** dans `redit` — `Ctrl`+`Z`. La sélection vient d'ajouter des opérations
    dont l'inverse n'est pas évident (remplacer une sélection par un collage est deux
    gestes en un), donc le moment est bon pour décider si le modèle tient un journal
    d'annulation ou des instantanés.
-5. **La peinture hors des limites d'une vue**, décision d'architecture dont dépendent
+4. **La peinture hors des limites d'une vue**, décision d'architecture dont dépendent
    `AirDecorations` et l'ombre portée. À trancher avant d'écrire la troisième assiette du
    triplet de l'ADR-008, pas après.
 
@@ -549,4 +594,5 @@ des numéros de touches fonctionnelles.
 | M7b | la coquille `rmc` à deux panneaux, et les listes | **fait** |
 | M7c | le type d'événement de touche : décodé partout, écarté à la distribution | **fait** |
 | M7d | la sélection de texte, le presse-papiers interne, le collage encadré | **fait** |
+| M7e | le double et le triple clic, synthétisés par la boucle | **fait** |
 | M8 | étage natif Linux : evdev, `TIOCLINUX`, gpm | à faire |

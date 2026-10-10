@@ -53,7 +53,7 @@ L'**avancement** vit dans [`etat-avancement.md`](etat-avancement.md), l'**histor
 | `surface` | la grille, le différentiel, le suivi des zones salies | M0 |
 | `terminal` | `AirTerminal` sur le contrat : rendu, entrée, curseur, protocole clavier | M0, M2, M5b |
 | `codec` | encodeur SGR, écriture décimale — à 100 % de couverture | M0 |
-| `input` | décodeur ANSI, protocole Kitty, modèle de touche et de souris | M1, M2 |
+| `input` | décodeur ANSI, protocole Kitty, modèle de touche et de souris, **synthèse des clics multiples** | M1, M2, M7e |
 | `unicode` | largeur d'affichage, graphèmes **et mots** (UAX #29), tables générées | M3, M6 |
 | `view` | trait `AirView`, peintre à découpage réel, trois phases, contexte de dessin, accès typé | M4, M5b, M6 |
 | `command` | `AirCommandSet` — le grisage en *pull* | M4 |

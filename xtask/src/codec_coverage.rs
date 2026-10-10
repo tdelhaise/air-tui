@@ -66,6 +66,12 @@ struct Codec {
 }
 
 /// Les fichiers soumis à la règle des 100 %.
+///
+/// La liste est **nominative**, et non « tout ce qui est sous `input/` » : ce qui fait un
+/// codec est de convertir un flux, pas de vivre dans un répertoire.
+/// `crates/air-tui/src/input/clicks.rs` en est l'exemple — il agrège des événements avec
+/// une horloge et n'en convertit aucun, donc il n'est pas ici. Ce n'est pas un oubli, et
+/// c'est écrit pour qu'on ne le prenne pas pour tel.
 const CODEC_FILES: &[Codec] = &[
     Codec {
         path: "crates/air-tui/src/codec/decimal.rs",
