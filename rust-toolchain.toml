@@ -1,0 +1,25 @@
+# Toolchain Rust d'air-tui — **UNE SEULE VERSION, PARTOUT**.
+#
+# # Pourquoi un pin daté
+#
+# ADR-025 d'Air (builds reproductibles) exige qu'un même tag produise des artefacts
+# identiques. S'en remettre au « stable du jour » revient à dépendre d'un amont qui bouge
+# sans prévenir : la vérification cesse d'être rejouable.
+#
+# # Pourquoi stable, là où Air est en nightly
+#
+# Air est contraint au nightly par la cible JSON custom `*-linux-air` et `-Z build-std`
+# (ADR-049/050). air-tui n'a aucune de ces exigences : pas de cible custom, pas de
+# `build-std`, aucune fonctionnalité instable. Le pin est donc sur **stable**, ce qui est
+# plus fort, pas plus faible — la surface de langage utilisée est gelée par la version.
+
+[toolchain]
+channel = "1.99.0"
+components = ["rustfmt", "clippy", "llvm-tools-preview"]
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
+]
+profile = "minimal"

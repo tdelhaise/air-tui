@@ -1,0 +1,17 @@
+# Artefacts de build
+/target
+**/*.rs.bk
+*.pdb
+
+# macOS
+.DS_Store
+
+# Outillage local Claude Code : `.claude/` est ignoré SAUF `settings.json` (réglage de
+# dépôt versionné — désactivation du trailer Co-Authored-By) et `agents/`.
+.claude/*
+!.claude/settings.json
+!.claude/agents/
+claude_session.id
+
+# Brouillons et journaux de travail d'agents — jamais versionnés.
+/brouillons/

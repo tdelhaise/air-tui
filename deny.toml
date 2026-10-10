@@ -1,0 +1,33 @@
+# Politique de dépendances d'air-tui (cargo-deny).
+#
+# air-tui ne dépend d'AUCUNE crate tierce : seules `std` et les symboles de la
+# bibliothèque C déjà liée par `std` sont employés (ADR-005). La liste `allow` ci-dessous
+# est donc une barrière, pas une permission d'usage : elle reprend celle d'Air pour que
+# l'introduction d'une dépendance, si elle devait un jour être décidée par RFC, parte des
+# mêmes bornes.
+
+[licenses]
+allow = [
+    "MPL-2.0",
+    "Apache-2.0",
+    "MIT",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-DFS-2016",
+    # Les tables Unicode dérivées de l'UCD (largeur d'affichage, segmentation en
+    # graphèmes — ADR-006) sont sous `Unicode-3.0`. Même précédent que l'exception
+    # icu4x d'Air (ADR-016).
+    "Unicode-3.0",
+]
+confidence-threshold = 0.93
+exceptions = []
+
+[bans]
+multiple-versions = "deny"
+wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
