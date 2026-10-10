@@ -6,6 +6,85 @@ tête. On ajoute, on ne réécrit jamais une entrée passée.
 Une entrée par campagne, pas par commit. Répartition des rôles : `etat-avancement.md` est
 l'état vivant, ce journal est la trace figée, `INDEX.md` est la carte structurelle.
 
+## 2026-10-10 — Jalon M7a : le thème Midnight Commander, compilé et non recopié
+
+- **Le moteur de thèmes a cessé d'être un moteur sur parole.** Il avait un thème depuis
+  M5, ce qui ne prouvait rien : une palette unique peut se cacher n'importe où. Il en a
+  deux, et le second est **compilé depuis une source extérieure** par
+  `cargo xtask import-mc-skin`. Les deux lancements de l'exemple dessinent exactement les
+  mêmes vues ; seules la palette et les glyphes changent.
+- **L'ADR-008 a tranché une question que j'avais mal posée.** J'avais annoncé l'importeur
+  comme un codec à l'exécution. L'ADR dit l'inverse, noir sur blanc : « les thèmes sont
+  compilés, pas analysés au runtime », et un skin mal formé doit être un refus à la
+  compilation. L'importeur est donc un `xtask`, et `air-tui` n'embarque aucun analyseur de
+  `.ini` — ce qui est vérifiable, pas promis.
+- **La licence a été tranchée par l'auteur du projet, pas par moi.** Les valeurs viennent
+  du skin par défaut de `mc`, sous GPLv3, dans un dépôt MPL-2.0 : ce n'est pas le même
+  geste que la transcription de Borland, dont Turbo Vision avait été versée au domaine
+  public. Décision retenue : artefact généré committé, et une entrée dans `NOTICE` qui
+  nomme le projet, sa licence et ce qui en est repris — vingt-huit couples de couleurs et
+  douze caractères de cadre, c'est-à-dire de la donnée de configuration, aucune ligne de
+  code. `NOTICE` n'affirme plus qu'Unicode est la seule donnée tierce du dépôt.
+- **Le manuel de `mc` se trompe sur deux points, et les fichiers font foi.** Il nomme les
+  jonctions `centertop`, `centerbottom` et `centermiddle` ; les trente-neuf skins livrés
+  écrivent `topmiddle`, `bottommiddle` et `cross`, et **aucun** n'emploie les noms du
+  manuel. Il annonce `color16` à `color255` ; les skins emploient aussi `color0` à
+  `color15`, plus de deux mille fois. Écrire l'analyseur d'après le manuel aurait donné un
+  outil conforme à la documentation et faux sur les données.
+- **Un défaut de mon analyseur trouvé par la mesure, et invisible à la relecture.** Je
+  découpais les valeurs sur `#` pour retirer les commentaires de fin de ligne. Or les
+  trente-neuf skins portent cent quatre-vingt-douze valeurs contenant un `#`, et les cent
+  quatre-vingt-douze sont des **vraies couleurs** : aucun skin n'emploie de commentaire en
+  fin de ligne. Quatre skins se vidaient donc de leurs couleurs, en annonçant « «  » n'est
+  pas une couleur connue de mc ». Ce n'est pas la relecture du code qui l'a vu, c'est de
+  l'avoir lancé sur les trente-neuf fichiers.
+- **Douze skins sur trente-neuf sont importables, et les vingt-sept refus sont chiffrés.**
+  Dix-huit posent un attribut — `bold`, `underline` — sur un rôle employé, et
+  `AirColorPair` ne porte que deux couleurs ; neuf emploient `default`, le fond transparent
+  de `mc`, qu'`AirColor` ne sait pas exprimer. Les deux sont des limites du modèle
+  d'air-tui, pas des défauts de l'analyseur, et les lever rendrait les vingt-sept
+  importables. Un refus chiffré est une décision possible ; un refus silencieux est une
+  surprise.
+- **Le décodeur de skins est à 100 % des trois mesures, et la règle a fait son travail.**
+  ADR-012 promet qu'exiger 100 % change l'écriture plutôt que d'allonger les essais : c'est
+  exactement ce qui s'est produit. Les branches « ce chiffre manque » et « index hors
+  palette » ont été **supprimées** — motifs de tranche pour les trois et six chiffres d'une
+  couleur, table hexadécimale au lieu d'un `to_digit` suivi d'une conversion infaillible.
+  Le fichier est plus simple qu'avant la règle, pas plus long. Septième codec au gate.
+- **Vingt-cinq rôles transcrits, trois composés, quatorze annotés.** `mc` nomme ses
+  couleurs par élément d'interface, air-tui par rôle sémantique, et les deux ensembles ne
+  se recouvrent pas : `mc` ne connaît ni bouton par défaut, ni ascenseur, ni item de menu à
+  la fois sélectionné et interdit. Chaque choix est écrit dans l'artefact, à côté de la
+  valeur. Une dérivation nommée se discute ; une dérivation silencieuse se découvre des
+  mois plus tard devant un écran qui ne ressemble pas au skin.
+- **Le thème se vérifie sur les octets, pas à l'œil.** Dans un pseudo-terminal, la barre de
+  menu passe de `38;5;0;48;5;7` à `38;5;15;48;5;6`, la barre de statut de `48;5;7` à
+  `48;5;6`, et le bureau du `░` à l'espace — ce que `default.ini` dit mot pour mot. Les
+  quatre essais passent, essais de contrôle compris.
+- **Deux faits que les deux thèmes partagent, et qui ne sont pas des défauts** : le fond du
+  bureau est gris clair sur bleu dans les deux — `mc` a repris le fond de Norton Commander,
+  que Turbo Vision employait déjà —, et le skin par défaut de `mc` dessine ses dialogues en
+  trait **simple**, là où Turbo Vision met son `╔═╗`. Les deux ont leur essai.
+- **Le gate des versions a attrapé sa deuxième vraie infraction**, dans la même séance où
+  il a attrapé la première : `redit` déclarait `air-tui = "0.7.0"` alors que la crate
+  passait en 0.7.1. Cargo l'accepte sans un mot, `^0.7.0` étant satisfait ; c'est la
+  publication qui aurait livré une borne fausse.
+- **Ce que ce jalon ne fait pas, et qui est écrit plutôt que sous-entendu** : `AirDecorations`
+  n'existe pas, donc `AirTheme` est un **couple** là où l'ADR-008 décrit un triplet. Le
+  style de trait vit déjà dans les glyphes, mais l'ombre portée ne peut pas être dessinée —
+  elle tombe hors des limites de la vue qui la projette, et le découpage du peintre ne
+  souffre aucune exception. `AirRole::ButtonShadow` est dans la palette depuis M5, transcrit
+  de Borland comme de `mc`, et aucun widget ne le lit. Une assiette qui décrirait une ombre
+  que rien ne dessine annoncerait une capacité absente : la trancher demande de décider si
+  une vue peut peindre hors de ses limites, ce qui est une décision d'architecture.
+- Et `rmc` n'existe pas. L'ADR-008 prévient que « ce qui fait reconnaître Midnight
+  Commander est sa coquille, pas sa palette » : `redit --theme mc` donne un éditeur aux
+  couleurs de `mc`, pas `mc`. Le thème seul ne contredit pas cet avertissement, il le
+  confirme.
+- Versions : `air-tui` 0.7.0 → **0.7.1**, `redit` 0.1.0 → **0.1.1**, `xtask` 0.2.1 →
+  **0.2.2** — trois ajouts d'API, donc `z` (en `0.y.z`, seule une rupture avance `y`).
+  973 essais au vert, dont 79 nouveaux.
+
 ## 2026-10-10 — Jalon M6b : les trois contrôles de conventions, et la CI qui les exige
 
 - **Trois règles contraignantes cessent de reposer sur la bonne volonté.** `check-naming`

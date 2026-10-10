@@ -3,9 +3,9 @@
 Document de suivi **vivant** : où en est-on, quelle est la prochaine tâche. Il se met à
 jour à chaque session. L'historique figé est dans [`JOURNAL.md`](JOURNAL.md).
 
-**Dernière mise à jour : 2026-10-10** (jalon M6b — les trois contrôles de conventions et
-l'intégration continue ; jalon M6 — `redit`, la couche MVC, la hiérarchie d'objets, et la
-segmentation en mots).
+**Dernière mise à jour : 2026-10-10** (jalon M7a — le thème Midnight Commander et son
+importeur de skins ; jalon M6b — les trois contrôles de conventions et l'intégration
+continue).
 
 ## Dépôt
 
@@ -28,7 +28,7 @@ contrôle, donc **aucun essai en pseudo-terminal** n'y tourne, et le fuzzing exi
 
 ## Où en est-on
 
-Jalons **M0 à M6b terminés**. Le dépôt porte ses conventions, ses ADR fondateurs, le socle
+Jalons **M0 à M7a terminés**. Le dépôt porte ses conventions, ses ADR fondateurs, le socle
 de rendu, le décodeur d'entrée, l'arbre de vues, onze widgets, la **couche MVC** de
 l'ADR-007, la hiérarchie d'objets complète, et une **application** : `redit` ouvre un
 fichier, l'édite et l'enregistre.
@@ -39,6 +39,43 @@ la coquille `rmc` (M7), et l'étage d'entrée natif Linux (M8).
 
 ### Fait
 
+- **M7a — le thème Midnight Commander, et l'importeur qui le produit** :
+  - **`cargo xtask import-mc-skin`** compile un `.ini` de skin en artefact Rust committé.
+    L'ADR-008 l'exige ainsi : « les thèmes sont compilés, pas analysés au runtime ».
+    Conséquence vérifiable plutôt que promise — `air-tui` n'embarque aucun analyseur de
+    `.ini` et n'ouvre aucun fichier pour afficher un thème.
+  - **La table de correspondance est annotée** : vingt-cinq rôles transcrits d'une seule
+    clef du skin, trois composés de deux clefs faute d'être nommés par `mc`, et quatorze
+    correspondances qui portent écrite la règle ayant demandé un choix. `mc` nomme ses
+    couleurs par élément d'interface, air-tui par rôle sémantique : les deux ensembles ne
+    se recouvrent pas entièrement, et ce qui ne se recouvre pas est écrit.
+  - **Deux écarts entre le manuel de `mc` et les fichiers qu'il livre**, tranchés en faveur
+    des fichiers : le manuel nomme les jonctions `centertop`/`centerbottom`/`centermiddle`
+    là où les 39 skins écrivent `topmiddle`/`bottommiddle`/`cross`, et il annonce `color16`
+    à `color255` là où les skins emploient aussi `color0` à `color15`, plus de deux mille
+    fois.
+  - **Un défaut de mon analyseur trouvé par la mesure, pas par la relecture** : je
+    traitais `#` comme un début de commentaire, et les 39 skins portent 192 valeurs
+    contenant un `#` — toutes des vraies couleurs, aucune un commentaire. Quatre skins se
+    vidaient donc de leurs couleurs en annonçant « «  » n'est pas une couleur connue ».
+    Corrigé, et `AirColor::Rgb` les exprime.
+  - **Mesuré sur les 39 skins livrés : douze sont importables.** Les vingt-sept autres sont
+    refusés pour deux limites du modèle d'air-tui, chiffrées donc décidables : dix-huit
+    posent un **attribut** sur un rôle employé, que `AirColorPair` ne porte pas ; neuf
+    emploient `default`, le fond transparent de `mc`, qu'`AirColor` ne sait pas exprimer.
+  - **Le décodeur de skins est à 100 % de régions, de fonctions et de lignes**, et inscrit
+    au gate `check-codec-coverage` — septième codec. La règle a eu l'effet qu'ADR-012
+    annonce : les branches défensives inatteignables ont été **supprimées** par le typage,
+    pas couvertes. Les trois chiffres d'une couleur du cube et les six d'une vraie couleur
+    se reconnaissent par motif de tranche, et la valeur d'un chiffre hexadécimal vient
+    d'une table plutôt que d'un `to_digit` suivi d'une conversion infaillible.
+  - **`--theme mc` dans `redit` et `mc` dans l'exemple `frame`** : les deux lancements
+    dessinent exactement les mêmes vues. Vérifié sur les **octets émis** dans un
+    pseudo-terminal — la barre de menu passe de `38;5;0;48;5;7` à `38;5;15;48;5;6`, la
+    barre de statut de `48;5;7` à `48;5;6`, et le bureau du `░` à l'espace.
+  - **Une empreinte du skin dans l'artefact**, pour que `--check` distingue deux échecs que
+    le même symptôme recouvre : « ce n'est pas le même skin » et « l'artefact a dérivé de
+    son skin ».
 - **M6b — les trois contrôles de conventions, et l'intégration continue qui les exige** :
   - **`cargo xtask check-naming`** (ADR-004) : un balayage lexical qui écarte
     commentaires, chaînes et littéraux, relève les **sites de déclaration** et refuse le
@@ -265,7 +302,17 @@ la coquille `rmc` (M7), et l'étage d'entrée natif Linux (M8).
   numérique, touches multimédia, touches modificatrices seules. Hors table, donc consommées
   sans événement — et la table a été écrite d'après la spécification, **pas vérifiée contre
   un terminal réel**.
-- `rmc`, et le **thème Midnight Commander** avec son importeur de skins (M7).
+- La coquille **`rmc`** à deux panneaux. Le thème MC existe depuis M7a, et l'ADR-008
+  prévient que « ce qui fait reconnaître Midnight Commander est sa coquille, pas sa
+  palette » : `redit --theme mc` donne un éditeur aux couleurs de `mc`, pas `mc`.
+- **`AirDecorations`**, la troisième assiette du triplet de l'ADR-008. `AirTheme` est un
+  couple. Le style de trait vit déjà dans les glyphes ; l'**ombre portée** ne peut pas être
+  dessinée, parce qu'elle tombe hors des limites de la vue qui la projette et que le
+  découpage du peintre ne souffre aucune exception. `AirRole::ButtonShadow` est dans la
+  palette, transcrit de Borland comme de `mc`, et **aucun widget ne le lit**. Une assiette
+  qui décrirait une ombre que rien ne dessine annoncerait une capacité absente.
+- Un **attribut par rôle** dans la palette, et une couleur « défaut du terminal » dans
+  `AirColor` : les deux lèveraient les vingt-sept refus de l'importeur de skins.
 - Les **listes, cases à cocher et boutons radio**.
 - La **sélection** de texte, dans la vue d'édition comme dans le champ de saisie :
   `Maj`+flèche, le copier-coller interne, la surbrillance, et le double-clic qui en
@@ -302,26 +349,28 @@ la coquille `rmc` (M7), et l'étage d'entrée natif Linux (M8).
 
 ## Prochaine tâche
 
-**M7 — le thème Midnight Commander et la coquille `rmc`.** Le moteur de thèmes existe
-depuis M5 et n'a encore qu'un thème : la preuve qu'il est bien un moteur reste à faire. Le
-jalon demande une seconde palette, un second jeu de glyphes, l'importeur de skins MC en
-`xtask`, et une coquille à deux panneaux — qui exercera `AirScreen` comme chrome
-commutable, ce que `redit` n'exerce pas.
+**M7b — la coquille `rmc` à deux panneaux.** Le moteur de thèmes a fait sa preuve : deux
+thèmes, dont un **compilé** depuis une source extérieure, et les mêmes vues rendues
+différemment. Ce qui reste est l'autre moitié de ce que l'ADR-008 sépare — la coquille.
 
-Il demandera probablement les **listes**, qu'un panneau de fichiers ne peut pas éviter, et
-avec elles les ascenseurs qu'elles pilotent.
+Elle demandera les **listes**, qu'un panneau de fichiers ne peut pas éviter, et avec elles
+les ascenseurs qu'elles pilotent. Elle exercera `AirScreen` comme chrome commutable, ce que
+`redit` n'exerce pas avec son unique fenêtre.
 
-Un point tranché d'avance par M6b : l'importeur de skins lit un format de fichier, donc
-c'est une **conversion de flux**, donc un codec au sens de l'ADR-012 — à 100 % de
-couverture, et `check-codec-coverage` l'exigera dès que son fichier entrera dans la liste
-du gate. C'est la raison pour laquelle l'outillage a été écrit avant M7 et non après.
+Deux dettes que M7a laisse, chiffrées :
 
-Une dette restante : remonter la couverture de `air-tui-platform-posix` par des tests sous
-pty. Et deux vérifications encore absentes : la **console Linux native**, inaccessible par
-SSH et dont dépend tout l'étage natif du jalon M8 ; et le protocole Kitty **contre un vrai
-terminal** — il est décodé et négocié d'après la spécification, et les tests le pilotent
-avec un périphérique en mémoire, ce qui prouve le code mais pas la table des numéros de
-touches fonctionnelles.
+- un **attribut par rôle** dans la palette et une couleur « défaut du terminal » dans
+  `AirColor` rendraient importables les vingt-sept skins aujourd'hui refusés sur
+  trente-neuf ;
+- `AirDecorations` demande de trancher si une vue peut peindre **hors de ses limites**.
+  C'est une décision d'architecture, pas de thème, et elle commande l'ombre portée.
+
+Une dette plus ancienne : remonter la couverture de `air-tui-platform-posix` par des tests
+sous pty. Et deux vérifications encore absentes : la **console Linux native**, inaccessible
+par SSH et dont dépend tout l'étage natif du jalon M8 ; et le protocole Kitty **contre un
+vrai terminal** — il est décodé et négocié d'après la spécification, et les tests le
+pilotent avec un périphérique en mémoire, ce qui prouve le code mais pas la table des
+numéros de touches fonctionnelles.
 
 ## Jalons
 
@@ -336,5 +385,6 @@ touches fonctionnelles.
 | M5b | barre de menu à menus déroulants, barre de statut, champ de saisie, curseur | **fait** |
 | M6 | `redit` — équivalent de `tvedit`, couche MVC, hiérarchie d'objets | **fait** |
 | M6b | les trois contrôles de conventions, et l'intégration continue | **fait** |
-| M7 | thème et coquille Midnight Commander, importeur de skins | à faire |
+| M7a | thème Midnight Commander et importeur de skins | **fait** |
+| M7b | la coquille `rmc` à deux panneaux, et les listes | à faire |
 | M8 | étage natif Linux : evdev, `TIOCLINUX`, gpm | à faire |

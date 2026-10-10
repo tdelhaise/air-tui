@@ -16,8 +16,8 @@ terminal veut bien les donner.
 ## Ce qui le distingue
 
 - **Thèmes graphiques.** Le look and feel est une donnée, pas du code. Le thème par
-  défaut reproduit celui de Turbo Vision ; un second thème, prévu, reproduira celui de
-  Midnight Commander. Un thème est un triplet palette + glyphes + décorations.
+  défaut reproduit celui de Turbo Vision ; un second est **compilé** depuis le skin par
+  défaut de Midnight Commander par un outil du dépôt, et non recopié à la main. Un thème est un triplet palette + glyphes + décorations.
 - **Screens, Windows, Views.** Une hiérarchie explicite : l'application empile des
   `AirScreen` (surfaces plein écran commutables), chacune organise un `AirDesktop` de
   `AirWindow`, composés d'`AirView`.
@@ -37,12 +37,19 @@ raccourcis grisables, édition par grappes de graphème et déplacement par mot 
 l'annexe 29 d'Unicode.
 
 ```sh
-cargo run --example frame             # la démonstration des widgets
-cargo run -p redit -- fichier.txt     # l'éditeur
+cargo run --example frame                    # la démonstration des widgets
+cargo run --example frame -- mc              # la même, au thème Midnight Commander
+cargo run -p redit -- fichier.txt            # l'éditeur
+cargo run -p redit -- --theme mc fichier.txt # l'éditeur, aux couleurs de mc
 ```
 
+Les deux lancements d'un même programme dessinent **exactement** les mêmes vues : seules
+la palette et les glyphes changent. C'est la démonstration la plus courte de ce que le
+moteur de thèmes promet — et un avertissement utile : un thème n'est pas une coquille, et
+`redit --theme mc` donne un éditeur aux couleurs de `mc`, pas `mc`.
+
 Ce qui manque encore : la **sélection** de texte — donc le copier-coller interne —, les
-listes, le thème Midnight Commander et la coquille `rmc`, et l'étage d'entrée natif Linux.
+listes, la coquille `rmc` à deux panneaux, et l'étage d'entrée natif Linux.
 L'avancement réel, jalon par jalon, est tenu dans
 [`docs/etat-avancement.md`](docs/etat-avancement.md) — et ce README décrit l'intention du
 projet, qui va plus loin que ce qui est livré.
