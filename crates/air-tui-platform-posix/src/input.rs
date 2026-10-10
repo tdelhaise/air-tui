@@ -97,7 +97,12 @@ mod tests {
     use std::io::Write;
     use std::os::fd::AsFd;
 
-    use air_tui_platform::{InputReadiness, PlatformErrorKind};
+    use air_tui_platform::InputReadiness;
+    // Employé par le seul test propre à macOS : sans ce `cfg`, l'import est inutilisé sur
+    // Linux et `clippy -D warnings` refuse la compilation. Défaut constaté sur hydrogen,
+    // invisible depuis macOS.
+    #[cfg(target_os = "macos")]
+    use air_tui_platform::PlatformErrorKind;
 
     use super::{classify, wait_for_input};
     use crate::errno::Errno;
