@@ -11,6 +11,11 @@
 //! recouvrent largement, pas entièrement : `mc` ne connaît ni bouton par défaut, ni
 //! ascenseur, ni item de menu à la fois sélectionné et interdit.
 //!
+//! Les quatre rôles de **liste** vont dans l'autre sens, et c'est le seul endroit où
+//! `mc` est plus riche qu'air-tui ne le demande : il nomme les quatre — ordinaire,
+//! sous le curseur, marqué, les deux —, là où Turbo Vision n'en nomme que trois et laisse
+//! le quatrième à composer. Deux panneaux de fichiers, c'est ce que `mc` sait faire.
+//!
 //! [`ROLE_SOURCES`] est donc une table explicite, et chaque entrée dit ce qu'elle est :
 //! **transcrite** d'une clef du skin, ou **dérivée** d'une règle qui est écrite à côté
 //! d'elle. Une dérivation nommée se discute ; une dérivation silencieuse se découvre des
@@ -65,8 +70,8 @@ struct RoleSource {
 
 /// La table de correspondance, dans l'ordre des champs d'`AirPalette`.
 ///
-/// L'ordre compte : l'émetteur produit les six groupes de la structure en suivant cette
-/// table, et un test vérifie que les vingt-huit rôles y sont, une fois chacun.
+/// L'ordre compte : l'émetteur produit les sept groupes de la structure en suivant cette
+/// table, et un test vérifie que les trente-deux rôles y sont, une fois chacun.
 const ROLE_SOURCES: &[RoleSource] = &[
     RoleSource {
         role: "DesktopBackground",
@@ -301,9 +306,42 @@ const ROLE_SOURCES: &[RoleSource] = &[
         },
         note: "mc n'a pas d'ascenseur : ses flèches prennent la couleur du curseur",
     },
+    RoleSource {
+        role: "ListNormal",
+        source: Source::Direct {
+            section: "core",
+            key: "_default_",
+        },
+        note: "un panneau de mc est l'application elle-même : ses lignes portent \
+                     `[core] _default_`",
+    },
+    RoleSource {
+        role: "ListSelected",
+        source: Source::Direct {
+            section: "core",
+            key: "selected",
+        },
+        note: "",
+    },
+    RoleSource {
+        role: "ListMarked",
+        source: Source::Direct {
+            section: "core",
+            key: "marked",
+        },
+        note: "",
+    },
+    RoleSource {
+        role: "ListMarkedSelected",
+        source: Source::Direct {
+            section: "core",
+            key: "markselect",
+        },
+        note: "",
+    },
 ];
 
-/// Les bornes des six groupes d'`AirPalette`, dans l'ordre de [`ROLE_SOURCES`].
+/// Les bornes des sept groupes d'`AirPalette`, dans l'ordre de [`ROLE_SOURCES`].
 ///
 /// Le premier rôle est seul dans son champ ; les suivants vont par groupes, et l'émetteur
 /// produit un tableau Rust par groupe.
@@ -314,6 +352,7 @@ const GROUPS: &[(&str, usize)] = &[
     ("dialog", 4),
     ("button", 6),
     ("scroll_bar", 2),
+    ("list", 4),
 ];
 
 /// Les six clefs de la section `[Lines]` d'un cadre simple, dans l'ordre d'`AirFrameGlyphs`.
@@ -590,7 +629,7 @@ fn emit(emission: &Emission) -> String {
     output.push_str(
         "\nuse crate::cell::AirColor;\n\
          use crate::theme::glyphs::{AirFrameGlyphs, AirGlyphSet};\n\
-         use crate::theme::palette::{AirColorPair, AirPalette};\n\n",
+         use crate::theme::palette::{AirColorPair, AirPalette, AirPaletteParts};\n\n",
     );
     let _ = write!(
         output,
@@ -616,21 +655,21 @@ fn emit(emission: &Emission) -> String {
         );
     }
     output.push_str(
-        "/// La palette, compilée depuis le skin.\n         pub(crate) const fn palette() -> AirPalette {\n             AirPalette::from_parts(\n",
+        "/// La palette, compilée depuis le skin.\n         pub(crate) const fn palette() -> AirPalette {\n             AirPalette::from_parts(AirPaletteParts {\n",
     );
 
     let mut index = 0usize;
     if let Some((entry, colors)) = pairs.first() {
         let _ = writeln!(
             output,
-            "        {}, // {}",
+            "        desktop_background: {}, // {}",
             expression(*colors),
             origin_of(entry)
         );
         index = 1;
     }
     for (group, count) in GROUPS {
-        let _ = write!(output, "        // {group}\n        [\n");
+        let _ = writeln!(output, "        {group}: [");
         for _ in 0..*count {
             if let Some((entry, colors)) = pairs.get(index) {
                 let _ = writeln!(
@@ -644,7 +683,7 @@ fn emit(emission: &Emission) -> String {
         }
         output.push_str("        ],\n");
     }
-    output.push_str("    )\n}\n\n");
+    output.push_str("    })\n}\n\n");
 
     let _ = write!(
         output,
@@ -782,6 +821,8 @@ mod tests {
 [core]
     _default_ = {foreground};{background}
     selected = black;cyan
+    marked = yellow;blue
+    markselect = yellow;cyan
     disabled = gray;lightgray
     shadow = gray;black
 [menu]
@@ -808,13 +849,13 @@ mod tests {
     }
 
     #[test]
-    fn la_table_couvre_les_vingt_huit_roles_une_fois_chacun() {
+    fn la_table_couvre_les_trente_deux_roles_une_fois_chacun() {
         let mut roles: Vec<&str> = ROLE_SOURCES.iter().map(|entry| entry.role).collect();
         let before = roles.len();
         roles.sort_unstable();
         roles.dedup();
         assert_eq!(roles.len(), before, "un rôle apparaît deux fois");
-        assert_eq!(before, 28, "AirPalette porte vingt-huit rôles");
+        assert_eq!(before, 32, "AirPalette porte trente-deux rôles");
     }
 
     #[test]
@@ -845,7 +886,7 @@ mod tests {
         let text = complete_skin("lightgray", "blue");
         let skin = parse(&text).expect("skin lisible");
         let compiled = compile(&skin, "essai.ini", 0x1234_5678_9abc_def0).expect("compilation");
-        assert_eq!(compiled.transcribed, 25);
+        assert_eq!(compiled.transcribed, 29);
         assert_eq!(compiled.composed, 3);
         assert_eq!(
             compiled.transcribed.saturating_add(compiled.composed),

@@ -36,6 +36,20 @@
 //! `cpStatusLine` et `cpMenuView` partagent la même chaîne : la barre de statut est
 //! **noir sur gris clair**, comme la barre de menu. Les premières valeurs de ce projet la
 //! donnaient sur cyan, par souvenir plutôt que par lecture.
+//!
+//! ## « Selected » ne veut pas dire la même chose de part et d'autre
+//!
+//! Dans `cpListViewer`, Turbo Vision appelle **Focused** l'item sous le curseur et
+//! **Selected** un item marqué. air-tui emploie `Selected` pour ce qui est sous le
+//! curseur — c'est déjà le sens d'[`AirRole::MenuSelected`] — et `Marked` pour ce qui est
+//! marqué. La transcription croise donc les deux noms, et ce n'est pas une étourderie :
+//! `ListSelected` vient de `cpListViewer[3]`, `ListMarked` de `cpListViewer[4]`.
+//!
+//! Le décompte des indices de `cpAppColor` se vérifie sans compter sur ses doigts :
+//! `examples/tvdemo/tvdemo2.cpp` nomme lui-même ses entrées, et il donne « List normal »
+//! pour 57, « List focused » pour 58 et « List selected » pour 59. Les six entrées des
+//! boutons, transcrites au jalon M5, portent les mêmes numéros que ce fichier leur
+//! attribue — c'est ce qui valide le décompte des quatre nouvelles.
 
 use crate::cell::AirColor;
 
@@ -108,6 +122,15 @@ pub enum AirRole {
     ScrollBarPage,
     /// Les flèches et le curseur d'un ascenseur.
     ScrollBarControls,
+
+    /// Un item de liste ordinaire.
+    ListNormal,
+    /// L'item sous le curseur, dans une liste qui a le focus.
+    ListSelected,
+    /// Un item marqué.
+    ListMarked,
+    /// Un item marqué et sous le curseur.
+    ListMarkedSelected,
 }
 
 /// Un couple de couleurs : caractère et fond.
@@ -173,6 +196,32 @@ pub const fn pair_from_vga_attribute(attribute: u8) -> AirColorPair {
     )
 }
 
+/// Les assiettes d'une palette, nommées.
+///
+/// Elle existe pour que l'artefact généré nomme ce qu'il pose : huit assiettes passées à
+/// la file se relisent mal, et un groupe échangé avec son voisin ne se verrait pas. Les
+/// longueurs fixes gardent le décompte au compilateur — un groupe de cinq couples là où
+/// il en faut six ne compile pas.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct AirPaletteParts {
+    /// Le fond du bureau.
+    pub desktop_background: AirColorPair,
+    /// La barre de menu.
+    pub menu: [AirColorPair; 6],
+    /// La barre de statut.
+    pub status: [AirColorPair; 3],
+    /// Les fenêtres.
+    pub window: [AirColorPair; 6],
+    /// Les dialogues.
+    pub dialog: [AirColorPair; 4],
+    /// Les boutons.
+    pub button: [AirColorPair; 6],
+    /// Les ascenseurs.
+    pub scroll_bar: [AirColorPair; 2],
+    /// Les listes.
+    pub list: [AirColorPair; 4],
+}
+
 /// La palette d'un thème.
 #[derive(Debug, Clone)]
 pub struct AirPalette {
@@ -190,32 +239,27 @@ pub struct AirPalette {
     button: [AirColorPair; 6],
     /// Les ascenseurs : zone parcourue, commandes.
     scroll_bar: [AirColorPair; 2],
+    /// Les listes : item ordinaire, item sous le curseur, item marqué, les deux.
+    list: [AirColorPair; 4],
 }
 
 impl AirPalette {
-    /// Assemble une palette à partir de ses sept assiettes.
+    /// Assemble une palette à partir de ses huit assiettes.
     ///
     /// Ce constructeur existe pour les thèmes **compilés** : l'artefact que produit
     /// `cargo xtask import-mc-skin` vit dans `theme/skins/` et n'a pas accès aux champs
     /// privés. Il est `pub(crate)` pour que l'assemblage reste une affaire interne — un
-    /// thème s'obtient par son nom, jamais en posant vingt-huit couples à la main.
-    pub(crate) const fn from_parts(
-        desktop_background: AirColorPair,
-        menu: [AirColorPair; 6],
-        status: [AirColorPair; 3],
-        window: [AirColorPair; 6],
-        dialog: [AirColorPair; 4],
-        button: [AirColorPair; 6],
-        scroll_bar: [AirColorPair; 2],
-    ) -> Self {
+    /// thème s'obtient par son nom, jamais en posant trente-deux couples à la main.
+    pub(crate) const fn from_parts(parts: AirPaletteParts) -> Self {
         Self {
-            desktop_background,
-            menu,
-            status,
-            window,
-            dialog,
-            button,
-            scroll_bar,
+            desktop_background: parts.desktop_background,
+            menu: parts.menu,
+            status: parts.status,
+            window: parts.window,
+            dialog: parts.dialog,
+            button: parts.button,
+            scroll_bar: parts.scroll_bar,
+            list: parts.list,
         }
     }
 
@@ -276,6 +320,17 @@ impl AirPalette {
                 pair_from_vga_attribute(0x31), // cpScrollBar[1] → cpBlueWindow[4] → cpAppColor[11]
                 pair_from_vga_attribute(0x31), // cpScrollBar[2] → cpBlueWindow[5] → cpAppColor[12]
             ],
+            list: [
+                pair_from_vga_attribute(0x30), // cpListViewer[1] → cpGrayDialog[26] → cpAppColor[57]
+                pair_from_vga_attribute(0x2F), // cpListViewer[3] → cpGrayDialog[27] → cpAppColor[58]
+                pair_from_vga_attribute(0x3E), // cpListViewer[4] → cpGrayDialog[28] → cpAppColor[59]
+                // Turbo Vision ne nomme pas ce rôle : l'avant-plan du marqué sur le fond
+                // du curseur, soit jaune sur vert.
+                AirColorPair::new(
+                    pair_from_vga_attribute(0x3E).foreground,
+                    pair_from_vga_attribute(0x2F).background,
+                ),
+            ],
         }
     }
 
@@ -332,6 +387,11 @@ impl AirPalette {
 
             AirRole::ScrollBarPage => self.at(&self.scroll_bar, 0),
             AirRole::ScrollBarControls => self.at(&self.scroll_bar, 1),
+
+            AirRole::ListNormal => self.at(&self.list, 0),
+            AirRole::ListSelected => self.at(&self.list, 1),
+            AirRole::ListMarked => self.at(&self.list, 2),
+            AirRole::ListMarkedSelected => self.at(&self.list, 3),
         }
     }
 }
@@ -348,7 +408,7 @@ mod tests {
     use crate::cell::AirColor;
 
     /// Tous les rôles, pour les parcours exhaustifs.
-    const ALL_ROLES: [AirRole; 28] = [
+    const ALL_ROLES: [AirRole; 32] = [
         AirRole::DesktopBackground,
         AirRole::MenuBar,
         AirRole::MenuDisabled,
@@ -377,6 +437,10 @@ mod tests {
         AirRole::ButtonShadow,
         AirRole::ScrollBarPage,
         AirRole::ScrollBarControls,
+        AirRole::ListNormal,
+        AirRole::ListSelected,
+        AirRole::ListMarked,
+        AirRole::ListMarkedSelected,
     ];
 
     #[test]

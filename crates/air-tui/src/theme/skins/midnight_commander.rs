@@ -5,7 +5,7 @@
 //! Le thème Midnight Commander — **fichier généré, ne pas éditer**.
 //!
 //! Produit par `cargo xtask import-mc-skin` depuis « Standard skin », fichier
-//! `/usr/local/share/mc/skins/default.ini`. 25 rôles transcrits d'une clef, 3 composés de deux.
+//! `/usr/local/share/mc/skins/default.ini`. 29 rôles transcrits d'une clef, 3 composés de deux.
 //!
 //! Empreinte FNV-1a du skin d'origine : `0xefc735864405630c`. C'est un repère de
 //! dérive, pas une garantie cryptographique : `cargo xtask import-mc-skin --check`
@@ -49,10 +49,12 @@
 //!   l'application.
 //! - **`ScrollBarControls`** — mc n'a pas d'ascenseur : ses flèches prennent la couleur du
 //!   curseur.
+//! - **`ListNormal`** — un panneau de mc est l'application elle-même : ses lignes portent
+//!   `[core] _default_`.
 
 use crate::cell::AirColor;
 use crate::theme::glyphs::{AirFrameGlyphs, AirGlyphSet};
-use crate::theme::palette::{AirColorPair, AirPalette};
+use crate::theme::palette::{AirColorPair, AirPalette, AirPaletteParts};
 
 /// La description que porte la section `[skin]` du fichier d'origine.
 pub(crate) const DESCRIPTION: &str = "Standard skin";
@@ -64,10 +66,9 @@ const fn pair(foreground: u8, background: u8) -> AirColorPair {
 
 /// La palette, compilée depuis le skin.
 pub(crate) const fn palette() -> AirPalette {
-    AirPalette::from_parts(
-        pair(7, 4), // DesktopBackground ← [core] _default_
-        // menu
-        [
+    AirPalette::from_parts(AirPaletteParts {
+        desktop_background: pair(7, 4), // DesktopBackground ← [core] _default_
+        menu: [
             pair(15, 6), // MenuBar ← [menu] _default_
             pair(0, 6),  // MenuDisabled ← [menu] menuinactive
             pair(11, 6), // MenuHotkey ← [menu] menuhot
@@ -75,14 +76,12 @@ pub(crate) const fn palette() -> AirPalette {
             pair(8, 0),  // MenuSelectedDisabled ← [core] disabled + [menu] menusel
             pair(11, 0), // MenuSelectedHotkey ← [menu] menuhotsel
         ],
-        // status
-        [
+        status: [
             pair(0, 6),  // StatusLine ← [buttonbar] button
             pair(8, 6),  // StatusDisabled ← [core] disabled + [buttonbar] button
             pair(15, 0), // StatusHotkey ← [buttonbar] hotkey
         ],
-        // window
-        [
+        window: [
             pair(15, 4), // WindowFrameActive ← [editor] editframeactive
             pair(7, 4),  // WindowFrameInactive ← [editor] _default_
             pair(15, 4), // WindowFrameIcon ← [editor] editframeactive
@@ -90,15 +89,13 @@ pub(crate) const fn palette() -> AirPalette {
             pair(7, 4),  // WindowInterior ← [editor] _default_
             pair(7, 4),  // WindowText ← [editor] _default_
         ],
-        // dialog
-        [
+        dialog: [
             pair(0, 7), // DialogFrameActive ← [dialog] _default_
             pair(8, 7), // DialogFrameInactive ← [core] disabled + [dialog] _default_
             pair(4, 7), // DialogFrameIcon ← [dialog] dtitle
             pair(0, 7), // DialogInterior ← [dialog] _default_
         ],
-        // button
-        [
+        button: [
             pair(0, 7), // ButtonNormal ← [dialog] _default_
             pair(0, 6), // ButtonDefault ← [dialog] dfocus
             pair(0, 6), // ButtonFocused ← [dialog] dfocus
@@ -106,12 +103,17 @@ pub(crate) const fn palette() -> AirPalette {
             pair(4, 7), // ButtonHotkey ← [dialog] dhotnormal
             pair(8, 0), // ButtonShadow ← [core] shadow
         ],
-        // scroll_bar
-        [
+        scroll_bar: [
             pair(7, 4), // ScrollBarPage ← [core] _default_
             pair(0, 6), // ScrollBarControls ← [core] selected
         ],
-    )
+        list: [
+            pair(7, 4),  // ListNormal ← [core] _default_
+            pair(0, 6),  // ListSelected ← [core] selected
+            pair(11, 4), // ListMarked ← [core] marked
+            pair(11, 6), // ListMarkedSelected ← [core] markselect
+        ],
+    })
 }
 
 /// Le jeu de glyphes, compilé depuis la section `[Lines]` du skin.

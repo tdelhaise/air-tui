@@ -6,7 +6,7 @@
 //!
 //! # État
 //!
-//! Onze widgets, tous colorés par les rôles du thème et jamais par une couleur écrite en
+//! Douze widgets, tous colorés par les rôles du thème et jamais par une couleur écrite en
 //! dur :
 //!
 //! - [`AirPanel`], un conteneur bordé à titre, et [`AirWindow`], une fenêtre à case de
@@ -17,23 +17,25 @@
 //! - [`AirStatusLine`] et ses [`AirStatusItem`], à raccourcis cliquables ;
 //! - [`AirInputLine`], un champ de saisie d'une ligne ;
 //! - [`AirScrollBar`], un ascenseur qui **demande** une position sans rien défiler ;
+//! - [`AirListBox`], une liste à une colonne qui tient son curseur et son défilement, et
+//!   qui demande au contrôleur d'ouvrir ou de marquer un item ;
 //! - [`AirEditorView`], le reflet d'un [`crate::model::AirTextBuffer`] — la seule vue qui
 //!   produit des **intentions** au lieu de commandes, parce qu'éditer du texte ne se
 //!   réduit pas à un numéro de commande (ADR-007) ;
 //! - [`AirPromptDialog`], une question et sa réponse, à poser en modal par
 //!   [`crate::application::AirScreen::set_modal`].
 //!
-//! Ce qui manque encore : les listes, les cases à cocher et les boutons radio, et la
-//! sélection dans l'éditeur comme dans le champ de saisie.
+//! Ce qui manque encore : les cases à cocher et les boutons radio, et la sélection dans
+//! l'éditeur comme dans le champ de saisie.
 //!
 //! # La bordure, et qui la retire
 //!
 //! Toute vue est bordée par défaut (ADR-010). Les **petits contrôles** la retirent dans
 //! leur constructeur : [`AirStaticText`], [`AirButton`], [`AirInputLine`], [`AirMenuBar`],
 //! [`AirStatusLine`] et [`AirScrollBar`] le font, parce qu'un contrôle d'une ligne encadré
-//! n'a plus de place pour son contenu. [`AirEditorView`] la retire aussi, pour une raison
-//! voisine : elle est le contenu d'une fenêtre qui porte déjà la sienne, et deux cadres
-//! emboîtés mangeraient deux lignes de texte. Les **conteneurs** la gardent : [`AirPanel`]
+//! n'a plus de place pour son contenu. [`AirEditorView`] et [`AirListBox`] la retirent
+//! aussi, pour une raison voisine : elles sont le contenu d'une fenêtre qui porte déjà la
+//! sienne, et deux cadres emboîtés mangeraient deux lignes. Les **conteneurs** la gardent : [`AirPanel`]
 //! et [`AirWindow`] la gardent.
 //!
 //! C'est un point de revue, pas une habitude : un widget qui laisse le défaut doit avoir
@@ -61,6 +63,7 @@ pub mod button;
 pub mod editor_view;
 pub mod hotkey;
 pub mod input_line;
+pub mod list_box;
 pub mod menu_bar;
 pub mod panel;
 pub mod prompt_dialog;
@@ -73,6 +76,7 @@ pub use button::AirButton;
 pub use editor_view::AirEditorView;
 pub use hotkey::{AirHotkeyLabel, split_hotkey};
 pub use input_line::AirInputLine;
+pub use list_box::{AirListBox, AirListItem, AirListRequest};
 pub use menu_bar::{AirMenu, AirMenuBar, AirMenuItem};
 pub use panel::AirPanel;
 pub use prompt_dialog::AirPromptDialog;
