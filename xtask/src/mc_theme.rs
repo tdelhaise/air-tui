@@ -363,6 +363,30 @@ const ROLE_SOURCES: &[RoleSource] = &[
         },
         note: "",
     },
+    RoleSource {
+        role: "ClusterNormal",
+        source: Source::Direct {
+            section: "dialog",
+            key: "_default_",
+        },
+        note: "mc ne distingue pas les cases à cocher du fond de leur dialogue",
+    },
+    RoleSource {
+        role: "ClusterSelected",
+        source: Source::Direct {
+            section: "dialog",
+            key: "dfocus",
+        },
+        note: "",
+    },
+    RoleSource {
+        role: "ClusterHotkey",
+        source: Source::Direct {
+            section: "dialog",
+            key: "dhotnormal",
+        },
+        note: "",
+    },
 ];
 
 /// Les bornes des sept groupes d'`AirPalette`, dans l'ordre de [`ROLE_SOURCES`].
@@ -379,6 +403,7 @@ const GROUPS: &[(&str, usize)] = &[
     ("list", 4),
     ("editor", 1),
     ("input_line", 2),
+    ("cluster", 3),
 ];
 
 /// Les six clefs de la section `[Lines]` d'un cadre simple, dans l'ordre d'`AirFrameGlyphs`.
@@ -576,6 +601,47 @@ fn frame_glyphs(skin: &Skin, keys: &[&str; 6]) -> Result<[char; 6], String> {
 /// colonnes que personne ne relit.
 const COMMENT_WIDTH: usize = 92;
 
+/// Émet la fonction `glyphs()` de l'artefact.
+///
+/// Extraite d'[`emit`] pour la tenir sous la limite de lignes de clippy, et parce que le
+/// jeu de glyphes est une sortie indépendante de la palette : les deux ne partagent que le
+/// tampon qu'elles remplissent.
+fn emit_glyphs(single: [char; 6], double: [char; 6], close_mark: char) -> String {
+    let mut output = String::new();
+    let _ = write!(
+        output,
+        "/// Le jeu de glyphes, compilé depuis la section `[Lines]` du skin.\n\
+         ///\n\
+         /// **Douze** glyphes ne viennent pas du skin, parce qu'aucun skin ne les décrit :\n\
+         /// le remplissage du bureau — `mc` n'a pas de bureau, ses panneaux couvrent\n\
+         /// l'écran —, les deux crochets de la case de fermeture, dont `mc` ne donne que la\n\
+         /// marque, les deux flèches d'ascenseur et son curseur, que `mc` n'a pas, et les\n\
+         /// six caractères des cases à cocher et des boutons radio.\n\
+         ///\n\
+         /// Ces six derniers restent donc ceux du thème par défaut, et ce n'est **pas** une\n\
+         /// transcription : aucune des trente-neuf fournitures de `mc` 4.8.33 ne porte de\n\
+         /// clef pour eux, ce qui a été vérifié et non supposé.\n\
+         pub(crate) const fn glyphs() -> AirGlyphSet {{\n    \
+         AirGlyphSet {{\n"
+    );
+    let _ = write!(output, "{}", emit_frame("window_frame", single));
+    let _ = write!(output, "{}", emit_frame("dialog_frame", double));
+    let _ = write!(
+        output,
+        "        desktop_fill: ' ',\n        \
+         close_box_left: '[',\n        \
+         close_box_mark: '{close_mark}', // [widget-editor] window-close-char\n        \
+         close_box_right: ']',\n        \
+         scroll_arrow_up: '▲',\n        \
+         scroll_arrow_down: '▼',\n        \
+         scroll_thumb: '█',\n        \
+         check_box: AirClusterGlyphs::CHECK_BOX,\n        \
+         radio_button: AirClusterGlyphs::RADIO_BUTTON,\n    \
+         }}\n}}\n"
+    );
+    output
+}
+
 /// Tout ce dont l'émetteur a besoin.
 ///
 /// Une structure plutôt que huit paramètres : au-delà de sept, l'ordre des arguments
@@ -654,7 +720,7 @@ fn emit(emission: &Emission) -> String {
     }
     output.push_str(
         "\nuse crate::cell::AirColor;\n\
-         use crate::theme::glyphs::{AirFrameGlyphs, AirGlyphSet};\n\
+         use crate::theme::glyphs::{AirClusterGlyphs, AirFrameGlyphs, AirGlyphSet};\n\
          use crate::theme::palette::{AirColorPair, AirPalette, AirPaletteParts};\n\n",
     );
     let _ = write!(
@@ -711,30 +777,8 @@ fn emit(emission: &Emission) -> String {
     }
     output.push_str("    })\n}\n\n");
 
-    let _ = write!(
-        output,
-        "/// Le jeu de glyphes, compilé depuis la section `[Lines]` du skin.\n\
-         ///\n\
-         /// Cinq glyphes ne viennent pas du skin, parce qu'aucun skin ne les décrit : le\n\
-         /// remplissage du bureau — `mc` n'a pas de bureau, ses panneaux couvrent l'écran —,\n\
-         /// les deux crochets de la case de fermeture, dont `mc` ne donne que la marque, et\n\
-         /// les deux flèches d'ascenseur et son curseur, que `mc` n'a pas.\n\
-         pub(crate) const fn glyphs() -> AirGlyphSet {{\n    \
-         AirGlyphSet {{\n"
-    );
-    let _ = write!(output, "{}", emit_frame("window_frame", single));
-    let _ = write!(output, "{}", emit_frame("dialog_frame", double));
-    let _ = write!(
-        output,
-        "        desktop_fill: ' ',\n        \
-         close_box_left: '[',\n        \
-         close_box_mark: '{close_mark}', // [widget-editor] window-close-char\n        \
-         close_box_right: ']',\n        \
-         scroll_arrow_up: '▲',\n        \
-         scroll_arrow_down: '▼',\n        \
-         scroll_thumb: '█',\n    \
-         }}\n}}\n"
-    );
+    let _ = write!(output, "{}", emit_glyphs(single, double, close_mark));
+
     output
 }
 
@@ -879,13 +923,13 @@ mod tests {
     }
 
     #[test]
-    fn la_table_couvre_les_trente_cinq_roles_une_fois_chacun() {
+    fn la_table_couvre_les_trente_huit_roles_une_fois_chacun() {
         let mut roles: Vec<&str> = ROLE_SOURCES.iter().map(|entry| entry.role).collect();
         let before = roles.len();
         roles.sort_unstable();
         roles.dedup();
         assert_eq!(roles.len(), before, "un rôle apparaît deux fois");
-        assert_eq!(before, 35, "AirPalette porte trente-cinq rôles");
+        assert_eq!(before, 38, "AirPalette porte trente-huit rôles");
     }
 
     #[test]
@@ -916,7 +960,7 @@ mod tests {
         let text = complete_skin("lightgray", "blue");
         let skin = parse(&text).expect("skin lisible");
         let compiled = compile(&skin, "essai.ini", 0x1234_5678_9abc_def0).expect("compilation");
-        assert_eq!(compiled.transcribed, 32);
+        assert_eq!(compiled.transcribed, 35);
         assert_eq!(compiled.composed, 3);
         assert_eq!(
             compiled.transcribed.saturating_add(compiled.composed),

@@ -146,6 +146,19 @@ pub enum AirRole {
     InputLineText,
     /// Le texte sélectionné dans un champ de saisie.
     InputLineSelected,
+
+    /// Un item de case à cocher ou de bouton radio au repos.
+    ///
+    /// « Cluster » est le mot de Turbo Vision — `TCluster`, dont `TCheckBoxes` et
+    /// `TRadioButtons` dérivent —, et les trois rôles sont ses trois premières entrées :
+    /// `cpCluster "\x10\x11\x12…"` donne `cpGrayDialog[16..18]`, soit `cpAppColor[47..49]`,
+    /// que `tvdemo2.cpp` nomme « Cluster normal », « Cluster selected » et « Cluster
+    /// shortcut ».
+    ClusterNormal,
+    /// L'item sous le curseur, dans un groupe qui a le focus.
+    ClusterSelected,
+    /// La lettre d'accès rapide d'un item.
+    ClusterHotkey,
 }
 
 /// Un couple de couleurs : caractère et fond.
@@ -239,6 +252,8 @@ pub(crate) struct AirPaletteParts {
     pub editor: [AirColorPair; 1],
     /// Les champs de saisie.
     pub input_line: [AirColorPair; 2],
+    /// Les cases à cocher et les boutons radio.
+    pub cluster: [AirColorPair; 3],
 }
 
 /// La palette d'un thème.
@@ -264,6 +279,8 @@ pub struct AirPalette {
     editor: [AirColorPair; 1],
     /// Les champs de saisie : texte, texte sélectionné.
     input_line: [AirColorPair; 2],
+    /// Les cases et les boutons radio : repos, sous le curseur, accès rapide.
+    cluster: [AirColorPair; 3],
 }
 
 impl AirPalette {
@@ -285,6 +302,7 @@ impl AirPalette {
             list: parts.list,
             editor: parts.editor,
             input_line: parts.input_line,
+            cluster: parts.cluster,
         }
     }
 
@@ -366,6 +384,11 @@ impl AirPalette {
                 pair_from_vga_attribute(0x1F), // cpInputLine[2] → cpAppColor[50]
                 pair_from_vga_attribute(0x2F), // cpInputLine[3] → cpAppColor[51]
             ],
+            cluster: [
+                pair_from_vga_attribute(0x30), // cpCluster[1] → cpAppColor[47]
+                pair_from_vga_attribute(0x3F), // cpCluster[2] → cpAppColor[48]
+                pair_from_vga_attribute(0x3E), // cpCluster[3] → cpAppColor[49]
+            ],
         }
     }
 
@@ -430,6 +453,9 @@ impl AirPalette {
             AirRole::EditorSelected => self.at(&self.editor, 0),
             AirRole::InputLineText => self.at(&self.input_line, 0),
             AirRole::InputLineSelected => self.at(&self.input_line, 1),
+            AirRole::ClusterNormal => self.at(&self.cluster, 0),
+            AirRole::ClusterSelected => self.at(&self.cluster, 1),
+            AirRole::ClusterHotkey => self.at(&self.cluster, 2),
         }
     }
 }
@@ -446,7 +472,7 @@ mod tests {
     use crate::cell::AirColor;
 
     /// Tous les rôles, pour les parcours exhaustifs.
-    const ALL_ROLES: [AirRole; 35] = [
+    const ALL_ROLES: [AirRole; 38] = [
         AirRole::DesktopBackground,
         AirRole::MenuBar,
         AirRole::MenuDisabled,
@@ -482,6 +508,9 @@ mod tests {
         AirRole::EditorSelected,
         AirRole::InputLineText,
         AirRole::InputLineSelected,
+        AirRole::ClusterNormal,
+        AirRole::ClusterSelected,
+        AirRole::ClusterHotkey,
     ];
 
     #[test]
