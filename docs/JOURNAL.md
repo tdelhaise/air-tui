@@ -6,6 +6,24 @@ tête. On ajoute, on ne réécrit jamais une entrée passée.
 Une entrée par campagne, pas par commit. Répartition des rôles : `etat-avancement.md` est
 l'état vivant, ce journal est la trace figée, `INDEX.md` est la carte structurelle.
 
+## 2026-10-10 — vérification sur Linux, dette soldée
+
+- Branche M1 vérifiée sur **hydrogen** (Ubuntu 26.04.1 LTS, noyau 7.0.0-38, `x86_64`) :
+  `fmt`, `clippy -D warnings`, 188 tests, `build --locked`, `deny check` propres ;
+  couverture globale 95,0 % de régions, codecs et modules d'entrée à 100 % ; exemple
+  `frame` rendant une grille identique à celle de macOS ; 371 229 exécutions de fuzzing
+  supplémentaires sans plantage.
+- Les trois valeurs propres à Linux de la couche POSIX sont confirmées justes :
+  `TIOCGWINSZ = 0x5413`, `nfds_t` sur 64 bits, et `poll` rendant `POLLIN` sur `/dev/null`
+  — la divergence avec macOS, consignée au jalon M0, est exacte dans les deux sens.
+- **Un défaut trouvé, de la classe exacte qu'une seule plateforme de développement laisse
+  passer** : un import ne servant qu'à un test gardé par `cfg(target_os = "macos")` faisait
+  échouer `clippy -D warnings` sur Linux, contrôle obligatoire du projet. Corrigé dans la
+  même branche ; `air-tui-platform-posix` passe en 0.1.1.
+- Reste hors vérification : `aarch64` — jamais construit, et c'est là que le piège
+  variadique d'`ioctl` sur l'ABI d'Apple se manifesterait — et la console Linux native,
+  inaccessible par SSH.
+
 ## 2026-10-10 — M1, le décodeur ANSI d'entrée
 
 - `air-tui/src/input/` : modèle d'événements conforme à l'ADR-003 et décodeur de séquences

@@ -49,12 +49,23 @@ comme framework : il n'y a ni arbre de vues, ni widget.
   **100 %** de régions, de fonctions et de lignes (`input/ansi.rs`, `input/event.rs`,
   `input/scanning.rs`, `codec/sgr.rs`, `codec/decimal.rs`). Le cœur `terminal.rs` est à
   93,8 % — il était à 0 % avant la couture par traits.
+- **Vérifié sur Linux** (hydrogen — Ubuntu 26.04.1 LTS, noyau 7.0.0-38, `x86_64`) :
+  `fmt`, `clippy -D warnings`, **188 tests**, `build --locked` et `deny check` propres ;
+  couverture globale **95,0 %** de régions, et les cinq modules d'entrée et de codec
+  toujours à 100 % ; l'exemple `frame` rend une grille identique au pixel à celle de
+  macOS, en 80×25, avec les accents intacts. Les trois valeurs propres à Linux sont donc
+  justes : `TIOCGWINSZ = 0x5413`, `nfds_t` sur 64 bits, et `poll` qui rend `POLLIN` sur
+  `/dev/null`.
+- **Un défaut trouvé par cette vérification, et invisible depuis macOS** : un import ne
+  servant qu'à un test gardé par `cfg(target_os = "macos")` faisait échouer
+  `clippy -D warnings` sur Linux. Corrigé ; `air-tui-platform-posix` passe en 0.1.1.
 - **Fuzzing du décodeur** : `cargo +nightly fuzz run ansi_decoder` — 494 565 exécutions en
   61 secondes, **aucun plantage**, 673 entrées retenues au corpus. Trois invariants
   vérifiés : les octets consommés ne dépassent jamais l'entrée, aucun reste décodable
   n'est laissé derrière, et **découper l'entrée en deux lectures produit la même suite
   d'événements** — la propriété qui compte sur un terminal, où une séquence arrive coupée
-  sans prévenir.
+  sans prévenir. Rejoué sur Linux : 371 229 exécutions de plus, aucun plantage non plus,
+  soit près de 866 000 exécutions cumulées sur les deux plateformes.
 - Divergence de plateforme **constatée et consignée** : le `poll` de macOS rend `POLLNVAL`
   sur `/dev/null` là où Linux rend `POLLIN`. C'est le contrôle du champ `revents` — et non
   le compte rendu par `poll` — qui l'a révélée au premier lancement. Les deux
@@ -81,7 +92,7 @@ comme framework : il n'y a ni arbre de vues, ni widget.
   traiter avec l'arbre de vues (M4).
 - La bordure par défaut des vues (ADR-010) : décidée, pas implémentée.
 - Couverture de tests : loin de l'objectif de 100 %. Quelques tests unitaires seulement.
-- **Vérification sur Linux** : le socle n'a été construit et exécuté que sur macOS x86_64.
+- *(plus rien ici : la dette de vérification Linux est soldée, voir ci-dessous)*
 
 ## Prochaine tâche
 
@@ -90,9 +101,11 @@ les modificateurs complets à travers un pty, donc en SSH et sur macOS. Négocia
 `CSI > 1 u`, décodage de `CSI … u`, et repli sur `modifyOtherKeys` niveau 2 pour xterm et
 VTE. Ce sera un décodeur, donc 100 % de couverture et une cible de fuzzing.
 
-Deux dettes à solder en parallèle : **vérifier le socle sur Linux** (noyau 6.1+, `x86_64`
-et `aarch64`), seul trou de vérification du projet, et remonter la couverture de
-`air-tui-platform-posix` par des tests sous pty.
+Une dette restante : remonter la couverture de `air-tui-platform-posix` par des tests sous
+pty. Et deux vérifications encore absentes, de nature différente : **`aarch64`**, qui n'a
+été ni construit ni exécuté — c'est là que le piège variadique d'`ioctl` se manifesterait
+—, et la **console Linux native**, inaccessible par SSH et dont dépend tout l'étage natif
+du jalon M8.
 
 Ensuite M1 : le parseur ANSI incrémental, avec sa cible `cargo-fuzz` dès le premier commit
 du module (Principe 1 d'Air : fuzzing systématique sur toute API qui accepte des données
@@ -102,7 +115,7 @@ externes).
 
 | Jalon | Contenu | État |
 |---|---|---|
-| M0 | socle : couche 0, surface, différentiel, rendu ANSI, exemple | fait (hors Linux) |
+| M0 | socle : couche 0, surface, différentiel, rendu ANSI, exemple | **fait** |
 | M1 | décodeur ANSI, souris SGR, collage encadré, focus | **fait** |
 | M2 | protocole clavier Kitty, repli `modifyOtherKeys` | à faire |
 | M3 | tables Unicode : largeur et graphèmes | à faire |
