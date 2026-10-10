@@ -3,8 +3,8 @@
 Document de suivi **vivant** : où en est-on, quelle est la prochaine tâche. Il se met à
 jour à chaque session. L'historique figé est dans [`JOURNAL.md`](JOURNAL.md).
 
-**Dernière mise à jour : 2026-10-10** (jalon M5b — barre de menu, barre de statut, champ
-de saisie, et le curseur du terminal).
+**Dernière mise à jour : 2026-10-10** (jalon M6 — `redit`, la couche MVC, la hiérarchie
+d'objets, et la segmentation en mots).
 
 ## Dépôt
 
@@ -17,14 +17,14 @@ vérifications de `CLAUDE.md` sont à exécuter en local avant d'ouvrir une PR.
 
 ## Où en est-on
 
-Jalons **M0 à M5b terminés**. Le dépôt porte ses conventions, ses ADR fondateurs, le
-socle de rendu, le décodeur d'entrée, l'arbre de vues et huit widgets. L'exemple `frame`
-est désormais une **vraie boucle d'événements** : les menus s'ouvrent, le champ de saisie
-saisit, les raccourcis de la barre de statut agissent.
+Jalons **M0 à M6 terminés**. Le dépôt porte ses conventions, ses ADR fondateurs, le socle
+de rendu, le décodeur d'entrée, l'arbre de vues, onze widgets, la **couche MVC** de
+l'ADR-007, la hiérarchie d'objets complète, et une **application** : `redit` ouvre un
+fichier, l'édite et l'enregistre.
 
-Ce qui manque pour que ce soit un framework utilisable : l'éditeur de texte, et donc
-`redit` (M6). Il n'y a encore ni `AirApplication`, ni `AirScreen`, ni `AirDesktop` : la
-boucle et l'arbre sont montés à la main par l'application, comme le fait l'exemple.
+Ce qui manque pour que ce soit un framework complet : la **sélection** de texte — donc le
+copier-coller interne —, les listes et les cases à cocher, le thème Midnight Commander et
+la coquille `rmc` (M7), et l'étage d'entrée natif Linux (M8).
 
 ### Fait
 
@@ -71,6 +71,42 @@ boucle et l'arbre sont montés à la main par l'application, comme le fait l'exe
   plateformes, essai de contrôle compris.
 - **`tools/pty-drive.py`** : le harnais qui a trouvé ce défaut, versionné pour que la
   vérification soit reproductible. Un essai manuel non reproductible est un essai perdu.
+- **M6 — `redit`, et les quatre pièces que l'éditeur a demandées** :
+  - **la couche modèle de l'ADR-007** (`air-tui/src/model/`) : `AirModel` à une seule
+    méthode, `AirChangeSet` pour les faits **structurels**, `AirGeneration` pour l'état
+    **continu**, et `AirTextBuffer` — vingt-deux actions qui sont l'inventaire exhaustif
+    de ce qui peut arriver au texte. Le tampon ne lit ni n'écrit aucun fichier et ignore
+    qu'il est affiché : ses tests tournent sans terminal.
+  - **`AirEditorView`**, la vue qui ne tient **pas** son modèle : ni `&`, ni `Rc`, ni
+    pointeur. Elle garde un reflet que le contrôleur lui pousse, et accumule des
+    intentions qu'il relève. Les compteurs de génération y font un travail mesurable —
+    `synchronize` compare quatre valeurs et sort, la plupart du temps.
+  - **`AirApplication`, `AirScreen`, `AirDesktop`** : la hiérarchie que
+    `ARCHITECTURE-fr.md` annonçait comme cible depuis le premier jour. L'écran range ses
+    quatre pièces lui-même, dans le seul ordre qui marche — la contrainte « la barre de
+    menu en dernier » ne tient plus par la documentation. Il porte la disposition, impose
+    les phases, et porte la **modalité**.
+  - **`AirScrollBar` et `AirPromptDialog`** : l'ascenseur ne défile rien, il **demande**
+    une position ; le dialogue pose une question et rend une réponse, en modal.
+  - **`redit`** (`crates/redit/`) : les quatre mécanismes de l'ADR-007 en service dans une
+    vraie application, `Document` qui porte le disque que le modèle refuse de porter, et
+    une ligne de commande à trois formes.
+- **La segmentation en mots de l'annexe 29**, la pièce de M3 qui attendait ce jalon :
+  règles `WB1` à `WB999`, repliement de `WB4`, regards en arrière de `WB7`, `WB7c` et
+  `WB11`. C'est ce qui garde `3,14` et `can't` entiers là où une coupure sur la ponctuation
+  les casserait, et ce qui découpe `日本語` en trois unités sans un seul espace.
+- **`cargo xtask check-segmentation`**, et ce qu'il a trouvé. Il confronte les **deux**
+  segmentations aux fichiers d'essais du Consortium : `GraphemeBreakTest.txt` 853 cas,
+  `WordBreakTest.txt` 1944 cas, aucun écart aujourd'hui. Au premier lancement, il
+  rapportait **dix écarts** sur la segmentation en grappes du jalon M3, annoncée comme
+  faite : la révision 49 de l'annexe, livrée avec Unicode 18.0.0, a réécrit `GB9c` et
+  retiré l'exigence d'une consonne **avant** le lieur. Les tables venaient déjà de 18.0.0,
+  les règles non.
+- **Une erreur de conception corrigée en cours de jalon** : `AirApplication` possédait
+  d'abord l'arbre et une pile d'écrans. C'était intenable — une fois la vue d'édition
+  confiée à l'application, plus personne ne pouvait la synchroniser. La racine est
+  désormais **passée en paramètre**, et la pile appartient à l'appelant. `AirView` hérite
+  de `Any` pour que `find_mut` rende une vue avec son type (ADR-013).
 - **M5b — les trois widgets qui demandaient une mécanique de plus** :
   - **`AirMenuBar`** à menus déroulants, avec `AirMenu` et `AirMenuItem`, séparateurs
     compris. Ouverture par `Alt`+lettre ou au clic, flèches verticales qui **sautent les
@@ -135,10 +171,14 @@ boucle et l'arbre sont montés à la main par l'application, comme le fait l'exe
   `cargo build --locked` OK, et l'exemple `frame` exécuté dans un pty rend bien le bureau
   hachuré, la barre de menu, la fenêtre à case `[■]` et la barre de statut, puis restaure
   le terminal (code de sortie 0).
-- Couverture mesurée au 2026-10-10 : les cinq modules d'entrée et de codec sont à
-  **100 %** de régions, de fonctions et de lignes (`input/ansi.rs`, `input/event.rs`,
-  `input/scanning.rs`, `codec/sgr.rs`, `codec/decimal.rs`). Le cœur `terminal.rs` est à
-  93,8 % — il était à 0 % avant la couture par traits.
+- Couverture mesurée au 2026-10-10, après M6 : **95,35 %** de régions sur tout l'espace de
+  travail. Les six modules d'entrée et de codec restent à **100 %** de régions, de
+  fonctions et de lignes (`input/ansi.rs`, `input/event.rs`, `input/scanning.rs`,
+  `input/kitty.rs`, `codec/sgr.rs`, `codec/decimal.rs`) — c'est l'exigence d'ADR-012, et
+  elle est tenue. Le reste d'`air-tui` est entre 97 et 100 % selon le module ; les trois
+  points bas sont `terminal.rs` à 94,4 % (branches d'erreur de périphérique),
+  `redit/src/main.rs` à 52,9 % (la boucle demande un terminal) et `xtask` entre 24 et 81 %
+  (outillage hors exécution du framework).
 - **Génération reproductible sur les trois plateformes** : macOS `x86_64`, hydrogen et
   neon ont chacune retéléchargé le référentiel et régénéré les tables ; le fichier
   committé correspond **à l'octet** dans les trois cas
@@ -183,22 +223,30 @@ boucle et l'arbre sont montés à la main par l'application, comme le fait l'exe
   numérique, touches multimédia, touches modificatrices seules. Hors table, donc consommées
   sans événement — et la table a été écrite d'après la spécification, **pas vérifiée contre
   un terminal réel**.
-- `redit`, `rmc`.
-- Le **thème Midnight Commander** et l'importeur de skins (M7).
-- `AirApplication`, `AirScreen`, `AirDesktop` : la hiérarchie de `ARCHITECTURE-fr.md`
-  s'arrête pour l'instant à `AirGroup`. L'exemple monte la boucle et l'arbre à la main.
-- Les **listes, ascenseurs, cases à cocher et boutons radio**, et l'éditeur de texte.
-- La **sélection** dans le champ de saisie : `Maj`+flèche, le copier-coller interne. Le
-  champ n'a qu'un curseur, pas d'étendue sélectionnée.
+- `rmc`, et le **thème Midnight Commander** avec son importeur de skins (M7).
+- Les **listes, cases à cocher et boutons radio**.
+- La **sélection** de texte, dans la vue d'édition comme dans le champ de saisie :
+  `Maj`+flèche, le copier-coller interne, la surbrillance, et le double-clic qui en
+  dépend. Les deux n'ont qu'un curseur, pas d'étendue sélectionnée. C'est la plus grosse
+  absence de `redit`.
+- Dans `redit` : pas de **recherche**, pas d'**annulation**, pas de **tabulation** — elle
+  demande de choisir des taquets et de les appliquer au rendu comme au calcul de colonne —,
+  et pas de seconde fenêtre. Le bureau sait en tenir plusieurs, rien ne les crée.
+- Le **glissement** du curseur d'un ascenseur : il demande de suivre un bouton maintenu
+  entre deux événements, donc une capture de souris que l'arbre de vues n'a pas. Les
+  flèches, les pages et la molette couvrent le reste.
+- Le **parcours du focus** par `Tab` à l'intérieur d'un dialogue : il demanderait une
+  chaîne de focus dans une vue sans enfants, donc un second mécanisme de focus à côté de
+  celui de l'arbre.
+- `AirBinding`, la part MVVM que l'ADR-007 borne aux formulaires. `AirPromptDialog`
+  possède ses contrôles directement, ce que l'ADR prévoit ; un dialogue à dix champs
+  validés la demanderait.
 - Couverture de tests : **100 % tenu sur les codecs** (ADR-012) et élevé sur `air-tui`,
   mais `air-tui-platform-posix` demande un vrai terminal et reste bas.
-- La couche MVC d'ADR-007 au-delà du mécanisme 3 : le journal de changements et les
-  compteurs de génération attendent l'éditeur du jalon M6.
 - Les gates `check-naming` (ADR-004), `check-versions` (ADR-009) et
-  `check-codec-coverage` (ADR-012). `cargo xtask` **existe** depuis M3, mais ne porte que
-  la génération des tables Unicode ; ces trois contrôles restent manuels.
-- La **segmentation en mots** (annexe 29) : reportée au jalon M6, quand l'éditeur en aura
-  besoin pour le déplacement par mot.
+  `check-codec-coverage` (ADR-012). `cargo xtask` porte désormais **deux** commandes — la
+  génération des tables Unicode et la conformité des segmentations — mais pas ces trois
+  contrôles, qui restent manuels.
 - La couverture de `xtask` : 34 % à 81 % selon le module. C'est de l'outillage hors
   exécution du framework, qu'ADR-012 ne couvre pas — mais ce n'est pas une raison de le
   laisser là.
@@ -209,14 +257,14 @@ boucle et l'arbre sont montés à la main par l'application, comme le fait l'exe
 
 ## Prochaine tâche
 
-**M6 — `redit`, l'équivalent de `tvedit`.** C'est le jalon qui demande la couche MVC de
-l'ADR-007 pour de vrai : un tampon de texte comme modèle, un journal de changements rendu
-à l'appelant plutôt qu'un observateur, et une vue d'édition qui s'y abonne par
-identifiant. Il demande aussi ce que l'exemple monte encore à la main : `AirApplication`,
-`AirScreen` et `AirDesktop`.
+**M7 — le thème Midnight Commander et la coquille `rmc`.** Le moteur de thèmes existe
+depuis M5 et n'a encore qu'un thème : la preuve qu'il est bien un moteur reste à faire. Le
+jalon demande une seconde palette, un second jeu de glyphes, l'importeur de skins MC en
+`xtask`, et une coquille à deux panneaux — qui exercera `AirScreen` comme chrome
+commutable, ce que `redit` n'exerce pas.
 
-Deux pièces de M3 attendent ce jalon : la **segmentation en mots** (annexe 29), pour
-`Ctrl`+flèche et le double-clic, et les **compteurs de génération** du modèle.
+Il demandera probablement les **listes**, qu'un panneau de fichiers ne peut pas éviter, et
+avec elles les ascenseurs qu'elles pilotent.
 
 Une dette restante : remonter la couverture de `air-tui-platform-posix` par des tests sous
 pty. Et deux vérifications encore absentes : la **console Linux native**, inaccessible par
@@ -232,10 +280,10 @@ touches fonctionnelles.
 | M0 | socle : couche 0, surface, différentiel, rendu ANSI, exemple | **fait** |
 | M1 | décodeur ANSI, souris SGR, collage encadré, focus | **fait** |
 | M2 | protocole clavier Kitty, repli `modifyOtherKeys` | **fait** |
-| M3 | tables Unicode : largeur et graphèmes | **fait** |
+| M3 | tables Unicode : largeur, graphèmes, et mots au jalon M6 | **fait** |
 | M4 | arbre de vues, trois phases, focus, découpage | **fait** |
 | M5 | moteur de thèmes, quantificateur, fenêtre et bouton | **fait** |
 | M5b | barre de menu à menus déroulants, barre de statut, champ de saisie, curseur | **fait** |
-| M6 | `redit` — équivalent de `tvedit` | à faire |
+| M6 | `redit` — équivalent de `tvedit`, couche MVC, hiérarchie d'objets | **fait** |
 | M7 | thème et coquille Midnight Commander, importeur de skins | à faire |
 | M8 | étage natif Linux : evdev, `TIOCLINUX`, gpm | à faire |

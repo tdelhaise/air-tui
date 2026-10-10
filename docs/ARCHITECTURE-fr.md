@@ -94,29 +94,60 @@ Deux propriétés que `std` ne donne pas, et dont une interface texte ne peut pa
 - la **segmentation en graphèmes** (annexe 29). Sans elle, `Backspace` démembre un
   `👨‍👩‍👧‍👦` en quatre personnages. Les règles `GB3` à `GB13` sont implémentées, **y
   compris `GB9c`** — la coupure conjointe indienne, sans laquelle le curseur coupe au
-  milieu d'un `क्ष` devanagari.
+  milieu d'un `क्ष` devanagari ;
+- la **segmentation en mots** (annexe 29 encore, jalon M6), pour `Ctrl`+flèche. Les règles
+  `WB1` à `WB999`, avec le repliement de `WB4` et les regards en arrière de `WB7`, `WB7c`
+  et `WB11`. C'est ce qui garde `3,14` et `can't` entiers là où une coupure sur la
+  ponctuation les casserait, et ce qui découpe `日本語` en trois unités de déplacement sans
+  un seul espace.
 
 Un choix à connaître : la largeur d'une grappe est le **maximum** des largeurs de ses
 caractères, pas leur somme. Une famille d'emoji soudée par des jointures occupe deux
 colonnes, pas huit — c'est ce que font les terminaux modernes, et la seule définition qui
 garde le curseur et le rendu d'accord entre eux.
 
+### Les deux segmentations sont vérifiées contre les essais officiels
+
+`cargo xtask check-segmentation` confronte les deux à `GraphemeBreakTest.txt` et
+`WordBreakTest.txt` du Consortium : 853 et 1944 cas, **aucun écart**. Les fichiers d'essais
+ne sont pas committés — ce sont des données du référentiel —, donc la vérification est une
+commande et non un `#[test]` : un test qui se tairait faute de données donnerait exactement
+l'assurance fausse que les deux NO GO de ce dépôt interdisent.
+
+Ce contrôle a payé immédiatement. Il a trouvé **dix écarts** sur la segmentation en
+grappes du jalon M3, annoncée comme faite : la révision 49 de l'annexe, livrée avec Unicode
+18.0.0, a réécrit `GB9c` en `\p{InCB=Linker} \p{InCB=Extend}* × \p{InCB=Consonant}` et
+retiré l'exigence d'une consonne **avant** le lieur. Les tables venaient déjà de 18.0.0, les
+règles non — elles n'étaient pas de la même édition.
+
 ## La hiérarchie d'objets
 
 ```
 AirApplication                 boucle, terminal, thème, jeu de commandes
- └─ AirScreen  (pile)          surface plein écran : chrome + contenu, commutable
-     ├─ AirMenuBar
-     ├─ AirDesktop             zone des fenêtres : ordre de profondeur, cascade, mosaïque
-     │   └─ AirWindow          cadre, titre, déplaçable, redimensionnable
-     │       └─ AirView        tout ce qui se dessine et reçoit des événements
-     └─ AirStatusLine
+                               — l'arbre lui est PASSÉ, elle ne le possède pas
+AirScreen                      surface plein écran : chrome + contenu, empilable
+ ├─ AirDesktop                 zone des fenêtres : ordre de profondeur, cascade, mosaïque
+ │   └─ AirWindow              cadre, titre, case de fermeture
+ │       └─ AirView            tout ce qui se dessine et reçoit des événements
+ ├─ AirStatusLine              post-traitement, imposé par l'écran
+ ├─ AirMenuBar                 pré-traitement, imposé par l'écran, et au premier plan
+ └─ modal                      quand il y en a un : prend tous les événements
 ```
 
-Ce que cette hiérarchie décrit est la **cible**. Au jalon M5b, `AirMenuBar`, `AirWindow`,
-`AirStatusLine` et `AirView` existent ; `AirApplication`, `AirScreen` et `AirDesktop` non.
-L'application monte sa boucle et son arbre à la main sur `AirGroup`, comme le fait
-l'exemple `frame` — et c'est au jalon M6, avec `redit`, que ces trois pièces viennent.
+Cette hiérarchie **existe** depuis le jalon M6 : les trois pièces qui manquaient —
+`AirApplication`, `AirScreen` et `AirDesktop` — sont écrites, et `redit` les emploie.
+
+`AirScreen` existe pour rendre une erreur impossible. Au jalon M5b, la barre de menu devait
+être insérée **en dernier**, sous peine d'être recouverte au dessin comme au routage, et
+cette contrainte ne tenait que par la documentation. L'écran range désormais ses quatre
+pièces lui-même — bureau, barre de statut, barre de menu, modal —, dans le seul ordre qui
+marche, quel que soit l'ordre des appels. Il impose aussi le pré-traitement à la barre de
+menu, le post-traitement à la barre de statut, et il porte la disposition.
+
+La **modalité** est sa quatrième pièce, et elle n'est pas une propriété de la vue posée :
+c'est `handle_event` de l'écran qui donne tous les événements au modal et empêche la
+descente. Un clic hors du modal est consommé plutôt que laissé à ce qui est derrière — un
+modal qui laisse passer un clic n'est pas modal.
 
 Et la couche basse, nommée pour ne pas entrer en collision avec `AirScreen` :
 
@@ -182,7 +213,8 @@ s'ouvre : ses limites couvrent la zone du menu, et tout reste à l'intérieur. L
 par vue ne souffre aucune exception.
 
 La contrainte qui en découle est réelle : la barre de menu doit être insérée **en dernier**
-dans son groupe. Insérée ailleurs, elle serait recouverte par ce qui vient après.
+dans son groupe. Insérée ailleurs, elle serait recouverte par ce qui vient après. Depuis le
+jalon M6, `AirScreen` la range lui-même : la contrainte ne tient plus par la documentation.
 
 ### Le curseur
 
@@ -314,6 +346,40 @@ Détaillé dans [`adrs/ADR-007-mvc-journal-de-changements-fr.md`](adrs/ADR-007-m
 L'arête Observer du MVC canonique est remplacée par une **donnée rendue à l'appelant** :
 le modèle consigne ce qui a changé et ne notifie personne. Conséquence directe : aucun
 `Rc`, aucun `RefCell`, et la réentrance est impossible par construction.
+
+Écrit au jalon M6 (`air-tui/src/model/`), et `redit` emploie les quatre mécanismes :
+
+| Mécanisme | Ce qu'il porte, dans `redit` |
+|---|---|
+| `AirChangeSet` | le fichier chargé, le nombre de lignes, le drapeau de modification |
+| `AirGeneration` | le texte et le curseur — deux compteurs, comparés en O(1) à chaque tour |
+| `AirCommandSet` au dessin | « Enregistrer » grisé sur un document intact, menu **et** barre de statut |
+| `AirViewId` | le contrôleur retrouve sa vue d'édition et ses deux ascenseurs (ADR-013) |
+
+Le partage entre le journal et les compteurs n'est pas une question de goût : un journal de
+ce qui est fréquent devient une liste que personne ne relit, et un compteur sur ce qui est
+structurel ne dit pas **quoi** a changé. Une frappe ne consigne donc rien ; elle fait
+avancer deux entiers.
+
+### La vue d'édition ne tient pas son modèle
+
+`AirEditorView` ne porte aucune référence vers le tampon : ni `&`, ni `Rc`, ni pointeur.
+Elle en garde un **reflet** — les lignes visibles et la position du curseur — que le
+contrôleur lui pousse à l'étape 3, et elle accumule des `AirTextAction` que le contrôleur
+relève à l'étape 2. Une frappe ne peut donc pas muter le modèle depuis la vue.
+
+Deux conséquences qui valent le détour : le **défilement appartient à la vue**, donc deux
+vues du même tampon défilent séparément ; et ce que la vue reflète est borné par la
+dimension de la fenêtre, pas par la longueur des lignes — une ligne d'un mégaoctet ne coûte
+que ses colonnes visibles.
+
+### L'application n'en tient pas plus
+
+`AirApplication::pump` fait **un** tour — attendre, lire, décoder, router — et rend les
+commandes que l'arbre n'a pas traitées ; la racine lui est **passée en paramètre**. C'est le
+même argument deux fois : ce dont le contrôleur a besoin, l'application ne le détient pas.
+Une première écriture faisait l'inverse, et le contrôleur de `redit` ne pouvait plus
+atteindre ses propres vues.
 
 ## Les thèmes
 

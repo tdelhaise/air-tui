@@ -206,10 +206,15 @@ Toute `AirView` a une **bordure par défaut** ; on la retire par `border = false
 
 ---
 
-# À outiller (rien n'existe à ce jour)
+# À outiller
 
-Aucun de ces contrôles n'est écrit. Ils sont à exécuter à la main, et **ne doivent pas
-être annoncés comme automatisés** avant de l'être (NO GO n° 1).
+Aucun des contrôles ci-dessous n'est écrit. Ils sont à exécuter à la main, et **ne doivent
+pas être annoncés comme automatisés** avant de l'être (NO GO n° 1).
+
+Deux vérifications **existent** en revanche dans `cargo xtask`, et elles ne figurent pas
+dans cette liste pour cette raison : `generate-unicode-tables --check`, qui refuse une
+table qui ne correspond plus au référentiel, et `check-segmentation`, qui confronte les
+deux segmentations de l'annexe 29 aux fichiers d'essais du Consortium.
 
 - `check-naming` — balayer les identifiants déclarés et refuser le glossaire ci-dessus,
   avec les quatre exceptions en liste blanche.
