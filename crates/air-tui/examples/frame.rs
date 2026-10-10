@@ -46,8 +46,8 @@ use air_tui::input::event::AirKey;
 use air_tui::theme::AirTheme;
 use air_tui::view::{AirView, AirViewId, AirViewState};
 use air_tui::widgets::{
-    AirButton, AirInputLine, AirMenu, AirMenuBar, AirMenuItem, AirStaticText, AirStatusItem,
-    AirStatusLine, AirWindow,
+    AirButton, AirCluster, AirClusterItem, AirInputLine, AirMenu, AirMenuBar, AirMenuItem,
+    AirStaticText, AirStatusItem, AirStatusLine, AirWindow,
 };
 use air_tui::{PlatformError, PlatformErrorKind, TerminalDevice};
 use air_tui_platform_posix::PosixTerminal;
@@ -127,15 +127,17 @@ fn build_window(identifiers: &mut Identifiers, bounds: AirRectangle) -> AirWindo
         ),
         "Nom :",
     )));
-    // Le champ a le focus : c'est lui qui porte le curseur du terminal.
-    let mut field = AirInputLine::new(AirViewState::new(
-        identifiers.next(),
-        AirRectangle::from_parts(7, 0, columns.saturating_sub(10), 1),
-    ))
-    .with_text("saisis ici")
-    .with_maximum_length(64);
-    field.state_mut().set_focused(true);
-    window.insert(Box::new(field));
+    // Le champ ne prend plus le focus depuis M7f : ce sont les cases à cocher qui le
+    // portent, pour que l'exemple montre leur curseur. Deux vues focalisées se
+    // disputeraient celui du terminal, et la traversée n'en retiendrait qu'un.
+    window.insert(Box::new(
+        AirInputLine::new(AirViewState::new(
+            identifiers.next(),
+            AirRectangle::from_parts(7, 0, columns.saturating_sub(10), 1),
+        ))
+        .with_text("saisis ici")
+        .with_maximum_length(64),
+    ));
 
     // Volontairement plus large que sa fenêtre : au jalon M0, cette ligne mangeait la
     // bordure droite. Le peintre la découpe désormais sur la vue.
@@ -146,6 +148,29 @@ fn build_window(identifiers: &mut Identifiers, bounds: AirRectangle) -> AirWindo
         ),
         "Ce texte est trop long pour sa fenêtre et ne peut plus déborder sur le cadre.",
     )));
+
+    // Les deux groupes du jalon M7f, côte à côte : c'est la seule disposition qui montre
+    // qu'un seul des deux porte un curseur à la fois. Les cases à cocher en portent un
+    // parce qu'elles ont le focus ; les boutons radio, non.
+    let mut options = AirCluster::check_boxes(AirViewState::new(
+        identifiers.next(),
+        AirRectangle::from_parts(2, 4, 18, 3),
+    ))
+    .with_item(AirClusterItem::new("~G~ras").checked())
+    .with_item(AirClusterItem::new("~I~talique"))
+    .with_item(AirClusterItem::new("Sou~l~igné"));
+    options.state_mut().set_focused(true);
+    window.insert(Box::new(options));
+
+    window.insert(Box::new(
+        AirCluster::radio_buttons(AirViewState::new(
+            identifiers.next(),
+            AirRectangle::from_parts(22, 4, 18, 3),
+        ))
+        .with_item(AirClusterItem::new("~U~n").checked())
+        .with_item(AirClusterItem::new("~D~eux"))
+        .with_item(AirClusterItem::new("~T~rois")),
+    ));
 
     // Deux boutons aux couleurs transcrites de Borland : noir sur vert, lettre d'accès
     // rapide en jaune. Le bouton par défaut se distingue par sa couleur de texte.

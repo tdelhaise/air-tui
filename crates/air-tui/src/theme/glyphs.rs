@@ -70,6 +70,48 @@ pub struct AirGlyphSet {
     /// Commander, dont le skin donne `X` pour fermer une fenêtre. Deux usages sans
     /// rapport ne peuvent pas partager un glyphe de thème.
     pub scroll_thumb: char,
+    /// Les trois caractères d'une case à cocher.
+    pub check_box: AirClusterGlyphs,
+    /// Les trois caractères d'un bouton radio.
+    pub radio_button: AirClusterGlyphs,
+}
+
+/// Les caractères d'un item cochable : ses deux délimiteurs et sa marque.
+///
+/// Turbo Vision écrit la case entière dans une chaîne — `" [ ] "` pour `TCheckBoxes`,
+/// `" ( ) "` pour `TRadioButtons` — et pose la marque au troisième caractère. Trois champs
+/// nommés disent la même chose sans qu'un lecteur ait à compter les positions d'une chaîne.
+///
+/// La marque est celle de l'item **coché** ; décoché, la place reste vide. Un glyphe pour
+/// l'état décoché n'apporterait rien : aucun des deux thèmes n'en emploie, et un thème qui
+/// en voudrait aurait aussi besoin de deux largeurs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AirClusterGlyphs {
+    /// Le délimiteur de gauche.
+    pub left: char,
+    /// La marque de l'item coché.
+    pub mark: char,
+    /// Le délimiteur de droite.
+    pub right: char,
+}
+
+impl AirClusterGlyphs {
+    /// La case à cocher de Turbo Vision : `[X]`.
+    pub const CHECK_BOX: Self = Self {
+        left: '[',
+        mark: 'X',
+        right: ']',
+    };
+
+    /// Le bouton radio de Turbo Vision : `(•)`.
+    ///
+    /// La marque est le caractère 7 de la page de code 437, soit le point médian `•`
+    /// (U+2022) — `tradiobu.cpp` écrit `" \x7"`.
+    pub const RADIO_BUTTON: Self = Self {
+        left: '(',
+        mark: '•',
+        right: ')',
+    };
 }
 
 impl AirGlyphSet {
@@ -89,6 +131,8 @@ impl AirGlyphSet {
             scroll_arrow_up: '▲',
             scroll_arrow_down: '▼',
             scroll_thumb: '■',
+            check_box: AirClusterGlyphs::CHECK_BOX,
+            radio_button: AirClusterGlyphs::RADIO_BUTTON,
         }
     }
 }
@@ -96,9 +140,15 @@ impl AirGlyphSet {
 impl AirGlyphSet {
     /// Le jeu de glyphes de Midnight Commander, compilé depuis son skin par défaut.
     ///
-    /// Cinq glyphes n'en viennent pas, faute d'être décrits par un skin : le remplissage
-    /// du bureau, les deux crochets de la case de fermeture, les deux flèches
-    /// d'ascenseur et son curseur. L'artefact généré dit lesquels et pourquoi.
+    /// **Douze** glyphes n'en viennent pas, faute d'être décrits par un skin : le
+    /// remplissage du bureau, les deux crochets de la case de fermeture, les deux flèches
+    /// d'ascenseur et son curseur, et les six caractères des cases à cocher et des boutons
+    /// radio. Aucun des trente-neuf skins livrés avec `mc` ne porte de clef pour ces
+    /// derniers — vérifié, pas supposé —, donc ils restent ceux du thème par défaut : ce
+    /// n'est pas une transcription, et l'artefact généré le dit.
+    ///
+    /// Le compte était faux entre M7b et M7f : il annonçait cinq glyphes et en énumérait
+    /// six, le curseur d'ascenseur ayant été ajouté sans que la phrase suive.
     #[must_use]
     pub const fn midnight_commander() -> Self {
         crate::theme::skins::midnight_commander::glyphs()

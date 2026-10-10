@@ -5,7 +5,7 @@
 //! Le thème Midnight Commander — **fichier généré, ne pas éditer**.
 //!
 //! Produit par `cargo xtask import-mc-skin` depuis « Standard skin », fichier
-//! `/usr/local/share/mc/skins/default.ini`. 32 rôles transcrits d'une clef, 3 composés de deux.
+//! `/usr/local/share/mc/skins/default.ini`. 35 rôles transcrits d'une clef, 3 composés de deux.
 //!
 //! Empreinte FNV-1a du skin d'origine : `0xefc735864405630c`. C'est un repère de
 //! dérive, pas une garantie cryptographique : `cargo xtask import-mc-skin --check`
@@ -51,9 +51,10 @@
 //!   curseur.
 //! - **`ListNormal`** — un panneau de mc est l'application elle-même : ses lignes portent
 //!   `[core] _default_`.
+//! - **`ClusterNormal`** — mc ne distingue pas les cases à cocher du fond de leur dialogue.
 
 use crate::cell::AirColor;
-use crate::theme::glyphs::{AirFrameGlyphs, AirGlyphSet};
+use crate::theme::glyphs::{AirClusterGlyphs, AirFrameGlyphs, AirGlyphSet};
 use crate::theme::palette::{AirColorPair, AirPalette, AirPaletteParts};
 
 /// La description que porte la section `[skin]` du fichier d'origine.
@@ -120,15 +121,25 @@ pub(crate) const fn palette() -> AirPalette {
             pair(0, 6), // InputLineText ← [core] input
             pair(6, 0), // InputLineSelected ← [core] inputmark
         ],
+        cluster: [
+            pair(0, 7), // ClusterNormal ← [dialog] _default_
+            pair(0, 6), // ClusterSelected ← [dialog] dfocus
+            pair(4, 7), // ClusterHotkey ← [dialog] dhotnormal
+        ],
     })
 }
 
 /// Le jeu de glyphes, compilé depuis la section `[Lines]` du skin.
 ///
-/// Cinq glyphes ne viennent pas du skin, parce qu'aucun skin ne les décrit : le
-/// remplissage du bureau — `mc` n'a pas de bureau, ses panneaux couvrent l'écran —,
-/// les deux crochets de la case de fermeture, dont `mc` ne donne que la marque, et
-/// les deux flèches d'ascenseur et son curseur, que `mc` n'a pas.
+/// **Douze** glyphes ne viennent pas du skin, parce qu'aucun skin ne les décrit :
+/// le remplissage du bureau — `mc` n'a pas de bureau, ses panneaux couvrent
+/// l'écran —, les deux crochets de la case de fermeture, dont `mc` ne donne que la
+/// marque, les deux flèches d'ascenseur et son curseur, que `mc` n'a pas, et les
+/// six caractères des cases à cocher et des boutons radio.
+///
+/// Ces six derniers restent donc ceux du thème par défaut, et ce n'est **pas** une
+/// transcription : aucune des trente-neuf fournitures de `mc` 4.8.33 ne porte de
+/// clef pour eux, ce qui a été vérifié et non supposé.
 pub(crate) const fn glyphs() -> AirGlyphSet {
     AirGlyphSet {
         window_frame: AirFrameGlyphs {
@@ -154,5 +165,7 @@ pub(crate) const fn glyphs() -> AirGlyphSet {
         scroll_arrow_up: '▲',
         scroll_arrow_down: '▼',
         scroll_thumb: '█',
+        check_box: AirClusterGlyphs::CHECK_BOX,
+        radio_button: AirClusterGlyphs::RADIO_BUTTON,
     }
 }
