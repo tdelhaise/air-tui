@@ -24,6 +24,22 @@
 //! tout l'historique pour une raison qui n'est pas celle du DCO. La règle écrite demande
 //! une signature, pas une concordance d'adresses.
 //!
+//! # Les commits de fusion sont ignorés, et ce n'est pas une commodité
+//!
+//! Un commit qui a **plus d'un parent** n'apporte aucun contenu : il joint deux
+//! histoires. Le DCO certifie une contribution, et une fusion n'en est pas une — c'est
+//! aussi pourquoi `git rebase --signoff` ne signe pas les fusions.
+//!
+//! Le cas n'est pas théorique, et c'est le premier passage en intégration continue qui
+//! l'a montré : sur un événement `pull_request`, `actions/checkout` ne place pas la tête
+//! de la branche mais un commit de fusion que **GitHub fabrique** pour éprouver le
+//! résultat de la fusion — « Merge <sha> into <base> ». Personne ne l'a écrit, personne
+//! ne peut le signer, et il est pourtant dans la plage. Le contrôle le compte et
+//! l'annonce, plutôt que de le faire échouer ou de le taire.
+//!
+//! Une **fusion squash** n'en est pas une : elle n'a qu'un parent. Les dix-neuf de ce
+//! dépôt restent donc examinées.
+//!
 //! # Ce que ce contrôle ne peut pas empêcher
 //!
 //! Le commit qui a motivé son écriture — `806f7ae`, la fusion du jalon M7g — **n'aurait
@@ -99,8 +115,17 @@ pub enum Scope {
 pub struct Commit {
     /// L'empreinte complète.
     pub hash: String,
+    /// Le nombre de parents — deux ou plus désigne une fusion.
+    pub parent_count: usize,
     /// Le message entier, sujet et corps.
     pub body: String,
+}
+
+impl Commit {
+    /// Vrai si ce commit joint deux histoires au lieu d'apporter un contenu.
+    fn is_merge(&self) -> bool {
+        self.parent_count > 1
+    }
 }
 
 /// Un manquement relevé.
@@ -121,6 +146,8 @@ pub struct Report {
     pub examined: usize,
     /// Le nombre de commits pardonnés, et donc **non** examinés.
     pub pardoned: usize,
+    /// Le nombre de commits de fusion ignorés, qui n'ont aucun contenu à certifier.
+    pub merges: usize,
     /// Les manquements.
     pub violations: Vec<Violation>,
 }
@@ -148,7 +175,7 @@ pub fn check(repository: &Path, scope: &Scope) -> Result<Report, String> {
         }
     };
 
-    let format = format!("--format=%H{FIELD_SEPARATOR}%B{RECORD_SEPARATOR}");
+    let format = format!("--format=%H{FIELD_SEPARATOR}%P{FIELD_SEPARATOR}%B{RECORD_SEPARATOR}");
     let mut arguments = vec!["log", format.as_str()];
     if let Some(ref value) = range {
         arguments.push(value.as_str());
@@ -160,7 +187,12 @@ pub fn check(repository: &Path, scope: &Scope) -> Result<Report, String> {
     let mut violations = Vec::new();
     let mut examined = 0usize;
     let mut forgiven = 0usize;
+    let mut merges = 0usize;
     for commit in &commits {
+        if commit.is_merge() {
+            merges = merges.saturating_add(1);
+            continue;
+        }
         if pardoned.contains(commit.hash.as_str()) {
             forgiven = forgiven.saturating_add(1);
             continue;
@@ -173,6 +205,7 @@ pub fn check(repository: &Path, scope: &Scope) -> Result<Report, String> {
         scope: described,
         examined,
         pardoned: forgiven,
+        merges,
         violations,
     })
 }
@@ -181,7 +214,7 @@ pub fn check(repository: &Path, scope: &Scope) -> Result<Report, String> {
 ///
 /// # Errors
 ///
-/// Si un enregistrement ne porte pas exactement deux champs — ce qui arriverait si un
+/// Si un enregistrement ne porte pas exactement trois champs — ce qui arriverait si un
 /// message contenait l'un des deux séparateurs. Le cas est refusé plutôt que mal lu.
 fn parse_commits(output: &str) -> Result<Vec<Commit>, String> {
     let mut commits = Vec::new();
@@ -191,16 +224,17 @@ fn parse_commits(output: &str) -> Result<Vec<Commit>, String> {
             continue;
         }
         let fields: Vec<&str> = record.split(FIELD_SEPARATOR).collect();
-        let [hash, body] = *fields.as_slice() else {
+        let [hash, parents, body] = *fields.as_slice() else {
             return Err(format!(
                 "la sortie de git ne se découpe pas : {} champ(s) dans un enregistrement \
-                 qui doit en porter deux. Un message de commit contient probablement un \
+                 qui doit en porter trois. Un message de commit contient probablement un \
                  caractère de contrôle U+001E ou U+001F.",
                 fields.len()
             ));
         };
         commits.push(Commit {
             hash: hash.trim().to_owned(),
+            parent_count: parents.split_whitespace().count(),
             body: body.to_owned(),
         });
     }
@@ -334,10 +368,11 @@ mod tests {
         parse_commits, short_hash, truncate, violations_of,
     };
 
-    /// Un commit conforme : un sujet, un corps, une signature.
+    /// Un commit conforme : un sujet, un corps, une signature, un seul parent.
     fn conforme() -> Commit {
         Commit {
             hash: "0123456789abcdef0123456789abcdef01234567".to_owned(),
+            parent_count: 1,
             body: "feat: une chose\n\nLe corps.\n\n\
                    Signed-off-by: Thierry DELHAISE <thierry.delhaise@air-desktop.org>\n"
                 .to_owned(),
@@ -453,8 +488,9 @@ mod tests {
     #[test]
     fn la_sortie_de_git_se_decoupe_en_commits() {
         let output = format!(
-            "abc{FIELD_SEPARATOR}feat: un\n\nSigned-off-by: A <a@b.c>\n{RECORD_SEPARATOR}\
-             def{FIELD_SEPARATOR}feat: deux\n{RECORD_SEPARATOR}"
+            "abc{FIELD_SEPARATOR}p1{FIELD_SEPARATOR}feat: un\n\n\
+             Signed-off-by: A <a@b.c>\n{RECORD_SEPARATOR}\
+             def{FIELD_SEPARATOR}p1 p2{FIELD_SEPARATOR}feat: deux\n{RECORD_SEPARATOR}"
         );
         let commits = parse_commits(&output).expect("découpage");
         assert_eq!(commits.len(), 2);
@@ -462,10 +498,40 @@ mod tests {
             commits.first().map(|commit| commit.hash.as_str()),
             Some("abc")
         );
+        assert_eq!(commits.first().map(Commit::is_merge), Some(false));
         assert_eq!(
             commits.get(1).map(|commit| commit.hash.as_str()),
             Some("def")
         );
+        assert_eq!(
+            commits.get(1).map(Commit::is_merge),
+            Some(true),
+            "deux parents désignent une fusion"
+        );
+    }
+
+    #[test]
+    fn un_commit_racine_n_est_pas_une_fusion() {
+        // Le premier commit du dépôt n'a aucun parent : `%P` rend un champ vide, et un
+        // découpage trop naïf y verrait un parent, donc une fusion de moins à ignorer.
+        let output =
+            format!("abc{FIELD_SEPARATOR}{FIELD_SEPARATOR}feat: la racine\n{RECORD_SEPARATOR}");
+        let commits = parse_commits(&output).expect("découpage");
+        assert_eq!(commits.first().map(|commit| commit.parent_count), Some(0));
+        assert_eq!(commits.first().map(Commit::is_merge), Some(false));
+    }
+
+    #[test]
+    fn une_fusion_squash_reste_examinee() {
+        // Elle n'a **qu'un** parent : les dix-neuf de ce dépôt doivent rester dans la
+        // mesure, sinon le contrôle ne regarderait presque rien de `main`.
+        let squash = Commit {
+            parent_count: 1,
+            body: "feat!: M7x — quelque chose (#42)\n\nLe corps.\n".to_owned(),
+            ..conforme()
+        };
+        assert!(!squash.is_merge());
+        assert_eq!(violations_of(&squash).len(), 1, "sa signature manque");
     }
 
     #[test]
@@ -479,9 +545,11 @@ mod tests {
     fn un_enregistrement_ambigu_est_refuse_et_non_mal_lu() {
         // Si un message portait l'un des deux séparateurs, le découpage rendrait trois
         // champs. Le refuser nomme l'ambiguïté ; la deviner la cacherait.
-        let output = format!("abc{FIELD_SEPARATOR}feat{FIELD_SEPARATOR}un{RECORD_SEPARATOR}");
+        let output = format!(
+            "abc{FIELD_SEPARATOR}p1{FIELD_SEPARATOR}feat{FIELD_SEPARATOR}un{RECORD_SEPARATOR}"
+        );
         let refusal = parse_commits(&output).expect_err("refus attendu");
-        assert!(refusal.contains("3 champ"), "{refusal}");
+        assert!(refusal.contains("4 champ"), "{refusal}");
         assert!(refusal.contains("U+001E"), "{refusal}");
     }
 

@@ -644,11 +644,20 @@ affirmations de M7b se sont révélées fausses. Elles sont corrigées ici plut�
 - **La lecture se fait d'un seul appel à `git log`**, séparateurs U+001E et U+001F. Un
   message qui en contiendrait un ferait rendre trois champs à un enregistrement : le cas est
   refusé **en le nommant** plutôt que mal lu.
+- **Les commits de fusion sont comptés et ignorés**, et c'est le premier passage en
+  intégration continue qui l'a imposé : sur un événement `pull_request`, `actions/checkout`
+  ne place pas la tête de la branche mais un commit de fusion que **GitHub fabrique** pour
+  éprouver le résultat — « Merge <sha> into <base> ». Personne ne l'a écrit, personne ne
+  peut le signer, et il était dans la plage. Un commit à plus d'un parent n'apporte aucun
+  contenu à certifier, ce qui est aussi la raison pour laquelle `git rebase --signoff` ne
+  signe pas les fusions. Une fusion **squash** n'en est pas une — un seul parent —, donc
+  les dix-neuf de `main` restent examinées.
 - **Vérifié par ses contrôles négatifs**, sur une branche jetable : un commit sans
-  signature, un `Co-Authored-By: Claude …` et un `Claude-Session:` sont chacun attrapés, et
-  la commande rend le code 1. Un gate qu'on n'a pas vu échouer ne garde rien.
-- Seize essais, tous sur la partie pure : un commit y est une empreinte et un message, donc
-  les règles se vérifient sans dépôt.
+  signature, un `Co-Authored-By: Claude …` et un `Claude-Session:` sont chacun attrapés, la
+  commande rend le code 1, et une vraie fusion `--no-ff` est bien comptée comme ignorée. Un
+  gate qu'on n'a pas vu échouer ne garde rien.
+- Dix-neuf essais, tous sur la partie pure : un commit y est une empreinte, un nombre de
+  parents et un message, donc les règles se vérifient sans dépôt.
 
 ### Défauts ouverts
 

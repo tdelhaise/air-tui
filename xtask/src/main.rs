@@ -336,6 +336,10 @@ fn check_codec_coverage(arguments: &[String]) -> Result<String, String> {
 /// `--all`, il parcourt tout l'historique, ce qui est le seul moment où le commit de
 /// fusion squash existe — celui-là est fabriqué après le dernier passage de la CI sur la
 /// branche, donc aucune vérification de branche ne peut le voir.
+///
+/// Les commits de **fusion** sont comptés et ignorés : ils n'apportent aucun contenu à
+/// certifier, et sur un événement `pull_request` la CI en voit un que GitHub fabrique
+/// elle-même. Le compte rendu les annonce, comme il annonce les pardons.
 fn check_dco(arguments: &[String]) -> Result<String, String> {
     let scope = if has_flag(arguments, "--all") {
         dco::Scope::All
@@ -353,9 +357,9 @@ fn check_dco(arguments: &[String]) -> Result<String, String> {
     }
     if report.violations.is_empty() {
         return Ok(format!(
-            "{} commit(s) examiné(s) sur {}, {} pardonné(s) : tous signés, aucun agent \
-             parmi les auteurs{pardons}",
-            report.examined, report.scope, report.pardoned
+            "{} commit(s) examiné(s) sur {}, {} pardonné(s), {} fusion(s) ignorée(s) : \
+             tous signés, aucun agent parmi les auteurs{pardons}",
+            report.examined, report.scope, report.pardoned, report.merges
         ));
     }
     let mut summary = format!(

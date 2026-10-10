@@ -95,6 +95,13 @@ passage de la CI sur la branche. Sur `main`, ce contrôle **constate** au lieu d
 et un commit de `main` ne s'amende pas. Il porte un pardon nommé, `806f7ae`, et l'annonce à
 chaque exécution.
 
+Il ignore les commits de **fusion**, qui n'apportent aucun contenu à certifier, et il les
+compte pour le dire. Ce n'est pas une précaution théorique : sur un événement
+`pull_request`, `actions/checkout` place un commit de fusion que **GitHub fabrique** pour
+éprouver le résultat — « Merge <sha> into <base> », que personne n'a écrit et que personne
+ne peut signer. Son premier passage en CI l'a trouvé. Une fusion **squash** n'en est pas
+une : un seul parent, donc elle reste examinée.
+
 Portée de `check-naming`, à connaître avant de s'y fier : il inspecte les **sites de
 déclaration** et non les emplois, et son angle mort est la liaison d'un bras de `match`
 — `Some(index) => …`, qu'il ne voit pas.

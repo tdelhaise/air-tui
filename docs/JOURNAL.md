@@ -43,12 +43,24 @@ l'état vivant, ce journal est la trace figée, `INDEX.md` est la carte structur
   ferait rendre trois champs à un enregistrement, et le découpage **refuse** en nommant le
   caractère. Mal lire un message de commit pour conclure qu'il est signé serait pire que ne
   pas le lire.
+- **Son premier passage en CI a trouvé un fait d'environnement que je n'avais pas prévu.**
+  Sur un événement `pull_request`, `actions/checkout` ne place pas la tête de la branche
+  mais un commit de fusion que **GitHub fabrique** pour éprouver le résultat — « Merge
+  <sha> into <base> ». Personne ne l'a écrit, personne ne peut le signer, et il était dans
+  la plage : le gate a donc échoué sur son propre passage, pour une raison juste. Les
+  commits à plus d'un parent sont désormais comptés et ignorés — ils n'apportent aucun
+  contenu à certifier, ce qui est aussi pourquoi `git rebase --signoff` ne les signe pas.
+  Une fusion **squash** n'en est pas une, un seul parent : les dix-neuf de `main` restent
+  examinées. Un gate dont le premier échec est un vrai renseignement vaut mieux qu'un gate
+  vert du premier coup.
 - **Vérifié par ses contrôles négatifs avant d'y croire.** Sur une branche jetable : un
   commit sans signature, un `Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>` et un
-  `Claude-Session:` sont chacun attrapés et nommés, la commande rend le code 1, et
-  l'historique propre repasse au vert. Un gate qu'on n'a pas vu échouer ne garde rien —
-  c'est la même discipline que le test de garde des attributs au jalon M7g.
-- **Seize essais, tous sur la partie pure** : un commit y est une empreinte et un message,
+  `Claude-Session:` sont chacun attrapés et nommés, la commande rend le code 1, une vraie
+  fusion `--no-ff` est bien comptée comme ignorée, et l'historique propre repasse au vert.
+  Un gate qu'on n'a pas vu échouer ne garde rien — c'est la même discipline que le test de
+  garde des attributs au jalon M7g.
+- **Dix-neuf essais, tous sur la partie pure** : un commit y est une empreinte, un nombre
+  de parents et un message,
   donc les règles se vérifient sans dépôt, sans branche jetable et sans `git`.
 - Il reste **deux** contrôles à outiller : `check-licence-headers` et
   `check-safety-comments`. Le décompte est corrigé partout où il figurait — `CLAUDE.md`,

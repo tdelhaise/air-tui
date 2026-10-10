@@ -255,6 +255,13 @@ Les trailers refusés sont `Co-Authored-By` nommant un agent — la liste des ma
 courte et explicite, `claude` et `anthropic` — et `Claude-Session`. Un co-auteur **humain**
 reste légitime : aucune règle de ce dépôt ne l'interdit.
 
+Les commits de **fusion** sont comptés et ignorés : un commit à plus d'un parent n'apporte
+aucun contenu à certifier, et c'est aussi pourquoi `git rebase --signoff` ne les signe pas.
+Le cas n'est pas théorique — sur un événement `pull_request`, `actions/checkout` place un
+commit de fusion que **GitHub fabrique** pour éprouver le résultat, et que personne ne peut
+signer. Une fusion **squash** n'en est pas une : elle n'a qu'un parent, et reste donc
+examinée.
+
 # À outiller
 
 Les deux contrôles ci-dessous ne sont **pas** écrits. Ils sont à exécuter à la main, et
