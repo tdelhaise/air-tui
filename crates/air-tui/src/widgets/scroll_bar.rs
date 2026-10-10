@@ -21,7 +21,6 @@
 //! souris que l'arbre de vues n'a pas encore. Les flèches, les pages et la molette
 //! couvrent tout le reste. C'est une absence, pas un oubli.
 
-use crate::cell::{AirAttributes, AirCell};
 use crate::geometry::{AirColumn, AirPoint, AirRectangle, AirRow};
 use crate::input::event::{AirInputEvent, AirMouseButton, AirMouseEventKind};
 use crate::theme::AirRole;
@@ -230,21 +229,13 @@ impl AirView for AirScrollBar {
                 AirOrientation::Vertical => AirPoint::new(AirColumn::FIRST, AirRow::new(along)),
                 AirOrientation::Horizontal => AirPoint::new(AirColumn::new(along), AirRow::FIRST),
             };
-            painter.set_cell(
-                point,
-                AirCell::new(character, colors.foreground, colors.background)
-                    .with_attributes(AirAttributes::NONE),
-            );
+            painter.set_cell(point, colors.cell(character));
         };
 
         // La glissière d'abord, pour que les flèches et le curseur s'y posent dessus.
         painter.fill_rectangle(
             AirRectangle::new(AirPoint::ORIGIN, size),
-            AirCell::new(
-                context.theme.glyphs.desktop_fill,
-                page.foreground,
-                page.background,
-            ),
+            page.cell(context.theme.glyphs.desktop_fill),
         );
         let (first, last) = match self.orientation {
             AirOrientation::Vertical => (glyphs.scroll_arrow_up, glyphs.scroll_arrow_down),

@@ -37,7 +37,6 @@ use core::num::NonZeroU32;
 pub use group::AirGroup;
 pub use painter::AirPainter;
 
-use crate::cell::AirCell;
 use crate::command::{AirCommand, AirCommandSet};
 use crate::geometry::{AirColumn, AirPoint, AirRectangle, AirRow, AirSize};
 use crate::input::event::{AirInputEvent, AirKeyState};
@@ -597,7 +596,7 @@ fn draw_border(state: &AirViewState, painter: &mut AirPainter<'_>, theme: &AirTh
     let mut put = |column: u16, row: u16, character: char| {
         painter.set_cell(
             AirPoint::new(AirColumn::new(column), AirRow::new(row)),
-            AirCell::new(character, colors.foreground, colors.background),
+            colors.cell(character),
         );
     };
 
@@ -637,13 +636,7 @@ fn draw_title(painter: &mut AirPainter<'_>, theme: &AirTheme, title: &str) {
     let start = 2_u16.saturating_add(free / 2);
     let mut column = AirColumn::new(start);
     for text in [" ", title, " "] {
-        column = painter.draw_text(
-            AirPoint::new(column, AirRow::FIRST),
-            text,
-            colors.foreground,
-            colors.background,
-            crate::cell::AirAttributes::NONE,
-        );
+        column = painter.draw_text_with_colors(AirPoint::new(column, AirRow::FIRST), text, colors);
     }
 }
 

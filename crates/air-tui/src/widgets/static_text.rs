@@ -4,7 +4,6 @@
 
 //! Le texte statique — une ligne de texte, sans bordure.
 
-use crate::cell::AirAttributes;
 use crate::geometry::{AirColumn, AirPoint, AirRow};
 use crate::theme::AirRole;
 use crate::view::painter::AirPainter;
@@ -67,12 +66,10 @@ impl AirView for AirStaticText {
 
     fn draw_content(&self, painter: &mut AirPainter<'_>, context: &AirDrawContext<'_>) {
         let colors = context.theme.palette.color_pair(self.role);
-        painter.draw_text(
+        painter.draw_text_with_colors(
             AirPoint::new(AirColumn::FIRST, AirRow::FIRST),
             &self.text,
-            colors.foreground,
-            colors.background,
-            AirAttributes::NONE,
+            colors,
         );
     }
 }

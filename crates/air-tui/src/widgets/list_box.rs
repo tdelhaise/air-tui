@@ -48,7 +48,6 @@
 //! colonnes, et `TListViewer` portait un `numCols`. Une colonne suffit à un panneau de
 //! fichiers, et la seconde demande de décider ce que `PageDown` veut dire.
 
-use crate::cell::{AirAttributes, AirCell};
 use crate::geometry::{AirColumn, AirPoint, AirRectangle, AirRow};
 use crate::input::event::{AirInputEvent, AirKey, AirMouseButton, AirMouseEventKind};
 use crate::theme::{AirColorPair, AirRole};
@@ -377,10 +376,7 @@ impl AirView for AirListBox {
             let index = self.top_item.saturating_add(usize::from(row));
             let colors = self.colors(index, palette);
             let line = AirRectangle::from_parts(0, row, size.columns, 1);
-            painter.fill_rectangle(
-                line,
-                AirCell::new(' ', colors.foreground, colors.background),
-            );
+            painter.fill_rectangle(line, colors.cell(' '));
             let Some(item) = self.items.get(index) else {
                 // Sous le dernier item, la liste n'écrit rien : le fond ordinaire est
                 // déjà posé, et inventer un contenu serait un mensonge visuel.
@@ -394,22 +390,18 @@ impl AirView for AirListBox {
                 columns.saturating_sub(detail_width.saturating_add(1))
             };
             let text = fitted(&item.text, text_columns);
-            painter.draw_text(
+            painter.draw_text_with_colors(
                 AirPoint::new(AirColumn::FIRST, AirRow::new(row)),
                 text,
-                colors.foreground,
-                colors.background,
-                AirAttributes::NONE,
+                colors,
             );
             if detail_width > 0 && detail_width <= columns {
                 let start = columns.saturating_sub(detail_width);
                 let column = u16::try_from(start).unwrap_or(u16::MAX);
-                painter.draw_text(
+                painter.draw_text_with_colors(
                     AirPoint::new(AirColumn::new(column), AirRow::new(row)),
                     &item.detail,
-                    colors.foreground,
-                    colors.background,
-                    AirAttributes::NONE,
+                    colors,
                 );
             }
         }

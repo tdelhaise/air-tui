@@ -378,8 +378,14 @@ fn import_mc_skin(arguments: &[String]) -> Result<String, String> {
     run_rustfmt(&destination)?;
     Ok(format!(
         "{MC_THEME_PATH} écrit ({fingerprint:#018x}) — {} rôles transcrits d'une clef, {} composés de deux, \
-         {} correspondances annotées, {} clefs du skin inemployées",
-        compiled.transcribed, compiled.composed, compiled.noted, compiled.unused_keys
+         {} correspondances annotées, {} rôles avec attribut, {} avec une couleur du terminal, \
+         {} clefs du skin inemployées",
+        compiled.transcribed,
+        compiled.composed,
+        compiled.noted,
+        compiled.attributed,
+        compiled.terminal_colors,
+        compiled.unused_keys
     ))
 }
 

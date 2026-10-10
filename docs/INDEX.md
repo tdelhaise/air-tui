@@ -36,12 +36,12 @@ L'**avancement** vit dans [`etat-avancement.md`](etat-avancement.md), l'**histor
 |---|---|---|
 | `crates/air-tui-platform` | le contrat : traits, types portables | 0.1.0 |
 | `crates/air-tui-platform-posix` | implémentation POSIX — le seul `unsafe`, le seul C | 0.2.0 |
-| `crates/air-tui` | le cœur, dépend uniquement du contrat | 0.8.0 |
-| `crates/redit` | l'éditeur de texte — le seul endroit qui choisit une plateforme | 0.1.2 |
-| `crates/rmc` | la coquille à deux panneaux — même règle pour la plateforme | 0.1.0 |
+| `crates/air-tui` | le cœur, dépend uniquement du contrat | 0.11.0 |
+| `crates/redit` | l'éditeur de texte — le seul endroit qui choisit une plateforme | 0.2.3 |
+| `crates/rmc` | la coquille à deux panneaux — même règle pour la plateforme | 0.1.5 |
 | `crates/air-tui-platform-air` | implémentation `linux-air` | **à écrire** |
 | `fuzz/` | cibles `cargo-fuzz`, espace de travail séparé (nightly) | `ansi_decoder` |
-| `xtask/` | outillage du dépôt, en Rust | 0.3.0 — tables Unicode, conformité des segmentations, les trois contrôles de conventions, et l'importeur de skins MC |
+| `xtask/` | outillage du dépôt, en Rust | 0.4.0 — tables Unicode, conformité des segmentations, les trois contrôles de conventions, et l'importeur de skins MC |
 | `tools/` | outillage qui ne peut pas être en Rust sans un appel C de plus | `pty-drive.py` |
 
 ## Les modules d'`air-tui`
@@ -49,7 +49,7 @@ L'**avancement** vit dans [`etat-avancement.md`](etat-avancement.md), l'**histor
 | Module | Rôle | Jalon |
 |---|---|---|
 | `geometry` | colonnes, lignes, points, dimensions, rectangles | M0 |
-| `cell` | couleur, attributs, cellule, continuation d'un glyphe large | M0 |
+| `cell` | couleur — index, RGB, **défaut du terminal** —, attributs, cellule, continuation d'un glyphe large | M0, M7g |
 | `surface` | la grille, le différentiel, le suivi des zones salies | M0 |
 | `terminal` | `AirTerminal` sur le contrat : rendu, entrée, curseur, protocole clavier | M0, M2, M5b |
 | `codec` | encodeur SGR, écriture décimale — à 100 % de couverture | M0 |
@@ -58,7 +58,7 @@ L'**avancement** vit dans [`etat-avancement.md`](etat-avancement.md), l'**histor
 | `view` | trait `AirView`, peintre à découpage réel, trois phases, contexte de dessin, accès typé | M4, M5b, M6 |
 | `command` | `AirCommandSet` — le grisage en *pull* | M4 |
 | `clipboard` | `AirClipboard` — le presse-papiers interne, possédé par le contrôleur | M7d |
-| `theme` | palette par rôles (trente-huit), glyphes, quantificateur, **deux thèmes** | M5, M7 |
+| `theme` | palette par rôles (trente-huit, **avec attributs**), glyphes, quantificateur, **deux thèmes** | M5, M7, M7g |
 | `theme::skins` | les thèmes compilés depuis un skin de Midnight Commander — **généré** | M7 |
 | `widgets` | panneau, étiquette, fenêtre, bouton, barre de menu, barre de statut, champ de saisie, ascenseur, vue d'édition, dialogue de saisie, liste, **cases à cocher et boutons radio** | M5, M5b, M6, M7b, M7f |
 | `model` | `AirModel`, `AirChangeSet`, `AirGeneration`, `AirTextBuffer` et sa **sélection** — la couche MVC | M6, M7d |
@@ -101,5 +101,6 @@ Les modules annoncés dans l'architecture et **non encore écrits** : `input/evd
 l'ombre portée demande et que le découpage du peintre interdit aujourd'hui —, et la crate
 `air-tui-platform-air`.
 
-Côté widgets : les cases à cocher, les boutons radio, et la **sélection** de texte — sans
-laquelle il n'y a ni copier-coller interne, ni `Maj`+flèche, ni double-clic.
+Côté widgets, les absences mesurées : une **liste à plusieurs colonnes**, et le
+**défilement d'un groupe** d'items plus long que sa place. Les cases à cocher, les boutons
+radio et la sélection de texte sont faits — M7f et M7d.

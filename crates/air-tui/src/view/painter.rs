@@ -26,6 +26,7 @@
 use crate::cell::{AirAttributes, AirCell, AirColor};
 use crate::geometry::{AirColumn, AirPoint, AirRectangle, AirRow, AirSize};
 use crate::surface::AirSurface;
+use crate::theme::AirColorPair;
 use crate::unicode::{grapheme_width, graphemes};
 
 /// Le droit de dessiner dans une zone, aux coordonnées de celle-ci.
@@ -170,6 +171,30 @@ impl<'surface> AirPainter<'surface> {
             }
         }
         column
+    }
+
+    /// Écrit une chaîne à la présentation d'un rôle, attributs compris.
+    ///
+    /// C'est la forme qu'un widget emploie : il lit un couple dans la palette et le passe
+    /// entier. [`Self::draw_text`] reste pour ce qui ne vient pas d'un rôle — un essai,
+    /// ou un appelant qui compose ses couleurs lui-même.
+    ///
+    /// La différence n'est pas cosmétique : passer `colors.foreground` et
+    /// `colors.background` séparément laisse les attributs du rôle sur le bord du chemin,
+    /// et le thème cesse de ressembler au skin sans qu'aucun appel ne paraisse faux.
+    pub fn draw_text_with_colors(
+        &mut self,
+        origin: AirPoint,
+        text: &str,
+        colors: AirColorPair,
+    ) -> AirColumn {
+        self.draw_text(
+            origin,
+            text,
+            colors.foreground,
+            colors.background,
+            colors.attributes,
+        )
     }
 
     /// Un peintre pour une zone intérieure, aux coordonnées de celle-ci.

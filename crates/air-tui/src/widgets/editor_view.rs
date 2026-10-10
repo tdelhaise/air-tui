@@ -57,7 +57,6 @@
 //! consommée — elle reste disponible pour le parcours du focus, plutôt que d'insérer un
 //! caractère dont l'affichage serait faux.
 
-use crate::cell::{AirAttributes, AirCell};
 use crate::command::AirCommand;
 use crate::geometry::{AirColumn, AirPoint, AirRectangle, AirRow, AirSize};
 use crate::input::event::{AirInputEvent, AirKey, AirMouseButton, AirMouseEventKind};
@@ -401,12 +400,10 @@ impl AirEditorView {
     ) {
         let Some((first, last)) = line.selected else {
             if !line.text.is_empty() {
-                painter.draw_text(
+                painter.draw_text_with_colors(
                     AirPoint::new(AirColumn::new(line.column), AirRow::new(row)),
                     &line.text,
-                    colors.foreground,
-                    colors.background,
-                    AirAttributes::NONE,
+                    colors,
                 );
             }
             return;
@@ -428,7 +425,7 @@ impl AirEditorView {
                     u16::try_from(width).unwrap_or(u16::MAX),
                     1,
                 ),
-                AirCell::new(' ', marked.foreground, marked.background),
+                marked.cell(' '),
             );
         }
         // Puis le texte, grappe par grappe : la couleur change en cours de ligne, et la
@@ -439,12 +436,10 @@ impl AirEditorView {
             let pair = if inside { marked } else { colors };
             let at = column.saturating_sub(self.left_column);
             if let Ok(at) = u16::try_from(at) {
-                painter.draw_text(
+                painter.draw_text_with_colors(
                     AirPoint::new(AirColumn::new(at), AirRow::new(row)),
                     cluster,
-                    pair.foreground,
-                    pair.background,
-                    AirAttributes::NONE,
+                    pair,
                 );
             }
             column = column.saturating_add(grapheme_width(cluster));
@@ -533,10 +528,7 @@ impl AirView for AirEditorView {
         let colors = context.theme.palette.color_pair(AirRole::WindowText);
         let marked = context.theme.palette.color_pair(AirRole::EditorSelected);
         let size = painter.size();
-        painter.fill_rectangle(
-            AirRectangle::new(AirPoint::ORIGIN, size),
-            AirCell::new(' ', colors.foreground, colors.background),
-        );
+        painter.fill_rectangle(AirRectangle::new(AirPoint::ORIGIN, size), colors.cell(' '));
         for (row, line) in self.visible_lines.iter().enumerate() {
             let Ok(row) = u16::try_from(row) else {
                 break;

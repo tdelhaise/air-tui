@@ -25,7 +25,6 @@
 //! l'absence de mécanisme dédié, et il est bien plus faible que celui d'un trou dans le
 //! modèle de découpage.
 
-use crate::cell::{AirAttributes, AirCell};
 use crate::command::AirCommand;
 use crate::geometry::{AirColumn, AirPoint, AirRectangle, AirRow, AirSize};
 use crate::input::event::{AirInputEvent, AirKey, AirMouseButton, AirMouseEventKind};
@@ -177,16 +176,13 @@ impl AirMenu {
 /// entière, et ce cadre n'entoure qu'une partie d'elle.
 fn fill_and_frame(painter: &mut AirPainter<'_>, colors: AirColorPair, glyphs: AirFrameGlyphs) {
     let size = painter.size();
-    painter.fill_rectangle(
-        AirRectangle::new(AirPoint::ORIGIN, size),
-        AirCell::new(' ', colors.foreground, colors.background),
-    );
+    painter.fill_rectangle(AirRectangle::new(AirPoint::ORIGIN, size), colors.cell(' '));
     let right = size.columns.saturating_sub(1);
     let bottom = size.rows.saturating_sub(1);
     let mut put = |column: u16, row: u16, character: char| {
         painter.set_cell(
             AirPoint::new(AirColumn::new(column), AirRow::new(row)),
-            AirCell::new(character, colors.foreground, colors.background),
+            colors.cell(character),
         );
     };
     let mut column = 1;
@@ -429,7 +425,7 @@ impl AirMenuBar {
         let size = painter.size();
         painter.fill_rectangle(
             AirRectangle::from_parts(0, 0, size.columns, 1),
-            AirCell::new(' ', colors.foreground, colors.background),
+            colors.cell(' '),
         );
         for (index, menu) in self.menus.iter().enumerate() {
             let is_open = self.open == Some(index);
@@ -441,29 +437,19 @@ impl AirMenuBar {
             let parts = split_hotkey(menu.label());
             let mut column = AirColumn::new(self.label_column(index));
             let row = AirRow::FIRST;
-            column = painter.draw_text(
+            column = painter.draw_text_with_colors(
                 AirPoint::new(column, row),
                 parts.before,
-                label_colors.foreground,
-                label_colors.background,
-                AirAttributes::NONE,
+                label_colors,
             );
             if let Some(letter) = parts.hotkey {
-                column = painter.draw_text(
+                column = painter.draw_text_with_colors(
                     AirPoint::new(column, row),
                     letter,
-                    letter_colors.foreground,
-                    letter_colors.background,
-                    AirAttributes::NONE,
+                    letter_colors,
                 );
             }
-            painter.draw_text(
-                AirPoint::new(column, row),
-                parts.after,
-                label_colors.foreground,
-                label_colors.background,
-                AirAttributes::NONE,
-            );
+            painter.draw_text_with_colors(AirPoint::new(column, row), parts.after, label_colors);
         }
     }
 
@@ -501,7 +487,7 @@ impl AirMenuBar {
                 while column < right {
                     box_painter.set_cell(
                         AirPoint::new(AirColumn::new(column), row),
-                        AirCell::new(glyphs.horizontal, colors.foreground, colors.background),
+                        colors.cell(glyphs.horizontal),
                     );
                     column = column.saturating_add(1);
                 }
@@ -524,34 +510,28 @@ impl AirMenuBar {
             while column < right {
                 box_painter.set_cell(
                     AirPoint::new(AirColumn::new(column), row),
-                    AirCell::new(' ', item_colors.foreground, item_colors.background),
+                    item_colors.cell(' '),
                 );
                 column = column.saturating_add(1);
             }
             let parts = split_hotkey(item.label());
             let mut text_column = AirColumn::new(BOX_PADDING.saturating_add(1));
-            text_column = box_painter.draw_text(
+            text_column = box_painter.draw_text_with_colors(
                 AirPoint::new(text_column, row),
                 parts.before,
-                item_colors.foreground,
-                item_colors.background,
-                AirAttributes::NONE,
+                item_colors,
             );
             if let Some(letter) = parts.hotkey {
-                text_column = box_painter.draw_text(
+                text_column = box_painter.draw_text_with_colors(
                     AirPoint::new(text_column, row),
                     letter,
-                    letter_colors.foreground,
-                    letter_colors.background,
-                    AirAttributes::NONE,
+                    letter_colors,
                 );
             }
-            box_painter.draw_text(
+            box_painter.draw_text_with_colors(
                 AirPoint::new(text_column, row),
                 parts.after,
-                item_colors.foreground,
-                item_colors.background,
-                AirAttributes::NONE,
+                item_colors,
             );
         }
     }

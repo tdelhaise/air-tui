@@ -59,18 +59,27 @@ impl AirSgrEncoder {
 
     /// Ajoute le paramètre SGR d'une couleur.
     ///
-    /// `is_foreground` choisit entre 38 (caractère) et 48 (fond). Les deux formes sont
-    /// émises en notation étendue : indexée pour la palette du terminal, `2;r;g;b` pour
-    /// les vraies couleurs.
+    /// `is_foreground` choisit entre les paramètres du caractère et ceux du fond. Une
+    /// couleur nommée s'émet en notation étendue — 38 ou 48, puis `5;index` pour la
+    /// palette du terminal ou `2;r;g;b` pour les vraies couleurs.
+    ///
+    /// [`AirColor::TerminalDefault`] emploie 39 et 49, qui ne sont pas de la même nature :
+    /// ils **annulent** une couleur au lieu d'en poser une, et rendent donc au terminal
+    /// celle qu'il employait. C'est ce qui rend un thème transparent sur le fond que
+    /// l'utilisateur a choisi — et c'est pour cela qu'il n'y a pas d'index « par défaut »
+    /// à écrire à la place.
     fn push_color(output: &mut Vec<u8>, color: AirColor, is_foreground: bool) {
+        let extended = if is_foreground { 38 } else { 48 };
+        let restored = if is_foreground { 39 } else { 49 };
         output.push(b';');
-        push_decimal(output, if is_foreground { 38 } else { 48 });
         match color {
             AirColor::Indexed(index) => {
+                push_decimal(output, extended);
                 output.extend_from_slice(b";5;");
                 push_decimal(output, u16::from(index));
             }
             AirColor::Rgb { red, green, blue } => {
+                push_decimal(output, extended);
                 output.extend_from_slice(b";2;");
                 push_decimal(output, u16::from(red));
                 output.push(b';');
@@ -78,6 +87,7 @@ impl AirSgrEncoder {
                 output.push(b';');
                 push_decimal(output, u16::from(blue));
             }
+            AirColor::TerminalDefault => push_decimal(output, restored),
         }
     }
 }
@@ -101,6 +111,7 @@ impl Encoder for AirSgrEncoder {
             (item.attributes.dim, b"2"),
             (item.attributes.italic, b"3"),
             (item.attributes.underline, b"4"),
+            (item.attributes.blink, b"5"),
             (item.attributes.reverse, b"7"),
             (item.attributes.strikethrough, b"9"),
         ] {
@@ -198,6 +209,13 @@ mod tests {
             ),
             (
                 AirAttributes {
+                    blink: true,
+                    ..AirAttributes::NONE
+                },
+                ";5",
+            ),
+            (
+                AirAttributes {
                     reverse: true,
                     ..AirAttributes::NONE
                 },
@@ -237,12 +255,42 @@ mod tests {
                 dim: true,
                 italic: true,
                 underline: true,
+                blink: true,
                 reverse: true,
                 strikethrough: true,
             },
         };
         let rendered = encoded(&mut encoder, &item);
-        assert_eq!(rendered, "\u{1b}[0;1;2;3;4;7;9;38;5;1;48;5;2m");
+        assert_eq!(rendered, "\u{1b}[0;1;2;3;4;5;7;9;38;5;1;48;5;2m");
+    }
+
+    #[test]
+    fn la_couleur_du_terminal_annule_au_lieu_de_poser() {
+        // 39 et 49, et non 38;5;n : ce sont les deux paramètres qui rendent au terminal
+        // la couleur qu'il employait. C'est ce qui rend un thème transparent.
+        let mut encoder = AirSgrEncoder::new();
+        let rendered = encoded(
+            &mut encoder,
+            &presentation(AirColor::TerminalDefault, AirColor::TerminalDefault),
+        );
+        assert_eq!(rendered, "\u{1b}[0;39;49m");
+    }
+
+    #[test]
+    fn la_couleur_du_terminal_se_mele_a_une_couleur_nommee() {
+        // Le cas des skins « defbg » de mc : un avant-plan choisi sur le fond du terminal.
+        let mut encoder = AirSgrEncoder::new();
+        let rendered = encoded(
+            &mut encoder,
+            &presentation(AirColor::Indexed(11), AirColor::TerminalDefault),
+        );
+        assert_eq!(rendered, "\u{1b}[0;38;5;11;49m");
+        encoder.forget();
+        let inverted = encoded(
+            &mut encoder,
+            &presentation(AirColor::TerminalDefault, AirColor::Indexed(4)),
+        );
+        assert_eq!(inverted, "\u{1b}[0;39;48;5;4m");
     }
 
     #[test]

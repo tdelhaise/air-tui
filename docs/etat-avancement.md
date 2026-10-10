@@ -3,8 +3,8 @@
 Document de suivi **vivant** : où en est-on, quelle est la prochaine tâche. Il se met à
 jour à chaque session. L'historique figé est dans [`JOURNAL.md`](JOURNAL.md).
 
-**Dernière mise à jour : 2026-10-10** (jalon M7f — les cases à cocher et les boutons
-radio ; jalon M7e — le double et le triple clic).
+**Dernière mise à jour : 2026-10-10** (jalon M7g — les deux limites du thème, et une
+troisième qui n'en était pas une ; jalon M7f — les cases à cocher et les boutons radio).
 
 ## Dépôt
 
@@ -27,11 +27,14 @@ contrôle, donc **aucun essai en pseudo-terminal** n'y tourne, et le fuzzing exi
 
 ## Où en est-on
 
-Jalons **M0 à M7f terminés**. Le dépôt porte ses conventions, ses ADR fondateurs, le socle
+Jalons **M0 à M7g terminés**. Le dépôt porte ses conventions, ses ADR fondateurs, le socle
 de rendu, le décodeur d'entrée, l'arbre de vues, treize widgets, la **couche MVC** de
 l'ADR-007, la hiérarchie d'objets complète, deux thèmes dont un **compilé**, et deux
 **applications** : `redit` ouvre un fichier, l'édite et l'enregistre ; `rmc` parcourt deux
 arborescences côte à côte.
+
+Depuis M7g, les **trente-neuf** skins livrés avec `mc` 4.8.33 sont importables. Ils
+étaient neuf.
 
 Ce qui manque pour que ce soit un framework complet : l'étage d'entrée natif Linux (M8),
 une liste à plusieurs colonnes, et le **défilement d'un groupe** d'items plus long que sa
@@ -539,6 +542,80 @@ affirmations de M7b se sont révélées fausses. Elles sont corrigées ici plut�
   lignes, et l'émission du jeu de glyphes en est sortie. Les deux sorties ne partagent que
   le tampon qu'elles remplissent.
 
+### Fait au jalon M7g — les deux limites du thème, et une troisième qui n'en était pas une
+
+- **Un attribut par rôle.** `AirColorPair` porte `attributes` en plus de ses deux
+  couleurs : un rôle décrit une **présentation**, pas seulement un couple. Le thème Turbo
+  Vision n'en pose aucun — les seize couleurs du VGA portent déjà la distinction
+  vive/sombre dans l'index lui-même —, et c'est exactement ce qui rend le défaut de ce
+  jalon silencieux.
+- **Le chemin de l'attribut jusqu'à la grille, et aucun autre.**
+  `AirColorPair::cell(character)` et `AirPainter::draw_text_with_colors(origin, text,
+  colors)`. Les vingt-trois appels de widget et les vingt constructions de cellule qui
+  passaient `colors.foreground, colors.background, AirAttributes::NONE` sont réécrits :
+  ce geste était précisément celui qui laissait l'attribut au bord du chemin. `draw_text`
+  garde ses cinq paramètres pour ce qui ne vient pas d'un rôle.
+- **Un test de garde, vérifié par son contrôle.** Ni l'un ni l'autre des deux thèmes livrés
+  ne pose d'attribut : rien ne montrerait un site fautif pendant le développement. Un test
+  peint donc les douze widgets avec une palette dont les trente-huit rôles sont gras et
+  refuse la moindre cellule qui ne l'est pas. Rétabli sur un seul site, il échoue en
+  nommant le widget, la cellule et sa position — c'est ce qui prouve qu'il n'est pas vide.
+- **`AirColor::TerminalDefault`**, émise en SGR par `39` et `49` — les deux paramètres qui
+  *annulent* une couleur au lieu d'en poser une. Elle traverse les trois profondeurs du
+  quantificateur **inchangée**, et c'est la seule dans ce cas : la quantification choisit la
+  plus proche voisine d'une couleur connue, et celle-ci est celle que l'utilisateur a réglée
+  dans son terminal. La remplacer par un index effacerait ce qu'elle demande.
+- **`AirAttributes` gagne `blink`**, cinquième et dernier attribut que `mc` sait écrire.
+  Aucun des trente-neuf skins ne l'emploie — mesuré —, et il est là pour que la
+  correspondance soit **totale** : un test confronte les cinq noms de l'analyseur aux cinq
+  champs de la structure, ce qui rend le refus « cet attribut n'a pas d'expression »
+  démontrablement inatteignable au lieu de supposé tel.
+- **Neuf skins importables sur trente-neuf, puis seize, puis trente-neuf.** Les deux
+  limites levées n'en ont rendu que **seize** importables, là où l'ADR-008 en annonçait
+  trente-huit. Vingt-trois restaient refusés pour une **clef absente** : dix-huit n'écrivent
+  pas `[editor] editframeactive`, quatre n'ont pas de `[editor] _default_`, `gotar.ini` n'a
+  pas de `[core] inputmark`.
+- **Le décompte de l'ADR était faux par construction**, et c'est la leçon du jalon.
+  L'importeur s'arrête à la **première** cause de refus qu'il rencontre : le décompte
+  comptait donc une cause par skin, alors que la plupart en avaient deux. Une mesure qui
+  compte des causes exclusives là où elles se cumulent ne se corrige pas en raffinant le
+  décompte — elle se corrige en levant une limite et en recomptant.
+- **La troisième cause n'était pas une limite du modèle, mais un défaut de l'analyseur.**
+  L'ADR rangeait la clef absente parmi « les limites du modèle d'air-tui ou les lacunes du
+  skin », et écrivait que « `mc` en applique un [défaut] ; air-tui préférerait qu'on décide
+  lequel ». Il n'y avait rien à décider : le manuel de `mc` décrit la cascade en deux
+  endroits — `[core] _default_` est « used in all other sections if they not contain color
+  definitions », et le `_default_` de chaque section est « used [core]._default_ if not
+  specified ». Une clef absente hérite donc de sa section puis de `[core]`. Aucun des
+  vingt-trois skins n'est mal formé ; `mc` les affiche tous.
+- **Une limite attribuée au modèle est une hypothèse** tant qu'elle n'a pas été levée. Les
+  deux premières l'étaient vraiment ; la troisième était une lacune rangée du mauvais côté,
+  et il a suffi de lire le manuel pour s'en apercevoir.
+- **Un rôle composé retient les attributs de la clef qui donne l'avant-plan.** Les trois
+  attributs que les skins emploient portent sur le dessin du caractère, et c'est
+  l'avant-plan qui le décrit ; prendre ceux du fond mettrait en gras un texte dont le skin
+  ne dit rien.
+- **L'artefact committé est inchangé, empreinte comprise** (`0xefc735864405630c`) : le skin
+  par défaut ne pose aucun attribut et n'emploie pas la couleur du terminal, donc la forme
+  courte `pair(f, b)` le décrit toujours en entier. Les quatre fonctions d'aide émises se
+  décident désormais **séparément** — un attribut suffit à envoyer un couple d'index sur la
+  forme longue, qui emploie `index` sans qu'aucune vraie couleur paraisse, et émettre `rgb`
+  avec elle laisserait du code mort que `clippy -D warnings` refuse.
+- **Vérifié sur les octets émis, de bout en bout, sur deux skins jusqu'ici refusés** :
+  `modarcon16-defbg` fait apparaître `;49m` vingt fois — le fond du terminal — et `[0;1;`
+  quatre fois ; `seasons-autumn16M` fait apparaître `[0;4;38;2;0;0;0;48;2;255;201;12m`,
+  c'est-à-dire un souligné sur une vraie couleur, pour la lettre d'accès rapide d'un menu.
+  Les quatre skins essayés ont été compilés **et bâtis** avant que l'artefact soit rétabli.
+- **1203 essais** (douze de plus), 7 codecs toujours à 100 %.
+- **Cinq décomptes faux corrigés**, tous hérités de M7d et M7f : « trente-deux rôles » dans
+  la doc du module `theme`, dans celle de `from_parts` et dans celle de `ROLE_SOURCES`,
+  « huit assiettes » là où il y en a onze, et « quinze correspondances annotées » dans
+  l'ADR-008 là où l'outil en compte seize depuis deux jalons. Un décompte écrit dans un
+  commentaire ne se recompte jamais tout seul.
+- **Deux affirmations fausses corrigées dans `cell.rs`** : le doc-comment d'`AirColor`
+  annonçait le quantificateur « prévu au jalon M5 et **n'est pas écrit** », celui
+  d'`AirCell` les tables UCD de même. Les deux existent depuis M5 et M3.
+
 ### Défauts ouverts
 
 *(aucun à ce jour)*
@@ -564,9 +641,6 @@ affirmations de M7b se sont révélées fausses. Elles sont corrigées ici plut�
   découpage du peintre ne souffre aucune exception. `AirRole::ButtonShadow` est dans la
   palette, transcrit de Borland comme de `mc`, et **aucun widget ne le lit**. Une assiette
   qui décrirait une ombre que rien ne dessine annoncerait une capacité absente.
-- Un **attribut par rôle** dans la palette, et une couleur « défaut du terminal » dans
-  `AirColor` : les deux lèveraient vingt-neuf des trente refus de l'importeur de skins. Le
-  trentième, `gotar.ini`, demande en plus de décider quoi faire d'une **clef absente**.
 - L'échange avec le **presse-papiers du système** : `AirClipboard` est interne au
   processus. Il ne parle ni à `pbcopy`, ni à `wl-clipboard`, ni à OSC 52 — trois mécanismes
   différents, dont le dernier est refusé par défaut par la plupart des terminaux et les
@@ -608,13 +682,16 @@ affirmations de M7b se sont révélées fausses. Elles sont corrigées ici plut�
 demandent une console physique, inaccessible par SSH. Écrire du code qu'on ne peut pas
 vérifier est exactement ce que ce dépôt refuse. Les candidats, du plus petit au plus gros :
 
-1. **Les deux limites du thème** : un attribut par rôle dans la palette, une couleur
-   « défaut du terminal » dans `AirColor`. Chiffré : vingt-neuf des trente skins refusés
-   sur trente-neuf deviendraient importables. C'est de la donnée, pas de l'architecture.
-2. **L'annulation** dans `redit` — `Ctrl`+`Z`. La sélection vient d'ajouter des opérations
-   dont l'inverse n'est pas évident (remplacer une sélection par un collage est deux
-   gestes en un), donc le moment est bon pour décider si le modèle tient un journal
-   d'annulation ou des instantanés.
+1. **L'annulation** dans `redit` — `Ctrl`+`Z`. La sélection a ajouté des opérations dont
+   l'inverse n'est pas évident (remplacer une sélection par un collage est deux gestes en
+   un), donc le moment est bon pour décider si le modèle tient un journal d'annulation ou
+   des instantanés. C'est une décision de conception, et elle mérite un ADR avant du code.
+2. **Choisir le skin ailleurs qu'à la compilation.** L'ADR-008 interdit d'analyser un thème
+   à l'exécution, et le dépôt porte **un** artefact à la fois : les trente-neuf skins sont
+   importables, mais pas simultanément. Compiler plusieurs artefacts nommés — le choix se
+   faisant alors par une ligne de commande et non par un fichier lu au démarrage — tiendrait
+   l'ADR tout en rendant la capacité utilisable. À chiffrer : le poids d'un artefact et le
+   temps de compilation.
 3. **La peinture hors des limites d'une vue**, décision d'architecture dont dépendent
    `AirDecorations` et l'ombre portée. À trancher avant d'écrire la troisième assiette du
    triplet de l'ADR-008, pas après.
@@ -645,4 +722,5 @@ des numéros de touches fonctionnelles.
 | M7d | la sélection de texte, le presse-papiers interne, le collage encadré | **fait** |
 | M7e | le double et le triple clic, synthétisés par la boucle | **fait** |
 | M7f | les cases à cocher et les boutons radio | **fait** |
+| M7g | les attributs par rôle, la couleur du terminal, la clef absente héritée | **fait** |
 | M8 | étage natif Linux : evdev, `TIOCLINUX`, gpm | à faire |

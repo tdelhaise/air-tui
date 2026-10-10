@@ -37,7 +37,6 @@
 //! plaçant dans un [`crate::widgets::AirPanel`], qui porte un titre — c'est ainsi que les
 //! dialogues de Turbo Vision présentent leurs options.
 
-use crate::cell::{AirAttributes, AirCell};
 use crate::geometry::{AirColumn, AirPoint, AirRectangle, AirRow};
 use crate::input::event::{AirInputEvent, AirKey, AirMouseButton, AirMouseEventKind};
 use crate::theme::{AirClusterGlyphs, AirRole};
@@ -325,10 +324,7 @@ impl AirView for AirCluster {
         let hotkey = palette.color_pair(AirRole::ClusterHotkey);
         let glyphs = self.glyphs(context.theme);
         let size = painter.size();
-        painter.fill_rectangle(
-            AirRectangle::new(AirPoint::ORIGIN, size),
-            AirCell::new(' ', normal.foreground, normal.background),
-        );
+        painter.fill_rectangle(AirRectangle::new(AirPoint::ORIGIN, size), normal.cell(' '));
         let focused_view = self.state.is_focused();
         for (index, item) in self.items.iter().enumerate() {
             let Ok(row) = u16::try_from(index) else {
@@ -348,12 +344,10 @@ impl AirView for AirCluster {
             let mark = if item.checked { glyphs.mark } else { ' ' };
             let box_text = format!("{}{}{} ", glyphs.left, mark, glyphs.right);
             let row = AirRow::new(row);
-            let mut column = painter.draw_text(
+            let mut column = painter.draw_text_with_colors(
                 AirPoint::new(AirColumn::FIRST, row),
                 &box_text,
-                colors.foreground,
-                colors.background,
-                AirAttributes::NONE,
+                colors,
             );
             let label = split_hotkey(&item.label);
             for (text, pair) in [
@@ -364,13 +358,7 @@ impl AirView for AirCluster {
                 if text.is_empty() {
                     continue;
                 }
-                column = painter.draw_text(
-                    AirPoint::new(column, row),
-                    text,
-                    pair.foreground,
-                    pair.background,
-                    AirAttributes::NONE,
-                );
+                column = painter.draw_text_with_colors(AirPoint::new(column, row), text, pair);
             }
         }
     }

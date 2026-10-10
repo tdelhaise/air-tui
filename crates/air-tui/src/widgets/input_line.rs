@@ -46,7 +46,6 @@
 //! Les garder écrirait un caractère de contrôle dans le texte ; refuser le collage entier
 //! perdrait la saisie.
 
-use crate::cell::{AirAttributes, AirCell};
 use crate::geometry::{AirColumn, AirPoint, AirRectangle, AirRow};
 use crate::input::event::{AirInputEvent, AirKey, AirMouseButton, AirMouseEventKind};
 use crate::theme::AirRole;
@@ -501,18 +500,16 @@ impl AirView for AirInputLine {
         let size = painter.size();
         painter.fill_rectangle(
             AirRectangle::from_parts(0, 0, size.columns, 1),
-            AirCell::new(' ', colors.foreground, colors.background),
+            colors.cell(' '),
         );
         let Some(visible) = self.text.get(self.first_visible..) else {
             return;
         };
         let Some((start, end)) = self.selection() else {
-            painter.draw_text(
+            painter.draw_text_with_colors(
                 AirPoint::new(AirColumn::FIRST, AirRow::FIRST),
                 visible,
-                colors.foreground,
-                colors.background,
-                AirAttributes::NONE,
+                colors,
             );
             return;
         };
@@ -528,12 +525,10 @@ impl AirView for AirInputLine {
             }
             let inside = offset >= start && offset < end;
             let pair = if inside { marked } else { colors };
-            painter.draw_text(
+            painter.draw_text_with_colors(
                 AirPoint::new(AirColumn::new(column), AirRow::FIRST),
                 cluster,
-                pair.foreground,
-                pair.background,
-                AirAttributes::NONE,
+                pair,
             );
             offset = offset.saturating_add(cluster.len());
             column = column.saturating_add(u16::try_from(grapheme_width(cluster)).unwrap_or(1));

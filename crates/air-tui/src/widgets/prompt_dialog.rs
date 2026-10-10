@@ -31,7 +31,6 @@
 //! donc un second mécanisme de focus à côté de celui de l'arbre — c'est une absence
 //! voulue.
 
-use crate::cell::{AirAttributes, AirCell};
 use crate::command::{AirCommand, CANCEL, OK};
 use crate::geometry::{AirColumn, AirPoint, AirRectangle, AirRow, AirSize};
 use crate::input::event::{AirInputEvent, AirKey};
@@ -268,16 +267,11 @@ impl AirView for AirPromptDialog {
     fn draw_content(&self, painter: &mut AirPainter<'_>, context: &AirDrawContext<'_>) {
         let colors = context.theme.palette.color_pair(AirRole::DialogInterior);
         let size = painter.size();
-        painter.fill_rectangle(
-            AirRectangle::new(AirPoint::ORIGIN, size),
-            AirCell::new(' ', colors.foreground, colors.background),
-        );
-        painter.draw_text(
+        painter.fill_rectangle(AirRectangle::new(AirPoint::ORIGIN, size), colors.cell(' '));
+        painter.draw_text_with_colors(
             AirPoint::new(AirColumn::FIRST, AirRow::FIRST),
             &self.label,
-            colors.foreground,
-            colors.background,
-            AirAttributes::NONE,
+            colors,
         );
         for control in [
             &self.input as &dyn AirView,

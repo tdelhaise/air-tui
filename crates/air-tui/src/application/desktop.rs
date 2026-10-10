@@ -17,7 +17,6 @@
 //! [`crate::view::group`] : trois conteneurs la cherchent, et la recopier dans chacun
 //! garantirait qu'ils divergent.
 
-use crate::cell::AirCell;
 use crate::geometry::{AirPoint, AirRectangle};
 use crate::theme::AirRole;
 use crate::view::group::{bring_child_to_front, focus_child, focused_child, position_of};
@@ -182,11 +181,7 @@ impl AirView for AirDesktop {
         let size = painter.size();
         painter.fill_rectangle(
             AirRectangle::new(AirPoint::ORIGIN, size),
-            AirCell::new(
-                context.theme.glyphs.desktop_fill,
-                colors.foreground,
-                colors.background,
-            ),
+            colors.cell(context.theme.glyphs.desktop_fill),
         );
     }
 
