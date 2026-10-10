@@ -84,6 +84,18 @@ impl AirGlyphSet {
     }
 }
 
+impl AirGlyphSet {
+    /// Le jeu de glyphes de Midnight Commander, compilé depuis son skin par défaut.
+    ///
+    /// Quatre glyphes n'en viennent pas, faute d'être décrits par un skin : le
+    /// remplissage du bureau, les deux crochets de la case de fermeture et les deux
+    /// flèches d'ascenseur. L'artefact généré dit lesquels et pourquoi.
+    #[must_use]
+    pub const fn midnight_commander() -> Self {
+        crate::theme::skins::midnight_commander::glyphs()
+    }
+}
+
 impl Default for AirGlyphSet {
     fn default() -> Self {
         Self::turbo_vision()

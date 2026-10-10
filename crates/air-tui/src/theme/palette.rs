@@ -193,6 +193,41 @@ pub struct AirPalette {
 }
 
 impl AirPalette {
+    /// Assemble une palette à partir de ses sept assiettes.
+    ///
+    /// Ce constructeur existe pour les thèmes **compilés** : l'artefact que produit
+    /// `cargo xtask import-mc-skin` vit dans `theme/skins/` et n'a pas accès aux champs
+    /// privés. Il est `pub(crate)` pour que l'assemblage reste une affaire interne — un
+    /// thème s'obtient par son nom, jamais en posant vingt-huit couples à la main.
+    pub(crate) const fn from_parts(
+        desktop_background: AirColorPair,
+        menu: [AirColorPair; 6],
+        status: [AirColorPair; 3],
+        window: [AirColorPair; 6],
+        dialog: [AirColorPair; 4],
+        button: [AirColorPair; 6],
+        scroll_bar: [AirColorPair; 2],
+    ) -> Self {
+        Self {
+            desktop_background,
+            menu,
+            status,
+            window,
+            dialog,
+            button,
+            scroll_bar,
+        }
+    }
+
+    /// La palette de Midnight Commander, compilée depuis son skin par défaut.
+    ///
+    /// Les valeurs viennent de `crate::theme::skins::midnight_commander`, produit par
+    /// `cargo xtask import-mc-skin` — voir `NOTICE` pour l'origine et sa licence.
+    #[must_use]
+    pub const fn midnight_commander() -> Self {
+        crate::theme::skins::midnight_commander::palette()
+    }
+
     /// La palette de Turbo Vision, transcrite depuis `magiblot/tvision`.
     ///
     /// Chaque valeur porte l'attribut VGA d'origine et la chaîne qui y mène, pour que la
