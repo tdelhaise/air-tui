@@ -69,6 +69,37 @@ dialogue.
   conservées : elles sont orthogonales au MVC et ce sont elles qui font fonctionner menus,
   raccourcis et barre de statut.
 
+## Éprouvé au jalon M7d : la sélection et le presse-papiers
+
+Trois questions que la sélection a posées, et que ce découpage a tranchées sans amendement.
+
+**Où vit la sélection ?** Dans le modèle, parce que le texte y est. Mais ce que la vue
+dessine est un intervalle de **colonnes**, quand les bornes sont des décalages en octets :
+la conversion demande le début de la ligne, que le reflet ne garde pas. Elle se fait donc à
+l'étape 3, au moment où le contrôleur pousse le reflet — seul instant où la vue voit le
+modèle. La contrainte a désigné sa place ; il n'a pas fallu la choisir.
+
+**Où vit le presse-papiers ?** Ni dans le modèle, ni dans la vue. Il est partagé entre les
+widgets éditables, donc il appartient au **contrôleur**. Les vues le demandent par trois
+commandes — `COPY`, `CUT`, `PASTE` — sans jamais le toucher, exactement comme un ascenseur
+demande une position sans rien défiler. Un widget qui copierait lui-même aurait besoin
+d'une référence mutable vers un état qu'il ne possède pas, ce que cet ADR interdit.
+
+**Un troisième compteur était-il nécessaire ?** Oui, et la raison est instructive :
+abandonner une sélection ne déplace pas le curseur, et la vue doit pourtant repeindre.
+Réutiliser la génération du curseur aurait laissé une surbrillance orpheline à l'écran. Un
+compteur par chose qui peut changer **seule** — c'est la règle, et elle se vérifie en
+essayant de la violer.
+
+Le grisage en *pull* a servi une seconde fois sans rien ajouter : « Copier » et « Couper »
+n'ont pas de sens sans sélection, « Coller » n'en a pas sur un presse-papiers vide. L'état
+est lu à chaque tour, personne n'est notifié, et l'item de menu se grise partout à la fois.
+
+**Une exception, assumée :** le champ de saisie tient sa sélection lui-même. Il tient déjà
+son texte, et lui donner un modèle pour une ligne serait payer cet ADR sans rien en
+retirer. La frontière n'est pas « tout widget a un modèle », elle est « ce qui est partagé
+ou persistant a un modèle ».
+
 ## Alternatives écartées
 
 **`Rc<RefCell<Model>>` partagé entre les vues.** Panic au premier dessin où deux vues

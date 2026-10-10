@@ -3,8 +3,8 @@
 Document de suivi **vivant** : où en est-on, quelle est la prochaine tâche. Il se met à
 jour à chaque session. L'historique figé est dans [`JOURNAL.md`](JOURNAL.md).
 
-**Dernière mise à jour : 2026-10-10** (jalon M7c — le type d'événement de touche, décodé
-puis écarté au bon endroit ; jalon M7b — les listes et la coquille `rmc` à deux panneaux).
+**Dernière mise à jour : 2026-10-10** (jalon M7d — la sélection de texte, le presse-papiers
+interne et le collage encadré ; jalon M7c — le type d'événement de touche).
 
 ## Dépôt
 
@@ -27,15 +27,15 @@ contrôle, donc **aucun essai en pseudo-terminal** n'y tourne, et le fuzzing exi
 
 ## Où en est-on
 
-Jalons **M0 à M7c terminés**. Le dépôt porte ses conventions, ses ADR fondateurs, le socle
+Jalons **M0 à M7d terminés**. Le dépôt porte ses conventions, ses ADR fondateurs, le socle
 de rendu, le décodeur d'entrée, l'arbre de vues, douze widgets, la **couche MVC** de
 l'ADR-007, la hiérarchie d'objets complète, deux thèmes dont un **compilé**, et deux
 **applications** : `redit` ouvre un fichier, l'édite et l'enregistre ; `rmc` parcourt deux
 arborescences côte à côte.
 
-Ce qui manque pour que ce soit un framework complet : la **sélection** de texte — donc le
-copier-coller interne —, les cases à cocher et les boutons radio, et l'étage d'entrée natif
-Linux (M8).
+Ce qui manque pour que ce soit un framework complet : les **cases à cocher** et les
+**boutons radio**, le **double clic** — qui demande une horloge —, et l'étage d'entrée
+natif Linux (M8).
 
 ### Fait
 
@@ -387,13 +387,63 @@ affirmations de M7b se sont révélées fausses. Elles sont corrigées ici plut�
   d'extraire celui qu'on a reçu —, elle n'a plus de branche morte. Le code d'essai compte
   dans la mesure, et c'est voulu.
 
+### Fait au jalon M7d — la sélection de texte, et le presse-papiers
+
+- **La sélection est une ancre, pas deux bornes.** La sélection est l'intervalle entre
+  l'ancre et le curseur, *dans l'ordre où ils se trouvent*. Garder deux bornes déjà
+  ordonnées ferait perdre le sens du geste : sélectionner trois caractères vers la droite
+  puis remonter vers la gauche doit **réduire** la sélection, et non en commencer une
+  autre. C'est éprouvé par un essai qui vaut pour les deux widgets.
+- **Les quatorze actions `Move*` sont devenues `Move { motion, extend }`**, avec
+  `AirTextMotion` pour le déplacement et deux constructeurs qui nomment les deux valeurs du
+  drapeau — `move_by` efface la sélection, `select_by` l'étend. Les décliner en deux
+  familles de variantes aurait obligé à ajouter chaque déplacement futur **à deux
+  endroits**, et le jalon M7c venait de montrer ce que coûte une règle écrite deux fois.
+  C'est une rupture d'API, assumée en `y` (ADR-009).
+- **Trois rôles de palette, portée à trente-cinq** : `EditorSelected`, `InputLineText`,
+  `InputLineSelected`. Les valeurs de Turbo Vision sont confirmées par une source
+  indépendante du calcul, comme à M7b — `tvdemo2.cpp` nomme lui-même « Highlighted text »
+  (14), « Input normal » (50) et « Input selected » (51). Et la transcription a **validé
+  l'existant** : le texte non sélectionné de l'éditeur n'a pas besoin d'un rôle propre,
+  parce que `cpEditor[1]` est déjà `WindowText`, transcrit à M5. La vue peignait juste
+  depuis le début, sans qu'on sache pourquoi.
+- **Les gestes, au clavier et à la souris** : `Maj`+flèches, `Maj`+`Début`, `Maj`+`Fin`,
+  `Maj`+clic, le glisser, `Ctrl`+`A`. Le glisser n'a demandé **aucun état** dans les vues :
+  l'appui efface la sélection, donc le premier déplacement pose l'ancre là où le bouton est
+  tombé. Garder le point d'appui dans la vue l'aurait dédoublé avec l'ancre.
+- **Une répétition du piège de M7c, évitée** : la surbrillance se vérifie sur les
+  **couleurs** de la surface rendue, jamais sur les caractères. Un essai qui ne regarderait
+  que le texte passerait alors que rien n'est surligné.
+- **Le presse-papiers est au contrôleur**, ni au modèle ni à la vue, parce qu'il est
+  partagé entre les deux widgets éditables. Les vues le **demandent** par trois commandes —
+  `COPY`, `CUT`, `PASTE` — sans jamais le toucher, comme un ascenseur demande une position
+  sans rien défiler. `AirClipboard` refuse un texte vide : couper une sélection vide ne doit
+  pas détruire une copie que l'utilisateur croyait sûre.
+- **Le collage encadré du terminal est enfin consommé.** Le décodeur produisait
+  `AirInputEvent::Paste` depuis le jalon M1 et **personne ne le lisait** : la séquence était
+  décodée, puis jetée. Les deux widgets éditables le traitent désormais, par la même action
+  `InsertText` que le presse-papiers interne — un collage n'est pas une suite de frappes, et
+  le traiter comme telle ferait avancer la génération une fois par caractère.
+- **Le grisage en *pull* a servi une seconde fois sans rien ajouter** : « Copier » et
+  « Couper » grisés sans sélection, « Coller » grisé sur un presse-papiers vide.
+- **Trois attendus d'essais faux, et le code juste à chaque fois.** Le surlignage après un
+  défilement horizontal (la fenêtre montre les colonnes 5 à 8, donc `gh` tombe en positions
+  1 et 2) ; et coller juste après avoir copié, qui **remplace** la sélection au lieu de la
+  dupliquer, parce que copier ne désélectionne pas — ce qui est le comportement correct.
+  L'essai a été scindé en deux, chacun disant ce qu'il vérifie.
+- **1124 essais** (soixante de plus), les 7 codecs toujours à 100 %, et neuf skins
+  importables sur trente-neuf — un de moins qu'à M7b, pour une raison nouvelle au décompte
+  et consignée dans l'ADR-008.
+
 ### Défauts ouverts
 
 *(aucun à ce jour)*
 
 ### Pas fait — et à ne pas annoncer comme fait
 
-- Le double clic : il demande une horloge, donc il n'a pas sa place dans un décodeur pur.
+- Le double clic, qui sélectionnerait un mot : il demande une **horloge**, et le décodeur
+  est pur. C'est désormais le seul geste de sélection qui manque, et la décision à prendre
+  est *où* l'horloge vit — la boucle d'application en a une, le décodeur n'en veut pas.
 - La table des touches fonctionnelles de Kitty au-delà des numéros certains : pavé
   numérique, touches multimédia, touches modificatrices seules. Hors table, donc consommées
   sans événement — et la table a été écrite d'après la spécification, **pas vérifiée contre
@@ -414,12 +464,14 @@ affirmations de M7b se sont révélées fausses. Elles sont corrigées ici plut�
   palette, transcrit de Borland comme de `mc`, et **aucun widget ne le lit**. Une assiette
   qui décrirait une ombre que rien ne dessine annoncerait une capacité absente.
 - Un **attribut par rôle** dans la palette, et une couleur « défaut du terminal » dans
-  `AirColor` : les deux lèveraient les vingt-neuf refus de l'importeur de skins.
+  `AirColor` : les deux lèveraient vingt-neuf des trente refus de l'importeur de skins. Le
+  trentième, `gotar.ini`, demande en plus de décider quoi faire d'une **clef absente**.
 - Les **cases à cocher et boutons radio**.
-- La **sélection** de texte, dans la vue d'édition comme dans le champ de saisie :
-  `Maj`+flèche, le copier-coller interne, la surbrillance, et le double-clic qui en
-  dépend. Les deux n'ont qu'un curseur, pas d'étendue sélectionnée. C'est la plus grosse
-  absence de `redit`.
+- L'échange avec le **presse-papiers du système** : `AirClipboard` est interne au
+  processus. Il ne parle ni à `pbcopy`, ni à `wl-clipboard`, ni à OSC 52 — trois mécanismes
+  différents, dont le dernier est refusé par défaut par la plupart des terminaux et les
+  deux premiers demandent de lancer un programme. Le couper-coller fonctionne **dans**
+  l'application, et c'est tout ce qui est promis.
 - Dans `redit` : pas de **recherche**, pas d'**annulation**, pas de **tabulation** — elle
   demande de choisir des taquets et de les appliquer au rendu comme au calcul de colonne —,
   et pas de seconde fenêtre. Le bureau sait en tenir plusieurs, rien ne les crée.
@@ -456,16 +508,20 @@ affirmations de M7b se sont révélées fausses. Elles sont corrigées ici plut�
 demandent une console physique, inaccessible par SSH. Écrire du code qu'on ne peut pas
 vérifier est exactement ce que ce dépôt refuse. Les candidats, du plus petit au plus gros :
 
-1. **Les deux limites du thème** : un attribut par rôle dans la palette, une couleur
-   « défaut du terminal » dans `AirColor`. Chiffré : les vingt-neuf skins refusés sur
-   trente-neuf deviendraient importables. C'est de la donnée, pas de l'architecture.
-2. **Les cases à cocher et les boutons radio**, qui complètent les contrôles de dialogue
-   avec `AirPromptDialog`.
-3. **La sélection de texte** — la plus grosse absence de `redit`. Elle débloque d'un coup
-   `Maj`+flèche, le copier-coller interne, la surbrillance et le double-clic, et elle
-   touche la vue d'édition comme le champ de saisie. C'est le plus gros chantier de la
-   liste, et le plus visible à l'usage.
-4. **La peinture hors des limites d'une vue**, décision d'architecture dont dépendent
+1. **Le double clic**, dernier geste de sélection qui manque. Il sélectionnerait un mot,
+   et `unicode` sait déjà découper les mots (UAX #29, jalon M6) : tout est là sauf
+   l'**horloge**. La décision est *où* elle vit — la boucle d'application en a une, le
+   décodeur la refuse parce qu'il est pur. Petit à écrire une fois tranché.
+2. **Les deux limites du thème** : un attribut par rôle dans la palette, une couleur
+   « défaut du terminal » dans `AirColor`. Chiffré : vingt-neuf des trente skins refusés
+   sur trente-neuf deviendraient importables. C'est de la donnée, pas de l'architecture.
+3. **Les cases à cocher et les boutons radio**, qui complètent les contrôles de dialogue
+   avec `AirPromptDialog`. C'est désormais la plus grosse absence du catalogue de widgets.
+4. **L'annulation** dans `redit` — `Ctrl`+`Z`. La sélection vient d'ajouter des opérations
+   dont l'inverse n'est pas évident (remplacer une sélection par un collage est deux
+   gestes en un), donc le moment est bon pour décider si le modèle tient un journal
+   d'annulation ou des instantanés.
+5. **La peinture hors des limites d'une vue**, décision d'architecture dont dépendent
    `AirDecorations` et l'ombre portée. À trancher avant d'écrire la troisième assiette du
    triplet de l'ADR-008, pas après.
 
@@ -492,4 +548,5 @@ des numéros de touches fonctionnelles.
 | M7a | thème Midnight Commander et importeur de skins | **fait** |
 | M7b | la coquille `rmc` à deux panneaux, et les listes | **fait** |
 | M7c | le type d'événement de touche : décodé partout, écarté à la distribution | **fait** |
+| M7d | la sélection de texte, le presse-papiers interne, le collage encadré | **fait** |
 | M8 | étage natif Linux : evdev, `TIOCLINUX`, gpm | à faire |

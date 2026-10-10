@@ -57,10 +57,11 @@ L'**avancement** vit dans [`etat-avancement.md`](etat-avancement.md), l'**histor
 | `unicode` | largeur d'affichage, graphèmes **et mots** (UAX #29), tables générées | M3, M6 |
 | `view` | trait `AirView`, peintre à découpage réel, trois phases, contexte de dessin, accès typé | M4, M5b, M6 |
 | `command` | `AirCommandSet` — le grisage en *pull* | M4 |
-| `theme` | palette par rôles (trente-deux), glyphes, quantificateur, **deux thèmes** | M5, M7 |
+| `clipboard` | `AirClipboard` — le presse-papiers interne, possédé par le contrôleur | M7d |
+| `theme` | palette par rôles (trente-cinq), glyphes, quantificateur, **deux thèmes** | M5, M7 |
 | `theme::skins` | les thèmes compilés depuis un skin de Midnight Commander — **généré** | M7 |
 | `widgets` | panneau, étiquette, fenêtre, bouton, barre de menu, barre de statut, champ de saisie, ascenseur, vue d'édition, dialogue de saisie, **liste** | M5, M5b, M6, M7b |
-| `model` | `AirModel`, `AirChangeSet`, `AirGeneration`, `AirTextBuffer` — la couche MVC | M6 |
+| `model` | `AirModel`, `AirChangeSet`, `AirGeneration`, `AirTextBuffer` et sa **sélection** — la couche MVC | M6, M7d |
 | `application` | `AirApplication`, `AirScreen`, `AirDesktop` — la boucle et le chrome | M6 |
 
 ## Les modules de `xtask`

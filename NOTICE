@@ -46,10 +46,11 @@ Le fichier `crates/air-tui/src/theme/skins/midnight_commander.rs` est **génér�
 du skin par défaut de GNU Midnight Commander — `share/mc/skins/default.ini`, version
 **4.8.33** — par `cargo xtask import-mc-skin` (ADR-008).
 
-Ce qui en est repris est la **donnée de configuration** de ce fichier : trente-deux
-couples de couleurs — vingt-huit depuis le jalon M7a, quatre de plus pour les listes depuis
-M7b — et douze caractères de dessin de cadre, plus la marque de la case de fermeture,
-transposés dans le modèle de rôles sémantiques d'air-tui. Aucune ligne de code de Midnight Commander n'est reprise, et
+Ce qui en est repris est la **donnée de configuration** de ce fichier : trente-cinq
+couples de couleurs — vingt-huit depuis le jalon M7a, quatre de plus pour les listes à
+M7b, trois de plus pour le texte sélectionné à M7d — et douze caractères de dessin de
+cadre, plus la marque de la case de fermeture et le curseur d'ascenseur, transposés dans
+le modèle de rôles sémantiques d'air-tui. Aucune ligne de code de Midnight Commander n'est reprise, et
 air-tui n'embarque ni son analyseur de skins ni aucune de ses sources.
 
 GNU Midnight Commander est distribué sous **GNU General Public License, version 3 ou

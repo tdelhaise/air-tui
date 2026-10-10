@@ -1,7 +1,7 @@
 [package]
 name = "xtask"
 description = "Outillage du dépôt air-tui : tables Unicode, conformité des segmentations, et les trois contrôles de conventions."
-version = "0.3.1"
+version = "0.3.2"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -17,7 +17,7 @@ publish = false
 # aux essais officiels de l'annexe 29 : vérifier le code demande de l'appeler. La flèche va
 # de l'outillage vers le framework, jamais l'inverse.
 [dependencies]
-air-tui = { path = "../crates/air-tui", version = "0.8.1" }
+air-tui = { path = "../crates/air-tui", version = "0.9.0" }
 
 [lints]
 workspace = true
