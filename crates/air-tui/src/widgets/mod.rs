@@ -6,7 +6,7 @@
 //!
 //! # État
 //!
-//! Dix widgets, tous colorés par les rôles du thème et jamais par une couleur écrite en
+//! Onze widgets, tous colorés par les rôles du thème et jamais par une couleur écrite en
 //! dur :
 //!
 //! - [`AirPanel`], un conteneur bordé à titre, et [`AirWindow`], une fenêtre à case de
@@ -19,7 +19,9 @@
 //! - [`AirScrollBar`], un ascenseur qui **demande** une position sans rien défiler ;
 //! - [`AirEditorView`], le reflet d'un [`crate::model::AirTextBuffer`] — la seule vue qui
 //!   produit des **intentions** au lieu de commandes, parce qu'éditer du texte ne se
-//!   réduit pas à un numéro de commande (ADR-007).
+//!   réduit pas à un numéro de commande (ADR-007) ;
+//! - [`AirPromptDialog`], une question et sa réponse, à poser en modal par
+//!   [`crate::application::AirScreen::set_modal`].
 //!
 //! Ce qui manque encore : les listes, les cases à cocher et les boutons radio, et la
 //! sélection dans l'éditeur comme dans le champ de saisie.
@@ -37,6 +39,14 @@
 //! C'est un point de revue, pas une habitude : un widget qui laisse le défaut doit avoir
 //! une raison.
 //!
+//! # Deux widgets composent eux-mêmes
+//!
+//! [`AirMenuBar`] dessine son menu déroulant et [`AirPromptDialog`] ses trois contrôles
+//! **sans passer par `children`** : ils tiennent leurs pièces dans des champs typés, les
+//! dessinent par des peintres fils et traduisent les coordonnées comme la traversée le
+//! fait. La raison est la même dans les deux cas : `children` rend des
+//! `Box<dyn AirView>`, et un dialogue dont on ne peut plus lire la réponse ne sert à rien.
+//!
 //! # Les phases, et qui les demande
 //!
 //! Deux widgets sortent de la phase du focus, et pour des raisons opposées :
@@ -53,6 +63,7 @@ pub mod hotkey;
 pub mod input_line;
 pub mod menu_bar;
 pub mod panel;
+pub mod prompt_dialog;
 pub mod scroll_bar;
 pub mod static_text;
 pub mod status_line;
@@ -64,6 +75,7 @@ pub use hotkey::{AirHotkeyLabel, split_hotkey};
 pub use input_line::AirInputLine;
 pub use menu_bar::{AirMenu, AirMenuBar, AirMenuItem};
 pub use panel::AirPanel;
+pub use prompt_dialog::AirPromptDialog;
 pub use scroll_bar::{AirOrientation, AirScrollBar};
 pub use static_text::AirStaticText;
 pub use status_line::{AirStatusItem, AirStatusLine};

@@ -39,20 +39,51 @@
 
 use crate::geometry::{AirRectangle, AirSize};
 use crate::view::painter::AirPainter;
-use crate::view::{AirDrawContext, AirView, AirViewId, AirViewState};
+use crate::view::{
+    AirContext, AirDrawContext, AirEvent, AirOutcome, AirView, AirViewId, AirViewState,
+    dispatch_event,
+};
+
+/// Une pièce de l'écran, et sa place dans l'ordre de profondeur.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Slot {
+    /// Le bureau — au fond, parce qu'il est le fond.
+    Desktop,
+    /// La barre de statut.
+    StatusLine,
+    /// La barre de menu — devant le bureau, pour que son déroulant recouvre.
+    MenuBar,
+    /// Le modal — devant tout, parce qu'il prend tout.
+    Modal,
+}
+
+impl Slot {
+    /// L'ordre imposé, de l'arrière vers l'avant.
+    const ORDER: [Self; 4] = [Self::Desktop, Self::StatusLine, Self::MenuBar, Self::Modal];
+
+    /// La place de cette pièce dans [`Self::ORDER`].
+    const fn position(self) -> usize {
+        match self {
+            Self::Desktop => 0,
+            Self::StatusLine => 1,
+            Self::MenuBar => 2,
+            Self::Modal => 3,
+        }
+    }
+}
 
 /// Le chrome plein écran d'une application.
 pub struct AirScreen {
     /// L'état commun.
     state: AirViewState,
-    /// Les enfants, dans l'ordre imposé : bureau, barre de statut, barre de menu.
+    /// Les enfants, dans l'ordre imposé par [`Slot::ORDER`].
     children: Vec<Box<dyn AirView>>,
-    /// Vrai si un bureau a été posé.
-    has_desktop: bool,
-    /// Vrai si une barre de statut a été posée.
-    has_status_line: bool,
-    /// Vrai si une barre de menu a été posée.
-    has_menu_bar: bool,
+    /// Les pièces posées, indexées par [`Slot::position`].
+    ///
+    /// Un tableau plutôt que quatre booléens nommés : les quatre se lisent et s'écrivent
+    /// toujours par la même pièce, et un booléen par nom obligerait à répéter le `match`
+    /// dans chaque accesseur.
+    held: [bool; Slot::ORDER.len()],
 }
 
 impl AirScreen {
@@ -66,31 +97,59 @@ impl AirScreen {
         Self {
             state,
             children: Vec::new(),
-            has_desktop: false,
-            has_status_line: false,
-            has_menu_bar: false,
+            held: [false; Slot::ORDER.len()],
         }
     }
 
-    /// L'indice du bureau dans la liste des enfants.
-    fn desktop_index(&self) -> Option<usize> {
-        if self.has_desktop { Some(0) } else { None }
-    }
-
-    /// L'indice de la barre de statut.
-    fn status_line_index(&self) -> Option<usize> {
-        if !self.has_status_line {
+    /// La place d'une pièce dans la liste des enfants, si elle est posée.
+    fn index_of(&self, slot: Slot) -> Option<usize> {
+        if !self.holds(slot) {
             return None;
         }
-        Some(usize::from(self.has_desktop))
+        Some(self.insertion_index(slot))
     }
 
-    /// L'indice de la barre de menu : toujours le dernier.
-    fn menu_bar_index(&self) -> Option<usize> {
-        if !self.has_menu_bar {
-            return None;
+    /// Vrai si la pièce est posée.
+    fn holds(&self, slot: Slot) -> bool {
+        self.held.get(slot.position()).copied().unwrap_or(false)
+    }
+
+    /// Note qu'une pièce est posée, ou retirée.
+    fn set_holds(&mut self, slot: Slot, held: bool) {
+        if let Some(flag) = self.held.get_mut(slot.position()) {
+            *flag = held;
         }
-        self.children.len().checked_sub(1)
+    }
+
+    /// Où insérer une pièce pour respecter l'ordre imposé.
+    ///
+    /// C'est le nombre de pièces **déjà posées** qui la précèdent dans [`Slot::ORDER`].
+    /// Un seul calcul pour les quatre, donc un seul endroit où se tromper.
+    fn insertion_index(&self, slot: Slot) -> usize {
+        let mut index: usize = 0;
+        for earlier in Slot::ORDER {
+            if earlier == slot {
+                break;
+            }
+            if self.holds(earlier) {
+                index = index.saturating_add(1);
+            }
+        }
+        index
+    }
+
+    /// Pose une pièce à sa place, en remplaçant celle qui y était.
+    fn set_slot(&mut self, slot: Slot, view: Box<dyn AirView>) {
+        if let Some(index) = self.index_of(slot) {
+            if let Some(held) = self.children.get_mut(index) {
+                *held = view;
+            }
+        } else {
+            let index = self.insertion_index(slot).min(self.children.len());
+            self.children.insert(index, view);
+            self.set_holds(slot, true);
+        }
+        self.relayout();
     }
 
     /// Pose le bureau, qui reçoit le focus.
@@ -100,15 +159,7 @@ impl AirScreen {
     /// phase du focus ne trouverait personne.
     pub fn set_desktop(&mut self, mut desktop: Box<dyn AirView>) {
         desktop.state_mut().set_focused(true);
-        if let Some(index) = self.desktop_index() {
-            if let Some(slot) = self.children.get_mut(index) {
-                *slot = desktop;
-            }
-        } else {
-            self.children.insert(0, desktop);
-            self.has_desktop = true;
-        }
-        self.relayout();
+        self.set_slot(Slot::Desktop, desktop);
     }
 
     /// Pose la barre de statut, en **post-traitement**.
@@ -117,58 +168,76 @@ impl AirScreen {
     /// verrait les touches avant la vue focalisée les lui volerait.
     pub fn set_status_line(&mut self, mut status_line: Box<dyn AirView>) {
         status_line.state_mut().set_post_process(true);
-        if let Some(index) = self.status_line_index() {
-            if let Some(slot) = self.children.get_mut(index) {
-                *slot = status_line;
-            }
-        } else {
-            let index = usize::from(self.has_desktop);
-            self.children.insert(index, status_line);
-            self.has_status_line = true;
-        }
-        self.relayout();
+        self.set_slot(Slot::StatusLine, status_line);
     }
 
-    /// Pose la barre de menu, en **pré-traitement** et au premier plan.
+    /// Pose la barre de menu, en **pré-traitement**.
     ///
     /// Les deux sont imposés, et pour deux raisons différentes : le pré-traitement pour
-    /// qu'`Alt`+lettre parvienne à la barre avant le champ de saisie qui a le focus, et le
-    /// premier plan pour que le menu déroulant recouvre ce qui est derrière.
+    /// qu'`Alt`+lettre parvienne à la barre avant le champ de saisie qui a le focus, et sa
+    /// place devant le bureau pour que le menu déroulant recouvre ce qui est derrière.
     pub fn set_menu_bar(&mut self, mut menu_bar: Box<dyn AirView>) {
         menu_bar.state_mut().set_pre_process(true);
-        if let Some(index) = self.menu_bar_index() {
-            if let Some(slot) = self.children.get_mut(index) {
-                *slot = menu_bar;
-            }
-        } else {
-            self.children.push(menu_bar);
-            self.has_menu_bar = true;
-        }
+        self.set_slot(Slot::MenuBar, menu_bar);
+    }
+
+    /// Pose une vue **modale** : elle reçoit tous les événements et se dessine devant tout.
+    ///
+    /// La modalité n'est pas une propriété de la vue posée mais du routage : c'est
+    /// [`AirView::handle_event`] de l'écran qui lui donne l'événement et ne le laisse pas
+    /// descendre aux autres pièces. Une même vue posée par [`Self::set_desktop`] se
+    /// comporterait comme une vue ordinaire.
+    ///
+    /// Le modal reçoit le focus — c'est lui qui porte le curseur — et il est **centré** par
+    /// [`Self::resize`], en gardant sa dimension.
+    pub fn set_modal(&mut self, mut modal: Box<dyn AirView>) {
+        modal.state_mut().set_focused(true);
+        self.set_slot(Slot::Modal, modal);
+    }
+
+    /// Retire le modal et le rend, s'il y en avait un.
+    pub fn take_modal(&mut self) -> Option<Box<dyn AirView>> {
+        let index = self.index_of(Slot::Modal)?;
+        let modal = self.children.remove(index);
+        self.set_holds(Slot::Modal, false);
         self.relayout();
+        Some(modal)
+    }
+
+    /// Vrai si un modal est posé.
+    #[must_use]
+    pub fn has_modal(&self) -> bool {
+        self.holds(Slot::Modal)
+    }
+
+    /// Le modal, en écriture.
+    pub fn modal_mut(&mut self) -> Option<&mut (dyn AirView + 'static)> {
+        let index = self.index_of(Slot::Modal)?;
+        self.children.get_mut(index).map(Box::as_mut)
     }
 
     /// Le bureau, en écriture.
     pub fn desktop_mut(&mut self) -> Option<&mut (dyn AirView + 'static)> {
-        let index = self.desktop_index()?;
+        let index = self.index_of(Slot::Desktop)?;
         self.children.get_mut(index).map(Box::as_mut)
     }
 
     /// Le bureau.
     #[must_use]
     pub fn desktop(&self) -> Option<&dyn AirView> {
-        let index = self.desktop_index()?;
+        let index = self.index_of(Slot::Desktop)?;
         self.children.get(index).map(Box::as_ref)
     }
 
     /// La barre de statut, en écriture.
     pub fn status_line_mut(&mut self) -> Option<&mut (dyn AirView + 'static)> {
-        let index = self.status_line_index()?;
+        let index = self.index_of(Slot::StatusLine)?;
         self.children.get_mut(index).map(Box::as_mut)
     }
 
     /// La barre de menu, en écriture.
     pub fn menu_bar_mut(&mut self) -> Option<&mut (dyn AirView + 'static)> {
-        let index = self.menu_bar_index()?;
+        let index = self.index_of(Slot::MenuBar)?;
         self.children.get_mut(index).map(Box::as_mut)
     }
 
@@ -199,11 +268,11 @@ impl AirScreen {
     /// qu'un bureau absent.
     fn relayout(&mut self) {
         let size = self.state.bounds().size;
-        let top = u16::from(self.has_menu_bar);
-        let bottom = u16::from(self.has_status_line);
+        let top = u16::from(self.holds(Slot::MenuBar));
+        let bottom = u16::from(self.holds(Slot::StatusLine));
         let desktop_rows = size.rows.saturating_sub(top).saturating_sub(bottom);
 
-        if let Some(index) = self.desktop_index()
+        if let Some(index) = self.index_of(Slot::Desktop)
             && let Some(desktop) = self.children.get_mut(index)
         {
             desktop.state_mut().set_bounds(AirRectangle::from_parts(
@@ -213,7 +282,7 @@ impl AirScreen {
                 desktop_rows,
             ));
         }
-        if let Some(index) = self.status_line_index()
+        if let Some(index) = self.index_of(Slot::StatusLine)
             && let Some(status_line) = self.children.get_mut(index)
         {
             let row = size.rows.saturating_sub(1);
@@ -221,12 +290,30 @@ impl AirScreen {
                 .state_mut()
                 .set_bounds(AirRectangle::from_parts(0, row, size.columns, 1));
         }
-        if let Some(index) = self.menu_bar_index()
+        if let Some(index) = self.index_of(Slot::MenuBar)
             && let Some(menu_bar) = self.children.get_mut(index)
         {
             menu_bar
                 .state_mut()
                 .set_bounds(AirRectangle::from_parts(0, 0, size.columns, 1));
+        }
+        if let Some(index) = self.index_of(Slot::Modal)
+            && let Some(modal) = self.children.get_mut(index)
+        {
+            // Le modal garde sa dimension et se centre : c'est la place d'un dialogue, et
+            // la calculer ici évite que chaque application la recalcule.
+            let wanted = modal.state().bounds().size;
+            let columns = wanted.columns.min(size.columns);
+            let rows = wanted.rows.min(size.rows);
+            let column = size
+                .columns
+                .saturating_sub(columns)
+                .checked_div(2)
+                .unwrap_or(0);
+            let row = size.rows.saturating_sub(rows).checked_div(2).unwrap_or(0);
+            modal
+                .state_mut()
+                .set_bounds(AirRectangle::from_parts(column, row, columns, rows));
         }
     }
 }
@@ -246,6 +333,36 @@ impl AirView for AirScreen {
         let _ = (painter, context);
     }
 
+    fn handle_event(&mut self, event: &mut AirEvent, context: &mut AirContext<'_>) -> AirOutcome {
+        // La modalité est ici, et nulle part ailleurs. `dispatch_event` appelle d'abord
+        // `handle_event` de la vue et s'arrête dès qu'elle rend autre chose qu'`Ignored` :
+        // un modal qui répond empêche donc la descente aux autres pièces, ce qui est la
+        // définition de modal.
+        let Some(index) = self.index_of(Slot::Modal) else {
+            return AirOutcome::Ignored;
+        };
+        // La position arrive dans les coordonnées de l'écran, qui n'a pas de bordure : la
+        // traduction est celle de l'origine du modal, comme à la descente de l'arbre.
+        let origin = match self.children.get(index) {
+            Some(modal) => modal.state().bounds().origin,
+            None => return AirOutcome::Ignored,
+        };
+        event.shift_into(origin);
+        let outcome = match self.children.get_mut(index) {
+            Some(modal) => dispatch_event(modal.as_mut(), event, context),
+            // Inatteignable : l'indice vient de la même collection.
+            None => AirOutcome::Ignored,
+        };
+        event.shift_out_of(origin);
+        if outcome == AirOutcome::Ignored && !event.is_consumed() {
+            // Le modal n'a pas voulu de l'événement. Le laisser descendre reviendrait à
+            // ne pas être modal : on le consomme.
+            event.consume();
+            return AirOutcome::Consumed;
+        }
+        outcome
+    }
+
     fn children(&self) -> &[Box<dyn AirView>] {
         &self.children
     }
@@ -257,15 +374,18 @@ impl AirView for AirScreen {
 
 impl core::fmt::Debug for AirScreen {
     fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        // Les quatre drapeaux sont affichés sous leur nom de pièce plutôt que sous la
+        // forme du tableau qui les porte : c'est le nom qui renseigne une trace.
         formatter
             .debug_struct("AirScreen")
             .field("identifier", &self.state.identifier())
             .field("size", &self.state.bounds().size)
-            .field("desktop", &self.has_desktop)
-            .field("status_line", &self.has_status_line)
-            .field("menu_bar", &self.has_menu_bar)
+            .field("desktop", &self.holds(Slot::Desktop))
+            .field("status_line", &self.holds(Slot::StatusLine))
+            .field("menu_bar", &self.holds(Slot::MenuBar))
+            .field("modal", &self.holds(Slot::Modal))
             .field("children", &self.children.len())
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
@@ -277,7 +397,9 @@ mod tests {
     use crate::geometry::{AirRectangle, AirSize};
     use crate::input::event::AirKey;
     use crate::view::{AirView, AirViewId, AirViewState};
-    use crate::widgets::{AirMenu, AirMenuBar, AirMenuItem, AirStatusItem, AirStatusLine};
+    use crate::widgets::{
+        AirMenu, AirMenuBar, AirMenuItem, AirPromptDialog, AirStatusItem, AirStatusLine,
+    };
 
     fn identifier(value: u32) -> AirViewId {
         AirViewId::new(value).expect("un identifiant non nul")
@@ -507,6 +629,151 @@ mod tests {
         assert!(text.contains("AirScreen"), "rendu : {text}");
         assert!(text.contains("desktop: true"), "rendu : {text}");
         assert!(text.contains("menu_bar: false"), "rendu : {text}");
+    }
+
+    fn prompt(value: u32) -> Box<dyn AirView> {
+        Box::new(AirPromptDialog::new(
+            AirViewState::new(
+                identifier(value),
+                AirRectangle::from_parts(0, 0, 30, AirPromptDialog::required_rows()),
+            ),
+            "Ouvrir",
+            "Nom du fichier :",
+        ))
+    }
+
+    #[test]
+    fn un_modal_est_devant_tout_le_reste() {
+        let mut screen = screen(80, 25);
+        screen.set_desktop(desktop());
+        screen.set_status_line(status_line());
+        screen.set_menu_bar(menu_bar());
+        screen.set_modal(prompt(50));
+        assert_eq!(identifiers(&screen), vec![2, 4, 3, 50]);
+        assert!(screen.has_modal());
+    }
+
+    #[test]
+    fn un_modal_pose_avant_les_autres_reste_devant() {
+        // L'ordre des appels n'a pas d'importance : c'est tout l'intérêt de l'objet.
+        let mut screen = screen(80, 25);
+        screen.set_modal(prompt(50));
+        screen.set_desktop(desktop());
+        screen.set_menu_bar(menu_bar());
+        screen.set_status_line(status_line());
+        assert_eq!(identifiers(&screen), vec![2, 4, 3, 50]);
+    }
+
+    #[test]
+    fn un_modal_est_centre_et_garde_sa_dimension() {
+        let mut screen = screen(80, 25);
+        screen.set_desktop(desktop());
+        screen.set_modal(prompt(50));
+        let bounds = screen.modal_mut().expect("un modal").state().bounds();
+        assert_eq!(bounds.size, AirSize::new(30, 6));
+        assert_eq!(bounds.left(), 25);
+        assert_eq!(bounds.top(), 9);
+    }
+
+    #[test]
+    fn un_modal_plus_grand_que_l_ecran_est_borne() {
+        let mut screen = screen(10, 4);
+        screen.set_modal(prompt(50));
+        let bounds = screen.modal_mut().expect("un modal").state().bounds();
+        assert_eq!(bounds.size, AirSize::new(10, 4));
+        assert_eq!(bounds.left(), 0);
+    }
+
+    #[test]
+    fn un_modal_recoit_le_focus() {
+        let mut screen = screen(80, 25);
+        screen.set_desktop(desktop());
+        screen.set_modal(prompt(50));
+        assert!(screen.modal_mut().expect("un modal").state().is_focused());
+    }
+
+    #[test]
+    fn un_modal_retire_libere_l_ecran() {
+        let mut screen = screen(80, 25);
+        screen.set_desktop(desktop());
+        screen.set_menu_bar(menu_bar());
+        screen.set_modal(prompt(50));
+        let removed = screen.take_modal().expect("un modal retiré");
+        assert_eq!(removed.state().identifier(), identifier(50));
+        assert!(!screen.has_modal());
+        assert_eq!(identifiers(&screen), vec![2, 3]);
+        assert!(screen.take_modal().is_none());
+        assert!(screen.modal_mut().is_none());
+    }
+
+    #[test]
+    fn un_modal_prend_la_touche_que_la_barre_de_statut_publiait() {
+        use crate::input::event::{AirInputEvent, AirKeyEvent};
+        use crate::view::{AirContext, AirEvent, AirOutcome, dispatch_event};
+
+        let mut screen = screen(80, 25);
+        screen.set_desktop(desktop());
+        screen.set_status_line(status_line());
+        screen.set_menu_bar(menu_bar());
+        screen.set_modal(prompt(50));
+        let mut commands = AirCommandSet::new();
+        let mut context = AirContext {
+            commands: &mut commands,
+        };
+        // `F10` quitterait sans modal. Avec lui, elle est consommée et ne sort pas.
+        let mut event = AirEvent::new(AirInputEvent::Key(AirKeyEvent::press(AirKey::Function(10))));
+        assert_eq!(
+            dispatch_event(&mut screen, &mut event, &mut context),
+            AirOutcome::Consumed
+        );
+    }
+
+    #[test]
+    fn un_modal_rend_sa_propre_commande() {
+        use crate::command::OK;
+        use crate::input::event::{AirInputEvent, AirKeyEvent};
+        use crate::view::{AirContext, AirEvent, AirOutcome, dispatch_event};
+
+        let mut screen = screen(80, 25);
+        screen.set_desktop(desktop());
+        screen.set_modal(prompt(50));
+        let mut commands = AirCommandSet::new();
+        let mut context = AirContext {
+            commands: &mut commands,
+        };
+        let mut event = AirEvent::new(AirInputEvent::Key(AirKeyEvent::press(AirKey::Enter)));
+        assert_eq!(
+            dispatch_event(&mut screen, &mut event, &mut context),
+            AirOutcome::Command(OK)
+        );
+    }
+
+    #[test]
+    fn un_clic_hors_du_modal_ne_parvient_pas_a_ce_qui_est_derriere() {
+        use crate::geometry::{AirColumn, AirPoint, AirRow};
+        use crate::input::event::{
+            AirInputEvent, AirModifiers, AirMouseButton, AirMouseEvent, AirMouseEventKind,
+        };
+        use crate::view::{AirContext, AirEvent, AirOutcome, dispatch_event};
+
+        let mut screen = screen(80, 25);
+        screen.set_desktop(desktop());
+        screen.set_status_line(status_line());
+        screen.set_modal(prompt(50));
+        let mut commands = AirCommandSet::new();
+        let mut context = AirContext {
+            commands: &mut commands,
+        };
+        // Un clic sur la barre de statut, loin du dialogue centré.
+        let mut event = AirEvent::new(AirInputEvent::Mouse(AirMouseEvent {
+            position: AirPoint::new(AirColumn::new(2), AirRow::new(24)),
+            kind: AirMouseEventKind::Pressed(AirMouseButton::Left),
+            modifiers: AirModifiers::default(),
+        }));
+        assert_eq!(
+            dispatch_event(&mut screen, &mut event, &mut context),
+            AirOutcome::Consumed
+        );
     }
 
     #[test]

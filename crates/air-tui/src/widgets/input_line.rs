@@ -84,9 +84,18 @@ impl AirInputLine {
     /// Le même champ, avec une longueur maximale en grappes.
     #[must_use]
     pub fn with_maximum_length(mut self, maximum_length: usize) -> Self {
-        self.maximum_length = Some(maximum_length);
-        self.truncate_to_maximum();
+        self.set_maximum_length(Some(maximum_length));
         self
+    }
+
+    /// Change la longueur maximale, et coupe le texte s'il la dépasse.
+    ///
+    /// `None` retire la limite. La coupure se fait sur une frontière de grappe : réduire
+    /// la limite ne peut pas laisser un accent orphelin.
+    pub fn set_maximum_length(&mut self, maximum_length: Option<usize>) {
+        self.maximum_length = maximum_length;
+        self.truncate_to_maximum();
+        self.scroll_into_view();
     }
 
     /// Le texte saisi.
@@ -653,6 +662,18 @@ mod tests {
         let input_line = field(20).with_text("ae\u{0301}bc").with_maximum_length(2);
         assert_eq!(input_line.text(), "ae\u{0301}");
         assert_eq!(input_line.length(), 2);
+    }
+
+    #[test]
+    fn changer_la_longueur_maximale_coupe_ou_libere() {
+        let mut input_line = field(20).with_text("abcdef");
+        input_line.set_maximum_length(Some(3));
+        assert_eq!(input_line.text(), "abc");
+        assert_eq!(input_line.cursor_offset(), 3);
+        input_line.set_maximum_length(None);
+        assert_eq!(input_line.maximum_length(), None);
+        type_text(&mut input_line, "xyz");
+        assert_eq!(input_line.text(), "abcxyz");
     }
 
     #[test]

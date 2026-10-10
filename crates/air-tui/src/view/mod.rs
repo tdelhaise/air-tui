@@ -181,7 +181,11 @@ impl AirEvent {
     /// une vue reçoit toujours des coordonnées qui sont les siennes, sans avoir à savoir
     /// où elle se trouve. Déplacer plutôt que cloner évite une allocation par vue
     /// traversée, et un collage encadré porte une chaîne.
-    fn shift_into(&mut self, origin: AirPoint) {
+    ///
+    /// Visible dans la crate : les widgets qui composent eux-mêmes — la barre de menu et
+    /// son déroulant, le dialogue et ses contrôles — descendent sans passer par
+    /// `children`, et doivent donc traduire comme la traversée le fait.
+    pub(crate) fn shift_into(&mut self, origin: AirPoint) {
         if let Some(AirInputEvent::Mouse(mouse)) = self.payload.as_mut() {
             mouse.position = AirPoint::new(
                 AirColumn::new(
@@ -203,7 +207,7 @@ impl AirEvent {
     }
 
     /// Défait un [`Self::shift_into`].
-    fn shift_out_of(&mut self, origin: AirPoint) {
+    pub(crate) fn shift_out_of(&mut self, origin: AirPoint) {
         if let Some(AirInputEvent::Mouse(mouse)) = self.payload.as_mut() {
             mouse.position = AirPoint::new(
                 AirColumn::new(
