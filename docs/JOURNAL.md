@@ -51,7 +51,10 @@ l'état vivant, ce journal est la trace figée, `INDEX.md` est la carte structur
   frappe ignorée.
 - **L'exemple `frame` est devenu une vraie boucle d'événements** et a été exécuté dans un
   pty, pas seulement compilé : `Alt`+`F` ouvre bien le menu — le cadre du menu déroulant
-  apparaît dans le flux de sortie — et le curseur est posé à chaque image.
+  apparaît dans le flux de sortie — et le curseur est posé à chaque image. Sur Linux,
+  `F10` quitte avec le code 0, et le contrôle inverse le confirme : **sans** `F10`,
+  l'exemple reste vivant jusqu'au délai du harnais. C'est ce contraste qui a isolé le
+  défaut macOS ci-dessous.
 - **Un défaut bloquant sur macOS, trouvé par ce même essai, et pas corrigé ici.** La
   première lecture des traces m'a fait écrire que `F10` quittait l'exemple avec le code 0.
   C'était faux : le code 0 venait d'une autre branche de sortie. En instrumentant les
