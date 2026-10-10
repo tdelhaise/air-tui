@@ -41,7 +41,7 @@ use crate::geometry::{AirRectangle, AirSize};
 use crate::view::painter::AirPainter;
 use crate::view::{
     AirContext, AirDrawContext, AirEvent, AirOutcome, AirView, AirViewId, AirViewState,
-    dispatch_event,
+    dispatch_into,
 };
 
 /// Une pièce de l'écran, et sa place dans l'ordre de profondeur.
@@ -352,7 +352,7 @@ impl AirView for AirScreen {
         };
         event.shift_into(origin);
         let outcome = match self.children.get_mut(index) {
-            Some(modal) => dispatch_event(modal.as_mut(), event, context),
+            Some(modal) => dispatch_into(modal.as_mut(), event, context),
             // Inatteignable : l'indice vient de la même collection.
             None => AirOutcome::Ignored,
         };

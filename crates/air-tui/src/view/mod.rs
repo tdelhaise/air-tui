@@ -40,7 +40,7 @@ pub use painter::AirPainter;
 use crate::cell::AirCell;
 use crate::command::{AirCommand, AirCommandSet};
 use crate::geometry::{AirColumn, AirPoint, AirRectangle, AirRow, AirSize};
-use crate::input::event::AirInputEvent;
+use crate::input::event::{AirInputEvent, AirKeyState};
 use crate::theme::{AirFrameGlyphs, AirRole, AirTheme};
 
 /// L'identifiant d'une vue.
@@ -666,7 +666,47 @@ pub const fn frame_glyphs(theme: &AirTheme, style: AirBorderStyle) -> AirFrameGl
 /// 1. **la vue elle-même**, pour qu'un conteneur puisse intercepter — une fenêtre modale
 ///    doit pouvoir retenir une frappe avant que ses enfants la voient ;
 /// 2. **ses enfants**, par la position pour la souris, par les trois phases sinon.
+///
+/// # Les relâchements n'entrent pas dans l'arbre
+///
+/// Un relâchement de touche est **écarté ici**, une fois, avant la descente. Le protocole
+/// clavier Kitty les rapporte dès que le type d'événement est demandé (`\x1b[>23u`), et
+/// une vue qui les traiterait agirait deux fois par frappe : une flèche bas descendrait de
+/// deux lignes, un `Inser` marquerait puis démarquerait.
+///
+/// Le filtre est à cet endroit et non dans chaque widget, pour deux raisons. La règle est
+/// la même pour tous — douze widgets qui la répètent sont douze endroits où elle peut
+/// manquer, et c'est ainsi que le jalon M7b a livré onze widgets exposés. Et
+/// l'information n'est pas détruite : une boucle d'application tient l'[`AirInputEvent`]
+/// avant de le distribuer, donc qui a besoin des relâchements les a encore.
+///
+/// Une **répétition** passe, elle, et c'est voulu : maintenir une flèche doit répéter le
+/// déplacement. Filtrer « tout ce qui n'est pas un enfoncement » serait le défaut
+/// symétrique, moins visible et plus pénible.
 pub fn dispatch_event(
+    view: &mut dyn AirView,
+    event: &mut AirEvent,
+    context: &mut AirContext<'_>,
+) -> AirOutcome {
+    if is_key_release(event) {
+        return AirOutcome::Ignored;
+    }
+    dispatch_into(view, event, context)
+}
+
+/// Vrai si l'événement est un relâchement de touche.
+fn is_key_release(event: &AirEvent) -> bool {
+    matches!(
+        event.input(),
+        Some(AirInputEvent::Key(key)) if key.state == AirKeyState::Release
+    )
+}
+
+/// Le corps récursif de [`dispatch_event`], sans le filtre des relâchements.
+///
+/// Séparé pour que le filtre soit évalué une fois par événement et non une fois par vue
+/// traversée.
+pub(crate) fn dispatch_into(
     view: &mut dyn AirView,
     event: &mut AirEvent,
     context: &mut AirContext<'_>,
@@ -725,7 +765,7 @@ fn dispatch_positional(
     };
     event.shift_into(origin);
     let outcome = match view.children_mut().get_mut(index) {
-        Some(child) => dispatch_event(child.as_mut(), event, context),
+        Some(child) => dispatch_into(child.as_mut(), event, context),
         // Inatteignable : l'indice vient d'un parcours de la même collection.
         None => AirOutcome::Ignored,
     };
@@ -755,7 +795,7 @@ fn dispatch_phases(
                 return AirOutcome::Consumed;
             }
             let outcome = match view.children_mut().get_mut(index) {
-                Some(child) => dispatch_event(child.as_mut(), event, context),
+                Some(child) => dispatch_into(child.as_mut(), event, context),
                 // Inatteignable : les indices viennent de la même collection.
                 None => AirOutcome::Ignored,
             };
@@ -844,8 +884,8 @@ mod tests {
     use crate::command::{AirCommandSet, SAVE};
     use crate::geometry::{AirColumn, AirPoint, AirRectangle, AirRow, AirSize};
     use crate::input::event::{
-        AirInputEvent, AirKey, AirKeyEvent, AirModifiers, AirMouseButton, AirMouseEvent,
-        AirMouseEventKind,
+        AirInputEvent, AirKey, AirKeyEvent, AirKeyState, AirModifiers, AirMouseButton,
+        AirMouseEvent, AirMouseEventKind,
     };
     use crate::surface::AirSurface;
     use crate::theme::AirTheme;
@@ -1399,6 +1439,49 @@ mod tests {
             commands: &mut commands,
         };
         dispatch_event(view, event, &mut context)
+    }
+
+    fn key_event_in_state(state: AirKeyState) -> AirEvent {
+        AirEvent::new(AirInputEvent::Key(AirKeyEvent {
+            logical: AirKey::Down,
+            modifiers: AirModifiers::NONE,
+            state,
+            physical: None,
+            base_layout: None,
+        }))
+    }
+
+    #[test]
+    fn un_relachement_de_touche_n_entre_pas_dans_l_arbre() {
+        // Ni la vue, ni ses enfants : le filtre est avant la descente. La vue espionne
+        // consomme tout ce qu'elle reçoit, donc son silence est la preuve.
+        let mut group = AirGroup::new(state(1, AirRectangle::from_parts(0, 0, 10, 10)));
+        let mut child = Spy::new(2, AirRectangle::from_parts(0, 0, 4, 4), '.');
+        child.state.set_focused(true);
+        child.consumes = true;
+        group.insert(Box::new(child));
+
+        let mut event = key_event_in_state(AirKeyState::Release);
+        assert_eq!(dispatch(&mut group, &mut event), AirOutcome::Ignored);
+        assert!(!event.is_consumed(), "le relâchement a été consommé");
+    }
+
+    #[test]
+    fn une_repetition_de_touche_entre_dans_l_arbre() {
+        // Le pendant du précédent. Maintenir une flèche doit répéter le déplacement :
+        // écarter « tout ce qui n'est pas un enfoncement » serait le défaut symétrique.
+        let mut group = AirGroup::new(state(1, AirRectangle::from_parts(0, 0, 10, 10)));
+        let mut child = Spy::new(2, AirRectangle::from_parts(0, 0, 4, 4), '.');
+        child.state.set_focused(true);
+        child.consumes = true;
+        group.insert(Box::new(child));
+
+        let mut event = key_event_in_state(AirKeyState::Repeat);
+        assert_eq!(dispatch(&mut group, &mut event), AirOutcome::Consumed);
+        assert!(
+            event.is_consumed(),
+            "la répétition n'est pas parvenue à la vue"
+        );
     }
 
     #[test]
