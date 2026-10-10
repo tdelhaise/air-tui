@@ -18,6 +18,11 @@ PR, `fmt`, `clippy -D warnings`, les essais, `build --locked`, `check-naming`,
 `check-versions` sur Linux `x86_64` et macOS `aarch64`, plus `deny check`,
 `check-codec-coverage`, les tables Unicode à l'octet et la conformité des segmentations.
 
+Ces trois contrôles sont **exigés à la fusion** : `main` les porte en
+`required_status_checks`, et `enforce_admins` est actif, donc la règle vaut aussi pour
+l'auteur du dépôt. `strict` est à `false` délibérément — une branche n'a pas à être
+rebasée sur `main` pour être fusionnée, seulement à voir ses contrôles passer.
+
 Elle ne remplace pas la liste locale de `CLAUDE.md` : un coureur n'a pas de terminal de
 contrôle, donc **aucun essai en pseudo-terminal** n'y tourne, et le fuzzing exige nightly.
 
