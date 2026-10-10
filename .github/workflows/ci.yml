@@ -48,7 +48,7 @@ jobs:
     steps:
       # `fetch-depth: 0` est requis par `check-versions` : sans l'historique, il n'y a pas
       # de base de comparaison à laquelle confronter les versions.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -80,7 +80,7 @@ jobs:
     name: codecs, dépendances, Unicode
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: toolchain pinnée
         run: rustup show
