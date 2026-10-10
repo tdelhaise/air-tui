@@ -111,6 +111,48 @@ mod tests {
     }
 
     #[test]
+    fn la_case_de_fermeture_est_entre_crochets() {
+        let glyphs = AirGlyphSet::turbo_vision();
+        assert_eq!(glyphs.close_box_left, '[');
+        assert_eq!(glyphs.close_box_mark, '■');
+        assert_eq!(glyphs.close_box_right, ']');
+    }
+
+    #[test]
+    fn les_fleches_d_ascenseur_sont_des_triangles_pleins() {
+        let glyphs = AirGlyphSet::turbo_vision();
+        assert_eq!(glyphs.scroll_arrow_up, '▲');
+        assert_eq!(glyphs.scroll_arrow_down, '▼');
+    }
+
+    #[test]
+    fn le_jeu_par_defaut_est_celui_de_turbo_vision() {
+        assert_eq!(AirGlyphSet::default(), AirGlyphSet::turbo_vision());
+    }
+
+    #[test]
+    fn les_quatre_angles_d_un_cadre_sont_distincts() {
+        for glyphs in [AirFrameGlyphs::SINGLE, AirFrameGlyphs::DOUBLE] {
+            let mut corners = [
+                glyphs.top_left,
+                glyphs.top_right,
+                glyphs.bottom_left,
+                glyphs.bottom_right,
+            ];
+            corners.sort_unstable();
+            let before = corners.len();
+            let mut unique = corners.to_vec();
+            unique.dedup();
+            assert_eq!(
+                unique.len(),
+                before,
+                "deux angles identiques dans {glyphs:?}"
+            );
+            assert_ne!(glyphs.horizontal, glyphs.vertical);
+        }
+    }
+
+    #[test]
     fn le_bureau_est_rempli_de_hachures_legeres() {
         assert_eq!(AirGlyphSet::turbo_vision().desktop_fill, '░');
     }

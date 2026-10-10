@@ -51,8 +51,8 @@ note   = "mécanisme 3 fait (AirCommandSet, M4) ; le journal de changements atte
 
 ["008"]
 objet  = "Moteur de thèmes : palette par rôles, glyphes, décorations ; thèmes compilés"
-statut = "a-faire"
-note   = "un thème minimal aux glyphes Borland existe pour l'exemple M0, pas le moteur"
+statut = "en-cours"
+note   = "palette transcrite de Borland et quantificateur faits (M5) ; thème MC et importeur de skins en M7"
 
 ["009"]
 objet  = "Versionnement semver, par crate, incrémenté à chaque PR qui touche la crate"

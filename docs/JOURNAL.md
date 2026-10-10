@@ -6,6 +6,42 @@ tête. On ajoute, on ne réécrit jamais une entrée passée.
 Une entrée par campagne, pas par commit. Répartition des rôles : `etat-avancement.md` est
 l'état vivant, ce journal est la trace figée, `INDEX.md` est la carte structurelle.
 
+## 2026-10-10 — M5, moteur de thèmes et premiers widgets
+
+- **La palette est transcrite, pas approchée.** Plutôt que d'approcher le look Borland de
+  mémoire, j'ai lu `cpAppColor` et `cpGrayDialog` dans le source C++ de `magiblot/tvision`,
+  qui est sur le disque, et suivi les chaînes de `cpBackground`, `cpMenuView`,
+  `cpStatusLine`, `cpFrame` et `cpButton`. Chaque entrée porte l'octet d'origine et sa
+  chaîne en commentaire : la transcription se vérifie ligne à ligne.
+- **Deux corrections de fidélité que la lecture a révélées.** Les indices VGA ne sont pas
+  les indices ANSI : le bleu et le rouge y sont échangés, et transcrire sans conversion
+  donnait un bureau rouge et des lettres d'accès rapide bleues. Et `cpStatusLine` partage
+  sa chaîne avec `cpMenuView` : la barre de statut est noir sur gris clair, pas sur cyan
+  comme les valeurs de M0 le disaient — celles-là venaient d'un souvenir, pas d'une lecture.
+- Un désaccord tranché par recoupement : ma lecture de la chaîne donnait le bureau en bleu
+  sur gris clair, le port vérifié par instantanés le rend en gris clair sur bleu. Les
+  captures d'époque tranchent pour le second, et c'est ce qui est retenu.
+- **Quantificateur de couleurs**, requis par ADR-008 : trois profondeurs, déduites de
+  `COLORTERM` et `TERM`, forçables par l'application, appliquées au dernier moment dans le
+  rendu pour que l'encodeur SGR reste pur. Idempotent, et testé comme tel — sans quoi un
+  rendu partiel et un rendu complet donneraient deux images différentes.
+- **`AirWindow`** avec sa case de fermeture `[■]` cliquable : l'ordre de dessin la fait
+  passer après le titre, donc un titre trop long ne peut pas la recouvrir. La précédence
+  est voulue et testée — la case est fonctionnelle, le titre informatif.
+- **`AirButton`** avec la notation `~X~` de Turbo Vision. Trois chemins d'activation — clic,
+  `Entrée`/`Espace` au focus, `Alt`+lettre de loin — et ils mènent tous à la même commande :
+  un raccourci qui ferait autre chose que le clic serait un piège. Une commande grisée
+  **consomme** le geste sans rien émettre, pour que ce qui se trouve dessous ne réagisse
+  pas à la place.
+- Le crochet `draw_frame_decorations` est la seule exception assumée à « une vue n'écrit
+  pas sur son cadre » : une case de fermeture est sur le cadre par définition.
+- **Périmètre recalé une fois de plus, et dit** : la barre de menu, la barre de statut et
+  le champ de saisie passent à un jalon M5b. La première demande un mécanisme de
+  surimpression — un menu ouvert sort des limites de son propriétaire — qui mérite d'être
+  explicite plutôt que glissé en exception.
+- 491 tests. `air-tui` à 98,9 % de régions, `air-tui` passe en 0.5.0 (rupture : des
+  variantes de `AirRole` disparaissent).
+
 ## 2026-10-10 — M4, l'arbre de vues
 
 - `air-tui/src/view/` : trait `AirView` et composition `AirViewState`, `AirGroup`

@@ -3,7 +3,7 @@
 Document de suivi **vivant** : où en est-on, quelle est la prochaine tâche. Il se met à
 jour à chaque session. L'historique figé est dans [`JOURNAL.md`](JOURNAL.md).
 
-**Dernière mise à jour : 2026-10-10** (jalon M4 — arbre de vues).
+**Dernière mise à jour : 2026-10-10** (jalon M5 — thèmes et premiers widgets).
 
 ## Dépôt
 
@@ -16,7 +16,7 @@ vérifications de `CLAUDE.md` sont à exécuter en local avant d'ouvrir une PR.
 
 ## Où en est-on
 
-Jalons **M0 à M4 terminés**. Le dépôt porte ses conventions, ses
+Jalons **M0 à M5 terminés**. Le dépôt porte ses conventions, ses
 ADR fondateurs, le socle de rendu et le décodeur d'entrée. Ce n'est pas encore utilisable
 comme framework : il n'y a ni arbre de vues, ni widget.
 
@@ -32,6 +32,20 @@ comme framework : il n'y a ni arbre de vues, ni widget.
   `PosixTerminal` qui implémente le contrat.
 - Codecs : `AirSgrEncoder`, l'écriture décimale et le **décodeur ANSI d'entrée**, tous à
   **100 % de couverture** (ADR-012).
+- **M5 — moteur de thèmes et premiers widgets** :
+  - **palette transcrite de Borland**, pas approchée : les valeurs viennent de
+    `cpAppColor` et `cpGrayDialog` de `magiblot/tvision`, chaîne par chaîne, avec l'octet
+    d'origine en commentaire. Vingt-huit rôles.
+  - **deux corrections de fidélité** que la transcription a révélées : les indices VGA ne
+    sont pas les indices ANSI — le bleu et le rouge y sont échangés —, et la barre de
+    statut est noir sur gris clair comme le menu, pas sur cyan comme les premières valeurs
+    de ce projet le disaient.
+  - **quantificateur** de couleurs, requis par ADR-008 : vraies couleurs, deux cent
+    cinquante-six, seize. Déduit de `COLORTERM` et `TERM`, forçable, appliqué au dernier
+    moment dans le rendu. Idempotent, et testé comme tel.
+  - **`AirWindow`** avec sa case de fermeture `[■]` cliquable, en cadre simple ou double, et
+    **`AirButton`** avec sa lettre d'accès rapide en notation `~X~`, activable au clic, par
+    `Entrée`/`Espace` au focus, ou par `Alt`+lettre de loin.
 - **M4 — arbre de vues** (`air-tui/src/view/`) : trait `AirView` et composition
   `AirViewState`, `AirPainter` à coordonnées relatives au propriétaire et **découpage
   réel**, routage en trois phases plus routage positionnel de la souris avec traduction
@@ -150,12 +164,17 @@ comme framework : il n'y a ni arbre de vues, ni widget.
 
 ## Prochaine tâche
 
-**M5 — les widgets et le moteur de thèmes**, recalés ensemble parce qu'ils se tiennent :
-un bouton, un champ de saisie, une barre de menu et une barre de statut ont besoin de rôles
-de couleur que la palette actuelle n'a pas, et le quantificateur qui ramène un thème en RGB
-vers les seize couleurs d'une console Linux conditionne leur lisibilité. S'y ajoutent
-`AirWindow` et sa case de fermeture `[■]`, absente de l'exemple depuis que celui-ci est
-bâti sur l'arbre.
+**M5b — les widgets qui demandent une mécanique de plus.** Trois manquent, et chacun pour
+une raison précise :
+
+- la **barre de menu** à menus déroulants a besoin d'une **surimpression** : un menu ouvert
+  se dessine par-dessus ce qui est déjà là, hors des limites de son propriétaire. C'est le
+  seul endroit où le découpage par vue doit être contourné délibérément, et ça demande un
+  mécanisme explicite plutôt qu'une exception ;
+- le **champ de saisie** a besoin d'un curseur visible et de la segmentation par graphèmes
+  pour se déplacer dedans — les tables de M3 sont là, l'intégration reste à faire ;
+- la **barre de statut** est triviale une fois la barre de menu faite : elles partagent
+  leur structure d'items et leur routage par lettre d'accès rapide.
 
 Une dette restante : remonter la couverture de `air-tui-platform-posix` par des tests sous
 pty. Et deux vérifications encore absentes : la **console Linux native**, inaccessible par
@@ -177,7 +196,8 @@ externes).
 | M2 | protocole clavier Kitty, repli `modifyOtherKeys` | **fait** |
 | M3 | tables Unicode : largeur et graphèmes | **fait** |
 | M4 | arbre de vues, trois phases, focus, découpage | **fait** |
-| M5 | widgets de base, moteur de thèmes, quantificateur de couleurs | à faire |
+| M5 | moteur de thèmes, quantificateur, fenêtre et bouton | **fait** |
+| M5b | barre de menu à menus déroulants, barre de statut, champ de saisie | à faire |
 | M6 | `redit` — équivalent de `tvedit` | à faire |
 | M7 | thème et coquille Midnight Commander, importeur de skins | à faire |
 | M8 | étage natif Linux : evdev, `TIOCLINUX`, gpm | à faire |

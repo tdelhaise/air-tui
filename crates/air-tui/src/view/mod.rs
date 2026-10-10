@@ -423,6 +423,17 @@ pub trait AirView {
         None
     }
 
+    /// Inscrit des décorations sur la **bordure**, après le cadre et le titre.
+    ///
+    /// Le peintre reçu couvre les limites entières de la vue, bordure comprise : c'est la
+    /// seule exception à la règle « une vue n'écrit pas sur son cadre », et elle est
+    /// explicite. Une case de fermeture est sur le cadre par définition ; la lui interdire
+    /// obligerait à la dessiner depuis le propriétaire, qui n'a aucune raison de la
+    /// connaître.
+    fn draw_frame_decorations(&self, painter: &mut AirPainter<'_>, theme: &AirTheme) {
+        let _ = (painter, theme);
+    }
+
     /// Les vues contenues, de l'arrière vers l'avant. Vide par défaut.
     fn children(&self) -> &[Box<dyn AirView>] {
         &[]
@@ -449,6 +460,7 @@ pub fn draw_view(view: &dyn AirView, painter: &mut AirPainter<'_>, theme: &AirTh
         if let Some(title) = view.title() {
             draw_title(painter, theme, title);
         }
+        view.draw_frame_decorations(painter, theme);
     }
     let own_size = painter.size();
     let whole = AirRectangle::new(AirPoint::ORIGIN, own_size);

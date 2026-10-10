@@ -20,13 +20,14 @@ use std::time::Duration;
 
 use air_tui::cell::{AirAttributes, AirCell};
 use air_tui::command::AirCommandSet;
+use air_tui::command::{CANCEL, OK};
 use air_tui::geometry::{AirColumn, AirPoint, AirRectangle, AirRow, AirSize};
 use air_tui::surface::AirSurface;
 use air_tui::terminal::AirTerminal;
 use air_tui::theme::{AirRole, AirTheme};
 use air_tui::view::painter::AirPainter;
 use air_tui::view::{AirGroup, AirView, AirViewId, AirViewState, draw_view};
-use air_tui::widgets::{AirPanel, AirStaticText};
+use air_tui::widgets::{AirButton, AirStaticText, AirWindow};
 use air_tui::{InputReadiness, PlatformError, PlatformErrorKind};
 use air_tui_platform_posix::PosixTerminal;
 
@@ -141,68 +142,69 @@ impl AirView for Bar {
     }
 }
 
-/// Construit l'arbre pour une dimension d'écran donnée.
-fn build_tree(size: AirSize) -> AirGroup {
-    let mut next_identifier = 0_u32;
-    let mut identifier = move || {
-        next_identifier = next_identifier.saturating_add(1);
-        // Le compteur part de un et sature : il ne peut pas produire zéro, et le repli
-        // n'est là que pour ne pas écrire un `expect` dans un exemple.
-        AirViewId::new(next_identifier).unwrap_or(AirViewId::FIRST)
-    };
+/// Un générateur d'identifiants de vue.
+///
+/// Le compteur part de un et sature : il ne peut pas produire zéro, et le repli n'est là
+/// que pour ne pas écrire un `expect` dans un exemple.
+struct Identifiers {
+    /// Le dernier identifiant distribué.
+    last: u32,
+}
 
-    // La racine occupe tout l'écran et n'a pas de bordure : c'est l'écran, pas une fenêtre.
-    let mut root = AirGroup::new(AirViewState::new(
-        identifier(),
-        AirRectangle::new(AirPoint::ORIGIN, size),
-    ));
-    root.state_mut().set_border(false);
+impl Identifiers {
+    /// Un générateur neuf.
+    fn new() -> Self {
+        Self { last: 0 }
+    }
 
-    let menu_height = 1;
-    let status_height = 1;
-    let desktop_height = size
-        .rows
-        .saturating_sub(menu_height)
-        .saturating_sub(status_height);
+    /// L'identifiant suivant.
+    fn next(&mut self) -> AirViewId {
+        self.last = self.last.saturating_add(1);
+        AirViewId::new(self.last).unwrap_or(AirViewId::FIRST)
+    }
+}
 
-    root.insert(Box::new(
-        Bar::new(
-            AirViewState::new(
-                identifier(),
-                AirRectangle::from_parts(0, 0, size.columns, menu_height),
-            ),
-            AirRole::MenuBar,
-            AirRole::MenuHotkey,
-        )
-        .with_item("F", "ile")
-        .with_item("E", "dit")
-        .with_item("S", "earch")
-        .with_item("W", "indows"),
-    ));
+/// La barre de menu.
+fn build_menu_bar(identifiers: &mut Identifiers, columns: u16) -> Bar {
+    Bar::new(
+        AirViewState::new(
+            identifiers.next(),
+            AirRectangle::from_parts(0, 0, columns, 1),
+        ),
+        AirRole::MenuBar,
+        AirRole::MenuHotkey,
+    )
+    .with_item("F", "ile")
+    .with_item("E", "dit")
+    .with_item("S", "earch")
+    .with_item("W", "indows")
+}
 
-    let mut desktop = Desktop::new(AirViewState::new(
-        identifier(),
-        AirRectangle::from_parts(0, menu_height, size.columns, desktop_height),
-    ));
-    let _ = &mut desktop;
+/// La barre de statut.
+fn build_status_bar(identifiers: &mut Identifiers, size: AirSize) -> Bar {
+    Bar::new(
+        AirViewState::new(
+            identifiers.next(),
+            AirRectangle::from_parts(0, size.rows.saturating_sub(1), size.columns, 1),
+        ),
+        AirRole::StatusLine,
+        AirRole::StatusHotkey,
+    )
+    .with_item("Toute touche", " Quitter")
+}
 
-    // La fenêtre, centrée dans le bureau.
-    let window_columns = size.columns.saturating_sub(20).clamp(20, 54);
-    let window_rows = desktop_height.saturating_sub(6).clamp(5, 12);
-    let window_column = size.columns.saturating_sub(window_columns) / 2;
-    let window_row = desktop_height.saturating_sub(window_rows) / 2;
-
-    let mut window = AirPanel::new(AirViewState::new(
-        identifier(),
-        AirRectangle::from_parts(window_column, window_row, window_columns, window_rows),
-    ))
-    .with_title("air-tui");
+/// La fenêtre, avec son titre, ses étiquettes et ses deux boutons.
+fn build_window(identifiers: &mut Identifiers, bounds: AirRectangle) -> AirWindow {
+    let columns = bounds.size.columns;
+    let rows = bounds.size.rows;
+    let mut window =
+        AirWindow::new(AirViewState::new(identifiers.next(), bounds)).with_title("air-tui");
     window.state_mut().set_focused(true);
 
     window.insert(Box::new(AirStaticText::new(
         AirViewState::new(
-            identifier(),
-            AirRectangle::from_parts(1, 1, window_columns.saturating_sub(3), 1),
+            identifiers.next(),
+            AirRectangle::from_parts(1, 1, columns.saturating_sub(3), 1),
         ),
         "Arbre de vues : chaque élément est une vue.",
     )));
@@ -210,41 +212,70 @@ fn build_tree(size: AirSize) -> AirGroup {
     // bordure droite. Le peintre la découpe désormais sur la vue.
     window.insert(Box::new(AirStaticText::new(
         AirViewState::new(
-            identifier(),
-            AirRectangle::from_parts(1, 3, window_columns.saturating_add(40), 1),
+            identifiers.next(),
+            AirRectangle::from_parts(1, 3, columns.saturating_add(40), 1),
         ),
         "Ce texte est trop long pour sa fenêtre et ne peut plus déborder sur le cadre.",
     )));
 
+    // Deux boutons aux couleurs transcrites de Borland : noir sur vert, lettre d'accès
+    // rapide en jaune. Le bouton par défaut se distingue par sa couleur de texte.
+    let button_row = rows.saturating_sub(4);
+    let mut accept = AirButton::new(
+        AirViewState::new(
+            identifiers.next(),
+            AirRectangle::from_parts(2, button_row, 10, 1),
+        ),
+        "~O~K",
+        OK,
+    )
+    .as_default();
+    accept.state_mut().set_focused(true);
+    window.insert(Box::new(accept));
+    window.insert(Box::new(AirButton::new(
+        AirViewState::new(
+            identifiers.next(),
+            AirRectangle::from_parts(14, button_row, 12, 1),
+        ),
+        "~A~nnuler",
+        CANCEL,
+    )));
+    window
+}
+
+/// Construit l'arbre pour une dimension d'écran donnée.
+fn build_tree(size: AirSize) -> AirGroup {
+    let mut identifiers = Identifiers::new();
+
+    // La racine occupe tout l'écran et n'a pas de bordure : c'est l'écran, pas une fenêtre.
+    let mut root = AirGroup::new(AirViewState::new(
+        identifiers.next(),
+        AirRectangle::new(AirPoint::ORIGIN, size),
+    ));
+    root.state_mut().set_border(false);
+    root.insert(Box::new(build_menu_bar(&mut identifiers, size.columns)));
+
+    let desktop_height = size.rows.saturating_sub(2);
+    let window_columns = size.columns.saturating_sub(20).clamp(20, 54);
+    let window_rows = desktop_height.saturating_sub(6).clamp(5, 12);
+    let window_column = size.columns.saturating_sub(window_columns) / 2;
+    let window_row = desktop_height.saturating_sub(window_rows) / 2;
+
     let mut desktop_group = AirGroup::new(AirViewState::new(
-        identifier(),
-        AirRectangle::from_parts(0, menu_height, size.columns, desktop_height),
+        identifiers.next(),
+        AirRectangle::from_parts(0, 1, size.columns, desktop_height),
     ));
     desktop_group.state_mut().set_border(false);
     desktop_group.insert(Box::new(Desktop::new(AirViewState::new(
-        identifier(),
+        identifiers.next(),
         AirRectangle::from_parts(0, 0, size.columns, desktop_height),
     ))));
-    desktop_group.insert(Box::new(window));
+    desktop_group.insert(Box::new(build_window(
+        &mut identifiers,
+        AirRectangle::from_parts(window_column, window_row, window_columns, window_rows),
+    )));
     root.insert(Box::new(desktop_group));
-
-    root.insert(Box::new(
-        Bar::new(
-            AirViewState::new(
-                identifier(),
-                AirRectangle::from_parts(
-                    0,
-                    size.rows.saturating_sub(status_height),
-                    size.columns,
-                    status_height,
-                ),
-            ),
-            AirRole::StatusLine,
-            AirRole::StatusHotkey,
-        )
-        .with_item("Toute touche", " Quitter"),
-    ));
-
+    root.insert(Box::new(build_status_bar(&mut identifiers, size)));
     root
 }
 

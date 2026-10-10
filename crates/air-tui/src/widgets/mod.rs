@@ -21,8 +21,14 @@
 //! C'est un point de revue, pas une habitude : un widget qui laisse le défaut doit avoir
 //! une raison.
 
+pub mod button;
+pub mod hotkey;
 pub mod panel;
 pub mod static_text;
+pub mod window;
 
+pub use button::AirButton;
+pub use hotkey::{AirHotkeyLabel, split_hotkey};
 pub use panel::AirPanel;
 pub use static_text::AirStaticText;
+pub use window::AirWindow;

@@ -272,17 +272,52 @@ le modèle consigne ce qui a changé et ne notifie personne. Conséquence direct
 
 ## Les thèmes
 
-Un thème est un triplet, pas une palette :
+Écrit au jalon M5. Un thème est un **triplet** — palette, glyphes, décorations — parce que
+ce qui fait reconnaître un look tient autant aux caractères qu'aux couleurs.
 
-```rust
-pub struct AirTheme {
-    palette:     AirPalette,     // rôles sémantiques → couleurs
-    glyphs:      AirGlyphSet,    // cadres, cases, flèches, remplissages
-    decorations: AirDecorations, // ombres, double ou simple trait, style des hotkeys
-}
-```
+### La palette est transcrite, pas approchée
 
-Ce qui fait reconnaître Turbo Vision tient autant aux glyphes (`╔═╗`, `[■]`, `▲▼`, `░`)
-qu'aux couleurs. Et ce qui fait reconnaître Midnight Commander tient à sa **coquille** —
-deux panneaux, ligne de commande, barre F1-F10 — pas à sa palette : d'où une seconde
-application d'exemple plutôt qu'un simple jeu de couleurs.
+Les valeurs viennent de `cpAppColor` et `cpGrayDialog` de `magiblot/tvision`, en suivant
+les chaînes de `cpBackground`, `cpMenuView`, `cpStatusLine`, `cpFrame` et `cpButton`.
+Chaque entrée porte en commentaire l'octet d'origine et sa chaîne : la transcription se
+vérifie ligne à ligne contre le source C++.
+
+Deux pièges s'y cachaient, et ils ont chacun produit une correction :
+
+- **les indices VGA ne sont pas les indices ANSI.** Dans un attribut VGA, 1 est le bleu et
+  4 le rouge ; en ANSI c'est l'inverse. Transcrire sans conversion donnait un bureau rouge
+  et des lettres d'accès rapide bleues. La conversion est faite par `ansi_from_vga`, et un
+  test vérifie qu'elle est une bijection qui échange bien ces paires ;
+- **la barre de statut n'est pas cyan.** `cpStatusLine` et `cpMenuView` partagent la même
+  chaîne : elle est noir sur gris clair, comme la barre de menu. Les premières valeurs de
+  ce projet la donnaient sur cyan, par souvenir plutôt que par lecture.
+
+### Le quantificateur
+
+Requis et non optionnel (ADR-008), pour une raison concrète : un thème s'écrit en RGB,
+mais une console Linux n'a que seize couleurs. Sans lui, un thème soigné s'affiche en
+couleurs arbitraires sur la moitié des terminaux visés.
+
+Trois profondeurs — vraies couleurs, deux cent cinquante-six, seize —, déduites de
+`COLORTERM` et de `TERM` et forçables par l'application. La quantification a lieu **au
+dernier moment**, dans le rendu : un thème est écrit une fois, et chaque terminal reçoit ce
+qu'il sait afficher. L'encodeur SGR, lui, reste pur.
+
+Une couleur déjà représentable traverse sans être touchée, et la quantification est
+**idempotente** — un test le vérifie, parce que sans cela un rendu partiel et un rendu
+complet donneraient deux images différentes.
+
+La métrique est euclidienne dans l'espace RGB. Ce n'est pas perceptuel, et c'est dit : une
+distance CIE choisirait mieux sur les teintes voisines, au prix de tables et d'une
+arithmétique en flottant qu'ADR-005 ne permet pas.
+
+### Thème et coquille restent deux choses
+
+Ce qui fait reconnaître Midnight Commander est sa **coquille** — deux panneaux, ligne de
+commande, barre F1-F10 — pas sa palette. `AirTheme` porte palette, glyphes et décorations ;
+la composition du chrome relève de l'`AirScreen` que l'application choisit. D'où deux
+applications d'exemple à venir, `redit` et `rmc`, et non une application à deux thèmes.
+
+Les thèmes sont **compilés, pas analysés au runtime** : l'importeur de skins Midnight
+Commander sera un `xtask` qui compile un `.ini` en artefact Rust committé (Principe 11
+d'Air).

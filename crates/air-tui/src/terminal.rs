@@ -24,6 +24,7 @@ use crate::input::kitty::{
     QUERY_SEQUENCE, push_request_sequence,
 };
 use crate::surface::AirSurface;
+use crate::theme::quantize::{AirColorDepth, quantize};
 
 /// La dimension retenue quand la plateforme annonce une taille inconnue.
 ///
@@ -46,6 +47,8 @@ pub struct AirTerminal {
     sgr_encoder: AirSgrEncoder,
     /// Le protocole clavier demandé au terminal, à défaire en sortie.
     keyboard_protocol: AirKeyboardProtocol,
+    /// Ce que le terminal sait afficher en couleurs.
+    color_depth: AirColorDepth,
 }
 
 impl core::fmt::Debug for AirTerminal {
@@ -74,6 +77,8 @@ impl AirTerminal {
             output: Vec::with_capacity(64 * 1024),
             sgr_encoder: AirSgrEncoder::new(),
             keyboard_protocol: AirKeyboardProtocol::Legacy,
+            // Déduite de l'environnement au démarrage ; l'application peut la forcer.
+            color_depth: AirColorDepth::from_environment(),
         };
         terminal.device.write_output(b"\x1b[?1049h\x1b[?25l")?;
         terminal.device.flush_output()?;
@@ -270,6 +275,20 @@ impl AirTerminal {
         Ok(chosen)
     }
 
+    /// Ce que le terminal sait afficher en couleurs.
+    #[must_use]
+    pub const fn color_depth(&self) -> AirColorDepth {
+        self.color_depth
+    }
+
+    /// Force la profondeur de couleur.
+    ///
+    /// La déduction par l'environnement se trompe : un terminal moderne lancé sous un
+    /// `TERM` hérité s'annonce à seize couleurs. Une application qui sait mieux le dit.
+    pub const fn set_color_depth(&mut self, depth: AirColorDepth) {
+        self.color_depth = depth;
+    }
+
     /// Le protocole clavier en vigueur.
     #[must_use]
     pub const fn keyboard_protocol(&self) -> AirKeyboardProtocol {
@@ -306,7 +325,12 @@ impl AirTerminal {
             push_decimal(&mut self.output, point.column.value().saturating_add(1));
             self.output.push(b'H');
 
-            let presentation = AirCellPresentation::from(*cell);
+            // La quantification a lieu ici, au dernier moment : un thème est écrit une
+            // fois en vraies couleurs, et chaque terminal reçoit ce qu'il sait afficher
+            // (ADR-008). L'encodeur, lui, reste pur.
+            let mut presentation = AirCellPresentation::from(*cell);
+            presentation.foreground = quantize(presentation.foreground, self.color_depth);
+            presentation.background = quantize(presentation.background, self.color_depth);
             match self.sgr_encoder.encode(&presentation, &mut self.output) {
                 Ok(()) => {}
                 // `Infallible` : la branche est inatteignable, et le `match` la nomme
