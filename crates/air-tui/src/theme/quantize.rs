@@ -231,18 +231,25 @@ fn narrow(index: u16) -> u8 {
 ///
 /// Une couleur déjà représentable est rendue telle quelle : la quantification ne dégrade
 /// jamais ce qui n'en a pas besoin.
+///
+/// [`AirColor::TerminalDefault`] traverse les trois profondeurs **inchangée**, et c'est la
+/// seule couleur dans ce cas. La raison n'est pas une commodité : la quantification choisit
+/// la plus proche voisine d'une couleur connue, et celle-ci n'est pas connue — c'est celle
+/// que l'utilisateur a réglée dans son terminal. La remplacer par un index effacerait
+/// précisément ce qu'elle demande, et un fond transparent deviendrait un fond noir.
 #[must_use]
 pub fn quantize(color: AirColor, depth: AirColorDepth) -> AirColor {
     match depth {
         AirColorDepth::TrueColor => color,
         AirColorDepth::Indexed256 => match color {
-            AirColor::Indexed(_) => color,
+            AirColor::Indexed(_) | AirColor::TerminalDefault => color,
             AirColor::Rgb { red, green, blue } => {
                 AirColor::Indexed(nearest_indexed_256((red, green, blue)))
             }
         },
         AirColorDepth::Indexed16 => match color {
             AirColor::Indexed(index) if u16::from(index) < CUBE_FIRST_INDEX => color,
+            AirColor::TerminalDefault => color,
             AirColor::Indexed(index) => {
                 AirColor::Indexed(nearest_indexed_16(indexed_to_rgb(index)))
             }
@@ -294,6 +301,23 @@ mod tests {
             AirColorDepth::from_variables(None, Some("screen-256color")),
             AirColorDepth::Indexed256
         );
+    }
+
+    #[test]
+    fn la_couleur_du_terminal_traverse_les_trois_profondeurs() {
+        // Elle n'a pas de plus proche voisine : la quantifier effacerait ce qu'elle
+        // demande, et un fond transparent deviendrait un fond noir.
+        for depth in [
+            AirColorDepth::TrueColor,
+            AirColorDepth::Indexed256,
+            AirColorDepth::Indexed16,
+        ] {
+            assert_eq!(
+                quantize(AirColor::TerminalDefault, depth),
+                AirColor::TerminalDefault,
+                "pour {depth:?}"
+            );
+        }
     }
 
     #[test]

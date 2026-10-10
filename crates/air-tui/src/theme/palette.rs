@@ -651,14 +651,10 @@ mod tests {
         for role in ALL_ROLES {
             let pair = palette.color_pair(role);
             for color in [pair.foreground, pair.background] {
-                match color {
-                    AirColor::Indexed(index) => {
-                        assert!(index < 16, "indice {index} hors des seize pour {role:?}");
-                    }
-                    AirColor::Rgb { .. } => {
-                        panic!("le thème Turbo Vision ne doit employer que des indices")
-                    }
-                }
+                assert!(
+                    matches!(color, AirColor::Indexed(index) if index < 16),
+                    "{role:?} emploie {color:?}, qui n'est pas un des seize index"
+                );
             }
         }
     }

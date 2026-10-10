@@ -6,9 +6,17 @@
 
 /// Une couleur de cellule.
 ///
-/// Les deux formes coexistent délibérément : un thème s'écrit en RGB, mais une console
-/// Linux n'offre que seize couleurs. Le quantificateur qui ramènera l'un vers l'autre est
-/// prévu au jalon M5 (ADR-008) et **n'est pas écrit**.
+/// Les trois formes coexistent délibérément, et chacune pour une raison distincte.
+///
+/// [`Self::Indexed`] et [`Self::Rgb`] sont les deux façons de **nommer** une couleur : un
+/// thème s'écrit en RGB, une console Linux n'en offre que seize, et le quantificateur de
+/// `theme::quantize` ramène l'une vers l'autre selon ce que le terminal annonce.
+///
+/// [`Self::TerminalDefault`] n'en nomme aucune : elle dit « laisser au terminal celle
+/// qu'il emploie déjà ». C'est le `default` de Midnight Commander, celui qui rend un thème
+/// transparent sur un fond d'écran ou sur un terminal dont l'utilisateur a choisi les
+/// couleurs. Elle ne se quantifie pas, parce qu'il n'y a rien à rapprocher : une couleur
+/// qu'on ne connaît pas n'a pas de plus proche voisine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AirColor {
     /// Une des couleurs de la palette du terminal.
@@ -26,6 +34,15 @@ pub enum AirColor {
         /// Composante bleue.
         blue: u8,
     },
+    /// La couleur que le terminal emploie déjà — celle qu'on ne remplace pas.
+    ///
+    /// Émise en SGR par `39` pour le caractère et `49` pour le fond, les deux paramètres
+    /// qui *annulent* une couleur au lieu d'en poser une. C'est ce qui la distingue d'un
+    /// index : `AirColor::Indexed(0)` demande du noir, celle-ci ne demande rien.
+    ///
+    /// Elle existe parce que dix-huit des trente-neuf fournitures de `mc` 4.8.33
+    /// l'emploient, et que l'ADR-008 chiffrait ce refus depuis le jalon M7a.
+    TerminalDefault,
 }
 
 impl AirColor {
@@ -49,7 +66,7 @@ impl AirColor {
 ///
 /// Une structure de booléens nommés plutôt qu'un masque de bits : le Principe 7 d'Air
 /// préfère la verbosité qui clarifie à la compacité qui cache.
-// Six booléens, et c'est la bonne forme : chacun correspond à un paramètre SGR
+// Sept booléens, et c'est la bonne forme : chacun correspond à un paramètre SGR
 // indépendant du terminal. Les regrouper en masque de bits ne gagnerait que de la
 // compacité, au prix de la lisibilité que le Principe 7 d'Air privilégie.
 #[allow(
@@ -66,6 +83,13 @@ pub struct AirAttributes {
     pub italic: bool,
     /// Souligné.
     pub underline: bool,
+    /// Clignotant.
+    ///
+    /// Aucun des trente-neuf skins de `mc` 4.8.33 ne l'emploie — mesuré, non supposé. Il
+    /// est là pour que les cinq attributs que `mc` sait écrire aient tous une expression :
+    /// une correspondance totale n'a pas de branche de refus, donc pas de refus à
+    /// découvrir le jour où un skin s'en sert.
+    pub blink: bool,
     /// Couleurs inversées.
     pub reverse: bool,
     /// Barré.
@@ -79,9 +103,22 @@ impl AirAttributes {
         dim: false,
         italic: false,
         underline: false,
+        blink: false,
         reverse: false,
         strikethrough: false,
     };
+
+    /// Vrai si aucun attribut n'est posé.
+    #[must_use]
+    pub const fn is_empty(self) -> bool {
+        !self.bold
+            && !self.dim
+            && !self.italic
+            && !self.underline
+            && !self.blink
+            && !self.reverse
+            && !self.strikethrough
+    }
 
     /// Les mêmes attributs, en graisse accentuée.
     #[must_use]
@@ -93,9 +130,10 @@ impl AirAttributes {
 
 /// Une cellule de la grille : un caractère et sa présentation.
 ///
-/// Le caractère est un `char`, donc un point de code Unicode complet. La gestion des
-/// graphèmes composés de plusieurs points de code — et de leur largeur d'affichage —
-/// relève des tables UCD du jalon M3 (ADR-006) et **n'est pas écrite**.
+/// Le caractère est un `char`, donc un point de code Unicode complet. Une grappe de
+/// graphème composée de plusieurs points de code s'écrit sur la cellule de son premier,
+/// et sa largeur d'affichage vient des tables UCD du module `unicode` (ADR-006) : c'est
+/// `AirPainter::draw_text` qui parcourt les grappes et pose les continuations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AirCell {
     /// Le caractère affiché.
@@ -188,6 +226,42 @@ mod tests {
         assert!(attributes.bold);
         assert!(!attributes.italic);
         assert!(!attributes.underline);
+        assert!(!attributes.blink);
+    }
+
+    #[test]
+    fn aucun_attribut_est_vide_et_un_seul_ne_l_est_pas() {
+        assert!(AirAttributes::NONE.is_empty());
+        assert!(AirAttributes::default().is_empty());
+        for attributes in [
+            AirAttributes::NONE.with_bold(),
+            AirAttributes {
+                dim: true,
+                ..AirAttributes::NONE
+            },
+            AirAttributes {
+                italic: true,
+                ..AirAttributes::NONE
+            },
+            AirAttributes {
+                underline: true,
+                ..AirAttributes::NONE
+            },
+            AirAttributes {
+                blink: true,
+                ..AirAttributes::NONE
+            },
+            AirAttributes {
+                reverse: true,
+                ..AirAttributes::NONE
+            },
+            AirAttributes {
+                strikethrough: true,
+                ..AirAttributes::NONE
+            },
+        ] {
+            assert!(!attributes.is_empty(), "pour {attributes:?}");
+        }
     }
 
     #[test]
