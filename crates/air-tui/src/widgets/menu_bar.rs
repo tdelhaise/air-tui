@@ -235,8 +235,6 @@ pub struct AirMenuBar {
     open: Option<usize>,
     /// L'item survolé dans le menu ouvert.
     highlighted: usize,
-    /// La largeur de la barre, conservée pour la restaurer à la fermeture.
-    columns: u16,
 }
 
 impl AirMenuBar {
@@ -247,13 +245,11 @@ impl AirMenuBar {
         state.set_border(false);
         // Elle doit voir `Échap` et `Alt`+lettre avant la vue qui a le focus.
         state.set_pre_process(true);
-        let columns = state.bounds().size.columns;
         Self {
             state,
             menus: Vec::new(),
             open: None,
             highlighted: 0,
-            columns,
         }
     }
 
@@ -320,6 +316,14 @@ impl AirMenuBar {
     }
 
     /// Ouvre un menu et ajuste les limites de la barre pour le contenir.
+    ///
+    /// Seule la **hauteur** change : la largeur est celle que la barre a au moment où le
+    /// menu s'ouvre, lue sur ses limites. Elle a été gardée dans un champ posé par le
+    /// constructeur de M5b à M7m, et c'était un défaut visible — `redit` et `rmc`
+    /// construisent leur barre sur un rectangle d'attente de 1×1 avant que l'écran la
+    /// dispose, donc le champ valait 1 et ouvrir un menu rendait la barre large d'**une
+    /// colonne**. Le déroulant était alors découpé à son bord gauche, et il n'en restait
+    /// qu'une colonne de glyphes de cadre sur la bordure de la fenêtre.
     fn open_at(&mut self, index: usize) {
         let Some(menu) = self.menus.get(index) else {
             return;
@@ -327,20 +331,21 @@ impl AirMenuBar {
         self.open = Some(index);
         self.highlighted = menu.first_selectable().unwrap_or(0);
         let height = menu.box_size().rows.saturating_add(1);
-        let bounds = self.state.bounds();
-        self.state.set_bounds(AirRectangle::new(
-            bounds.origin,
-            AirSize::new(self.columns, height),
-        ));
+        self.set_own_height(height);
     }
 
     /// Referme le menu ouvert et rend à la barre sa hauteur d'une ligne.
     fn close(&mut self) {
         self.open = None;
+        self.set_own_height(1);
+    }
+
+    /// Change la hauteur de la barre en gardant sa largeur et son origine.
+    fn set_own_height(&mut self, rows: u16) {
         let bounds = self.state.bounds();
         self.state.set_bounds(AirRectangle::new(
             bounds.origin,
-            AirSize::new(self.columns, 1),
+            AirSize::new(bounds.size.columns, rows),
         ));
     }
 
@@ -841,6 +846,36 @@ mod tests {
         *surface
             .cell(point(column, row))
             .unwrap_or_else(|| panic!("la cellule ({column}, {row}) doit exister"))
+    }
+
+    #[test]
+    fn un_deroulant_est_dessine_entier_apres_une_disposition_par_l_ecran() {
+        // Le défaut, signalé à l'usage et corrigé au jalon M7m : `redit` et `rmc`
+        // construisent leur barre sur un rectangle d'attente de 1×1, puis `AirScreen`
+        // la dispose. La barre gardait la largeur du **constructeur** dans un champ, donc
+        // elle valait 1, et ouvrir un menu ramenait la barre à une colonne : le déroulant
+        // était découpé à son bord gauche, et il n'en restait qu'une colonne de glyphes de
+        // cadre posée sur la bordure de la fenêtre.
+        //
+        // C'est la séquence des deux applications, et non la largeur qu'un essai se donne
+        // à la construction : c'est elle qui manquait.
+        let mut bar = menu_bar(1);
+        bar.state_mut()
+            .set_bounds(AirRectangle::from_parts(0, 0, 40, 1));
+        dispatch(&mut bar, &mut alternate('f'));
+        let image = render(&bar, &AirCommandSet::new(), AirSize::new(40, 8));
+        let lines: Vec<&str> = image.lines().collect();
+        assert_eq!(
+            lines.get(1).map(|line| line.trim_end()),
+            Some("┌──────┐"),
+            "le haut du déroulant, entier : {image}"
+        );
+        assert_eq!(lines.get(2).map(|line| line.trim_end()), Some("│ Open │"));
+        assert_eq!(
+            lines.get(6).map(|line| line.trim_end()),
+            Some("└──────┘"),
+            "et son bas"
+        );
     }
 
     #[test]

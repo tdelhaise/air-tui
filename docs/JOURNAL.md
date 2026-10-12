@@ -6,6 +6,41 @@ tête. On ajoute, on ne réécrit jamais une entrée passée.
 Une entrée par campagne, pas par commit. Répartition des rôles : `etat-avancement.md` est
 l'état vivant, ce journal est la trace figée, `INDEX.md` est la carte structurelle.
 
+## 2026-10-12 — Le déroulant découpé à une colonne, signalé à l'usage
+
+- **Le défaut.** Dans `redit`, ouvrir un menu ne montrait pas de menu : il n'en restait
+  qu'une colonne de glyphes de cadre — `┌`, six `│`, `└` — posée sur la bordure gauche de la
+  fenêtre, et ce reste n'était même pas effacé à la fermeture. Signalé par l'auteur du dépôt
+  après avoir réglé sa touche `Option`, c'est-à-dire **le jour où il a pu ouvrir un menu au
+  clavier pour la première fois**.
+- **La cause tient en une ligne, et elle date du jalon M5b.** `AirMenuBar` gardait la
+  largeur de la barre dans un champ **posé par le constructeur**. `redit` et `rmc`
+  construisent leur barre sur un rectangle d'attente de 1×1 — c'est `AirScreen` qui la
+  dispose ensuite —, donc le champ valait 1 pour toujours. Ouvrir un menu ramenait la barre
+  à `AirSize::new(1, hauteur)`, et le découpage du peintre faisait le reste : exactement ce
+  que l'invariant garantit, appliqué à des limites fausses.
+- **Le correctif est une suppression.** Le champ n'existe plus : `open_at` et `close`
+  changent la **hauteur** et lisent la largeur sur les limites courantes, par une méthode
+  unique. Un état de moins à tenir juste, et il n'y a plus de valeur à rafraîchir au
+  redimensionnement — ce que la barre ne faisait pas, faute d'un `resize`.
+- **Pourquoi trente-trois essais ne l'avaient pas vu.** Ils construisent tous la barre avec
+  sa **vraie** largeur — `menu_bar(40)` —, donc le champ gardé était juste chez eux. Ce que
+  personne n'avait écrit, c'est la séquence des deux applications : construire petit, puis
+  **laisser l'écran disposer**. L'essai de non-régression fait cela, et le contrôle est
+  exact : greffé sur le code d'origine, il échoue **seul** — trente-trois passent, un tombe.
+- **Et ma propre mesure de M7m était faible.** J'avais compté une occurrence de
+  `38;5;0;48;5;7m┌` et conclu « le déroulant s'ouvre ». Cette occurrence était la **première
+  cellule** du déroulant, et c'était tout ce qui était dessiné. Ce qui se mesure désormais
+  est la **symétrie des quatre coins** : avant le correctif, `┌` et `└` passaient de 1 à 2
+  et `┐` et `┘` restaient à 1 ; après, les quatre passent à 2. Un coin de cadre est le bon
+  témoin parce qu'il n'y en a qu'un par rectangle.
+- **Un audit, puisque la classe de défaut est nommable** : une dimension copiée dans un
+  champ au lieu d'être lue sur les limites. Aucun autre widget ne le fait — tous lisent
+  `state.bounds()` au moment où ils s'en servent —, et le seul autre champ de dimension du
+  dépôt, `AirApplication::size`, est bien rafraîchi au redimensionnement.
+- **1361 essais**, zéro clippy, et la mesure refaite sur `rmc` : ses coins passent de 2 à 3,
+  un déroulant de plus sur deux panneaux bordés.
+
 ## 2026-10-12 — Jalon M7m : la liste à plusieurs colonnes, et la question laissée ouverte en M7b
 
 - **Le jalon n'a pas d'ADR, et c'est son résultat.** Une liste à deux colonnes reste une
