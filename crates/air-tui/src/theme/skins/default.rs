@@ -5,7 +5,7 @@
 //! Le thème Midnight Commander — **fichier généré, ne pas éditer**.
 //!
 //! Produit par `cargo xtask import-mc-skin` depuis « Standard skin », fichier
-//! `/usr/local/share/mc/skins/default.ini`. 36 rôles transcrits d'une clef, 3 composés de deux.
+//! `/usr/local/share/mc/skins/default.ini`. 37 rôles transcrits d'une clef, 3 composés de deux.
 //!
 //! Empreinte FNV-1a du skin d'origine : `0xefc735864405630c`. C'est un repère de
 //! dérive, pas une garantie cryptographique : `cargo xtask import-mc-skin --check`
@@ -51,6 +51,9 @@
 //!   curseur.
 //! - **`ListNormal`** — un panneau de mc est l'application elle-même : ses lignes portent
 //!   `[core] _default_`.
+//! - **`ListDivider`** — mc ne nomme pas le séparateur de colonnes d'un panneau bref, ni sa
+//!   couleur ni son caractère : le trait prend celle des lignes ordinaires, et son
+//!   caractère est le [Lines] vert du skin.
 //! - **`ClusterNormal`** — mc ne distingue pas les cases à cocher du fond de leur dialogue.
 //! - **`WindowShadow`** — mc nomme l'ombre, et trente et un des trente-neuf skins livrés la
 //!   définissent. Les huit autres l'héritent de [core] _default_, ce qui la rend invisible
@@ -116,6 +119,7 @@ pub(crate) const fn palette() -> AirPalette {
             pair(0, 6),  // ListSelected ← [core] selected
             pair(11, 4), // ListMarked ← [core] marked
             pair(11, 6), // ListMarkedSelected ← [core] markselect
+            pair(7, 4),  // ListDivider ← [core] _default_
         ],
         editor: [
             pair(0, 6), // EditorSelected ← [editor] editmarked

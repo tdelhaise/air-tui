@@ -5,7 +5,7 @@
 //! Le thème Midnight Commander — **fichier généré, ne pas éditer**.
 //!
 //! Produit par `cargo xtask import-mc-skin` depuis « MoDarCon16-DefaultBG (user) », fichier
-//! `/usr/local/share/mc/skins/modarcon16-defbg.ini`. 36 rôles transcrits d'une clef, 3 composés de deux.
+//! `/usr/local/share/mc/skins/modarcon16-defbg.ini`. 37 rôles transcrits d'une clef, 3 composés de deux.
 //!
 //! Empreinte FNV-1a du skin d'origine : `0x716076b9631746f6`. C'est un repère de
 //! dérive, pas une garantie cryptographique : `cargo xtask import-mc-skin --check`
@@ -51,13 +51,16 @@
 //!   curseur.
 //! - **`ListNormal`** — un panneau de mc est l'application elle-même : ses lignes portent
 //!   `[core] _default_`.
+//! - **`ListDivider`** — mc ne nomme pas le séparateur de colonnes d'un panneau bref, ni sa
+//!   couleur ni son caractère : le trait prend celle des lignes ordinaires, et son
+//!   caractère est le [Lines] vert du skin.
 //! - **`ClusterNormal`** — mc ne distingue pas les cases à cocher du fond de leur dialogue.
 //! - **`WindowShadow`** — mc nomme l'ombre, et trente et un des trente-neuf skins livrés la
 //!   définissent. Les huit autres l'héritent de [core] _default_, ce qui la rend invisible
 //!   — c'est ce que mc fait aussi.
 //! # Ce que ce skin demande au-delà de deux couleurs
 //!
-//! 9 rôles portent un attribut du skin, et 15 ont une
+//! 9 rôles portent un attribut du skin, et 16 ont une
 //! couleur laissée au terminal. Les deux étaient des motifs de refus avant le
 //! jalon M7g ; ils sont désormais transcrits. Pour un rôle composé de deux clefs,
 //! les attributs retenus sont ceux de la clef qui donne l'avant-plan.
@@ -151,6 +154,7 @@ pub(crate) const fn palette() -> AirPalette {
                 bold: true,
                 ..AirAttributes::NONE
             }), // ListMarkedSelected ← [core] markselect
+            AirColorPair::new(index(7), terminal()), // ListDivider ← [core] _default_
         ],
         editor: [
             AirColorPair::new(index(11), index(2)).with_attributes(AirAttributes {

@@ -133,12 +133,18 @@ types ne font pas partie du modèle d'objets de l'interface.
 
 # Fichiers générés
 
-Deux fichiers sont **produits** et ne s'éditent **jamais** à la main :
+Deux générateurs **produisent** cinq fichiers, qui ne s'éditent **jamais** à la main :
 
 | Fichier | Produit par | Vérifié par |
 |---|---|---|
 | `crates/air-tui/src/unicode/tables.rs` | `cargo xtask generate-unicode-tables` (ADR-006) | `--check` |
-| `crates/air-tui/src/theme/skins/midnight_commander.rs` | `cargo xtask import-mc-skin` (ADR-008) | `--check` |
+| `crates/air-tui/src/theme/skins/default.rs`, `modarcon16_defbg.rs`, `seasons_autumn16m.rs` | `cargo xtask import-mc-skin` (ADR-008) | `--check`, un par skin |
+| `crates/air-tui/src/theme/skins/mod.rs` — le **registre** | le même, à chaque import | la compilation |
+
+Le nom du fichier produit vient du **nom du skin** et non de l'outil : importer
+`default.ini` écrit `default.rs`. Jusqu'au jalon M7i il n'y avait qu'un artefact, nommé
+`midnight_commander.rs` ; ce fichier n'existe plus, et deux endroits de la documentation le
+nommaient encore — corrigé au jalon M7m.
 
 Une modification manuelle serait écrasée à la génération suivante, et le `--check`
 correspondant la refuse. Celui de l'importeur de skins distingue deux échecs que le même

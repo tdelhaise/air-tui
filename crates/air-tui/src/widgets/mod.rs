@@ -17,8 +17,8 @@
 //! - [`AirStatusLine`] et ses [`AirStatusItem`], à raccourcis cliquables ;
 //! - [`AirInputLine`], un champ de saisie d'une ligne ;
 //! - [`AirScrollBar`], un ascenseur qui **demande** une position sans rien défiler ;
-//! - [`AirListBox`], une liste à une colonne qui tient son curseur et son défilement, et
-//!   qui demande au contrôleur d'ouvrir ou de marquer un item ;
+//! - [`AirListBox`], une liste à **une colonne ou plusieurs** qui tient son curseur et
+//!   son défilement, et qui demande au contrôleur d'ouvrir ou de marquer un item ;
 //! - [`AirCluster`], un groupe de **cases à cocher** ou de **boutons radio** — un seul
 //!   type pour les deux, comme `TCluster` chez Borland, parce qu'ils ne diffèrent que par
 //!   trois choses ;

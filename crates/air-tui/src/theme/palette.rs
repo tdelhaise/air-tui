@@ -131,6 +131,13 @@ pub enum AirRole {
     ListMarked,
     /// Un item marqué et sous le curseur.
     ListMarkedSelected,
+    /// Le séparateur entre deux colonnes d'une liste.
+    ///
+    /// Turbo Vision le nomme : c'est `cpListViewer[5]`, soit `cpGrayDialog[29]`, soit
+    /// `cpAppColor[60]` — que `dialogs.h` commente « `ListViewer` divider » et que
+    /// `tvdemo2.cpp` nomme « List divider ». Il porte **ses deux couleurs**, et non
+    /// l'avant-plan seul : le fond d'un item s'arrête à lui, curseur compris.
+    ListDivider,
 
     /// Le texte sélectionné dans la vue d'édition.
     ///
@@ -295,7 +302,7 @@ pub(crate) struct AirPaletteParts {
     /// Les ascenseurs.
     pub scroll_bar: [AirColorPair; 2],
     /// Les listes.
-    pub list: [AirColorPair; 4],
+    pub list: [AirColorPair; 5],
     /// La vue d'édition.
     pub editor: [AirColorPair; 1],
     /// Les champs de saisie.
@@ -323,8 +330,9 @@ pub struct AirPalette {
     button: [AirColorPair; 6],
     /// Les ascenseurs : zone parcourue, commandes.
     scroll_bar: [AirColorPair; 2],
-    /// Les listes : item ordinaire, item sous le curseur, item marqué, les deux.
-    list: [AirColorPair; 4],
+    /// Les listes : item ordinaire, sous le curseur, marqué, les deux, et le séparateur
+    /// de colonnes.
+    list: [AirColorPair; 5],
     /// La vue d'édition : le texte sélectionné. Le texte ordinaire est `WindowText`.
     editor: [AirColorPair; 1],
     /// Les champs de saisie : texte, texte sélectionné.
@@ -341,7 +349,7 @@ impl AirPalette {
     /// Ce constructeur existe pour les thèmes **compilés** : l'artefact que produit
     /// `cargo xtask import-mc-skin` vit dans `theme/skins/` et n'a pas accès aux champs
     /// privés. Il est `pub(crate)` pour que l'assemblage reste une affaire interne — un
-    /// thème s'obtient par son nom, jamais en posant trente-neuf couples à la main.
+    /// thème s'obtient par son nom, jamais en posant quarante couples à la main.
     pub(crate) const fn from_parts(parts: &AirPaletteParts) -> Self {
         Self {
             desktop_background: parts.desktop_background,
@@ -427,6 +435,10 @@ impl AirPalette {
                     pair_from_vga_attribute(0x3E).foreground,
                     pair_from_vga_attribute(0x2F).background,
                 ),
+                // cpListViewer[5] → cpGrayDialog[29] → cpAppColor[60]. Le fond est celui
+                // des items ordinaires, l'avant-plan non : un trait bleu sur le cyan de
+                // la liste.
+                pair_from_vga_attribute(0x31),
             ],
             editor: [
                 // cpEditor[2] → cpBlueWindow[7] → cpAppColor[14], que `tvdemo2.cpp` nomme
@@ -508,6 +520,7 @@ impl AirPalette {
             AirRole::ListSelected => self.at(&self.list, 1),
             AirRole::ListMarked => self.at(&self.list, 2),
             AirRole::ListMarkedSelected => self.at(&self.list, 3),
+            AirRole::ListDivider => self.at(&self.list, 4),
             AirRole::EditorSelected => self.at(&self.editor, 0),
             AirRole::InputLineText => self.at(&self.input_line, 0),
             AirRole::InputLineSelected => self.at(&self.input_line, 1),
@@ -519,6 +532,56 @@ impl AirPalette {
     }
 }
 
+/// Tous les rôles, pour les parcours exhaustifs.
+///
+/// Elle vit ici et non dans un module d'essais, parce que deux modules la
+/// parcourent : celui-ci et celui des thèmes. Écrite deux fois, elle a déjà dérivé
+/// une fois — l'essai des thèmes en énumérait trente-deux sous un nom qui en
+/// annonçait trente-huit.
+#[cfg(test)]
+pub(crate) const ALL_ROLES: [AirRole; 40] = [
+    AirRole::DesktopBackground,
+    AirRole::MenuBar,
+    AirRole::MenuDisabled,
+    AirRole::MenuHotkey,
+    AirRole::MenuSelected,
+    AirRole::MenuSelectedDisabled,
+    AirRole::MenuSelectedHotkey,
+    AirRole::StatusLine,
+    AirRole::StatusDisabled,
+    AirRole::StatusHotkey,
+    AirRole::WindowFrameActive,
+    AirRole::WindowFrameInactive,
+    AirRole::WindowFrameIcon,
+    AirRole::WindowTitle,
+    AirRole::WindowInterior,
+    AirRole::WindowText,
+    AirRole::DialogFrameActive,
+    AirRole::DialogFrameInactive,
+    AirRole::DialogFrameIcon,
+    AirRole::DialogInterior,
+    AirRole::ButtonNormal,
+    AirRole::ButtonDefault,
+    AirRole::ButtonFocused,
+    AirRole::ButtonDisabled,
+    AirRole::ButtonHotkey,
+    AirRole::ButtonShadow,
+    AirRole::ScrollBarPage,
+    AirRole::ScrollBarControls,
+    AirRole::ListNormal,
+    AirRole::ListSelected,
+    AirRole::ListMarked,
+    AirRole::ListMarkedSelected,
+    AirRole::ListDivider,
+    AirRole::EditorSelected,
+    AirRole::InputLineText,
+    AirRole::InputLineSelected,
+    AirRole::ClusterNormal,
+    AirRole::ClusterSelected,
+    AirRole::ClusterHotkey,
+    AirRole::WindowShadow,
+];
+
 impl Default for AirPalette {
     fn default() -> Self {
         Self::turbo_vision()
@@ -527,51 +590,8 @@ impl Default for AirPalette {
 
 #[cfg(test)]
 mod tests {
-    use super::{AirPalette, AirRole, ansi_from_vga, pair_from_vga_attribute};
+    use super::{ALL_ROLES, AirPalette, AirRole, ansi_from_vga, pair_from_vga_attribute};
     use crate::cell::AirColor;
-
-    /// Tous les rôles, pour les parcours exhaustifs.
-    const ALL_ROLES: [AirRole; 39] = [
-        AirRole::DesktopBackground,
-        AirRole::MenuBar,
-        AirRole::MenuDisabled,
-        AirRole::MenuHotkey,
-        AirRole::MenuSelected,
-        AirRole::MenuSelectedDisabled,
-        AirRole::MenuSelectedHotkey,
-        AirRole::StatusLine,
-        AirRole::StatusDisabled,
-        AirRole::StatusHotkey,
-        AirRole::WindowFrameActive,
-        AirRole::WindowFrameInactive,
-        AirRole::WindowFrameIcon,
-        AirRole::WindowTitle,
-        AirRole::WindowInterior,
-        AirRole::WindowText,
-        AirRole::DialogFrameActive,
-        AirRole::DialogFrameInactive,
-        AirRole::DialogFrameIcon,
-        AirRole::DialogInterior,
-        AirRole::ButtonNormal,
-        AirRole::ButtonDefault,
-        AirRole::ButtonFocused,
-        AirRole::ButtonDisabled,
-        AirRole::ButtonHotkey,
-        AirRole::ButtonShadow,
-        AirRole::ScrollBarPage,
-        AirRole::ScrollBarControls,
-        AirRole::ListNormal,
-        AirRole::ListSelected,
-        AirRole::ListMarked,
-        AirRole::ListMarkedSelected,
-        AirRole::EditorSelected,
-        AirRole::InputLineText,
-        AirRole::InputLineSelected,
-        AirRole::ClusterNormal,
-        AirRole::ClusterSelected,
-        AirRole::ClusterHotkey,
-        AirRole::WindowShadow,
-    ];
 
     #[test]
     fn la_conversion_vga_vers_ansi_est_une_bijection_sur_les_seize() {

@@ -51,6 +51,50 @@ pub const SWITCH_PANEL: AirCommand = AirCommand::new(300);
 pub const RELOAD: AirCommand = AirCommand::new(301);
 /// Remonter d'un niveau dans le panneau actif.
 pub const GO_TO_PARENT: AirCommand = AirCommand::new(302);
+/// Changer le format d'affichage du panneau actif.
+pub const SWITCH_LISTING_FORMAT: AirCommand = AirCommand::new(303);
+
+/// Le nombre de colonnes d'un panneau en affichage bref.
+///
+/// `mc` en accepte de une à neuf — c'est son manuel qui le dit —, et son dialogue de
+/// format les demande. `rmc` n'a pas ce dialogue : deux colonnes dans un panneau qui fait
+/// la moitié de l'écran, c'est ce qui se lit sans tronquer la plupart des noms.
+const BRIEF_COLUMNS: usize = 2;
+
+/// Comment un panneau affiche ses entrées.
+///
+/// `mc` cycle entre **quatre** formats — complet, bref, long, défini par l'utilisateur.
+/// `rmc` n'en a que deux, et les deux autres ne sont pas des variantes à ajouter ici :
+/// « long » affiche droits, propriétaire et date, qu'`rmc` ne lit pas, et « utilisateur »
+/// demande un langage de format.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ListingFormat {
+    /// Le nom, et sa taille contre le bord droit. Une colonne.
+    Full,
+    /// Le nom seul, sur plusieurs colonnes.
+    ///
+    /// Les tailles disparaissent parce que la colonne est trop étroite pour les deux, et
+    /// c'est ce que `mc` fait aussi : « the brief view shows only the file name ».
+    Brief,
+}
+
+impl ListingFormat {
+    /// Le suivant dans le cycle.
+    const fn next(self) -> Self {
+        match self {
+            Self::Full => Self::Brief,
+            Self::Brief => Self::Full,
+        }
+    }
+
+    /// Le nombre de colonnes que ce format demande.
+    const fn column_count(self) -> usize {
+        match self {
+            Self::Full => 1,
+            Self::Brief => BRIEF_COLUMNS,
+        }
+    }
+}
 
 /// La dimension sous laquelle deux panneaux ne tiennent plus.
 ///
@@ -111,6 +155,8 @@ pub struct Shell {
     root: AirScreen,
     /// Les identifiants des deux panneaux.
     views: [PanelViews; 2],
+    /// Le format d'affichage de chaque panneau, gauche puis droite.
+    listing: [ListingFormat; 2],
     /// La génération que chaque liste reflète déjà.
     ///
     /// C'est le mécanisme 2 de l'ADR-007 : une liste dont le modèle n'a pas changé n'est
@@ -163,6 +209,7 @@ impl Shell {
         Self {
             panels: [Directory::new(left), Directory::new(right)],
             active: Side::Left,
+            listing: [ListingFormat::Full, ListingFormat::Full],
             changes: AirChangeSet::with_capacity(8),
             requests: Vec::with_capacity(8),
             root,
@@ -196,6 +243,15 @@ impl Shell {
         // `index` ne rend que 0 ou 1, et le tableau en porte deux : le repli est
         // inatteignable, et il évite un `expect` dans un chemin appelé à chaque tour.
         self.panels.get(side.index()).unwrap_or(&self.panels[0])
+    }
+
+    /// Le format d'affichage d'un panneau.
+    #[must_use]
+    pub fn listing_format(&self, side: Side) -> ListingFormat {
+        self.listing
+            .get(side.index())
+            .copied()
+            .unwrap_or(ListingFormat::Full)
     }
 
     /// Lit les deux répertoires.
@@ -244,17 +300,27 @@ impl Shell {
             .flatten()
             .is_none_or(|seen| seen != generation);
         if fresh {
+            let format = self.listing_format(side);
             let items: Vec<AirListItem> = self
                 .panel(side)
                 .entries()
                 .iter()
                 .map(|entry| {
-                    let item = AirListItem::new(entry.name.clone())
-                        .with_detail(detail_of(entry.kind, entry.size));
+                    let item = AirListItem::new(entry.name.clone());
+                    // En affichage bref, la précision est **absente** et non tronquée :
+                    // une colonne de dix-huit cellules ne porte pas un nom et une taille,
+                    // et c'est le nom qui compte.
+                    let item = match format {
+                        ListingFormat::Full => item.with_detail(detail_of(entry.kind, entry.size)),
+                        ListingFormat::Brief => item,
+                    };
                     if entry.marked { item.marked() } else { item }
                 })
                 .collect();
             if let Some(list) = find_mut::<AirListBox>(&mut self.root, views.list) {
+                // Les colonnes avant le contenu : poser les items d'abord ramènerait le
+                // défilement dans une grille qui n'est pas encore celle du format.
+                list.set_column_count(format.column_count());
                 list.set_items(items);
             }
             if let Some(slot) = self.reflected.get_mut(side.index()) {
@@ -262,13 +328,16 @@ impl Shell {
             }
         }
 
-        let (top_item, visible_rows, item_count) =
+        let (top_item, visible_items, item_count) =
             match find_mut::<AirListBox>(&mut self.root, views.list) {
-                Some(list) => (list.top_item(), list.visible_rows(), list.item_count()),
+                Some(list) => (list.top_item(), list.visible_items(), list.item_count()),
                 None => return,
             };
         if let Some(bar) = find_mut::<AirScrollBar>(&mut self.root, views.bar) {
-            bar.set_range(top_item, visible_rows, item_count);
+            // La **surface** et non la hauteur : un panneau bref montre deux fois plus
+            // d'entrées que de lignes, et un ascenseur qui l'ignorerait annoncerait un
+            // reste à parcourir qui n'existe pas.
+            bar.set_range(top_item, visible_items, item_count);
         }
         let title = self.panel_title(side);
         if let Some(window) = find_mut::<AirWindow>(&mut self.root, views.window) {
@@ -365,6 +434,18 @@ impl Shell {
             QUIT => self.quit = true,
             SWITCH_PANEL => self.active = self.active.other(),
             RELOAD => self.apply(self.active, DirectoryAction::Reload),
+            SWITCH_LISTING_FORMAT => {
+                let index = self.active.index();
+                if let Some(slot) = self.listing.get_mut(index) {
+                    *slot = slot.next();
+                }
+                // Le format est une décision de **vue**, et le modèle n'a pas changé :
+                // sa génération est la même, donc l'étape 3 ne repousserait rien. C'est
+                // au contrôleur d'oublier ce qu'il croit avoir reflété.
+                if let Some(slot) = self.reflected.get_mut(index) {
+                    *slot = None;
+                }
+            }
             GO_TO_PARENT => {
                 let name = crate::directory::display_name(self.panel(self.active).path());
                 self.apply(self.active, DirectoryAction::GoToParent);
@@ -520,7 +601,11 @@ fn build_menu_bar() -> AirMenuBar {
     .with_menu(
         AirMenu::new("~P~anneau")
             .with_item(AirMenuItem::new("~C~hanger de panneau", SWITCH_PANEL))
-            .with_item(AirMenuItem::new("Re~m~onter", GO_TO_PARENT)),
+            .with_item(AirMenuItem::new("Re~m~onter", GO_TO_PARENT))
+            .with_item(AirMenuItem::new(
+                "~F~ormat d'affichage",
+                SWITCH_LISTING_FORMAT,
+            )),
     )
 }
 
@@ -562,7 +647,10 @@ pub fn default_directory() -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use super::{GO_TO_PARENT, RELOAD, SWITCH_PANEL, Shell, Side, detail_of, identifier};
+    use super::{
+        BRIEF_COLUMNS, GO_TO_PARENT, ListingFormat, RELOAD, SWITCH_LISTING_FORMAT, SWITCH_PANEL,
+        Shell, Side, build_menu_bar, detail_of, identifier,
+    };
     use crate::directory::{EntryKind, scratch::Scratch};
     use air_tui::command::{AirCommandSet, QUIT};
     use air_tui::geometry::AirSize;
@@ -750,6 +838,93 @@ mod tests {
             list.focused().map(|item| item.text.as_str()),
             Some("bbb"),
             "l'aller-retour revient où il était"
+        );
+    }
+
+    #[test]
+    fn le_format_bref_met_le_panneau_en_colonnes_et_retire_les_tailles() {
+        let scratch = Scratch::new(&["dossier"], &[("a.txt", "abc")]);
+        let (mut shell, mut commands) = shell(scratch.path(), scratch.path(), 80, 25);
+        let list = list_of(&shell, Side::Left);
+        assert_eq!(list.column_count(), 1, "le format complet est le défaut");
+        assert!(
+            list.items().iter().all(|item| !item.detail.is_empty()),
+            "le format complet écrit une précision pour chaque entrée"
+        );
+
+        shell.execute(SWITCH_LISTING_FORMAT);
+        turn(&mut shell, &mut commands);
+        assert_eq!(shell.listing_format(Side::Left), ListingFormat::Brief);
+        let list = list_of(&shell, Side::Left);
+        assert_eq!(list.column_count(), BRIEF_COLUMNS);
+        assert!(
+            list.items().iter().all(|item| item.detail.is_empty()),
+            "l'affichage bref ne montre que les noms"
+        );
+    }
+
+    #[test]
+    fn le_format_est_propre_au_panneau_actif_et_revient() {
+        let scratch = Scratch::new(&[], &[("a.txt", "abc")]);
+        let (mut shell, mut commands) = shell(scratch.path(), scratch.path(), 80, 25);
+        shell.execute(SWITCH_LISTING_FORMAT);
+        turn(&mut shell, &mut commands);
+        assert_eq!(shell.listing_format(Side::Left), ListingFormat::Brief);
+        assert_eq!(
+            shell.listing_format(Side::Right),
+            ListingFormat::Full,
+            "l'autre panneau n'a rien demandé"
+        );
+        assert_eq!(list_of(&shell, Side::Right).column_count(), 1);
+
+        // Le cycle n'a que deux formats : le second appui revient au premier.
+        shell.execute(SWITCH_LISTING_FORMAT);
+        turn(&mut shell, &mut commands);
+        assert_eq!(shell.listing_format(Side::Left), ListingFormat::Full);
+        let list = list_of(&shell, Side::Left);
+        assert_eq!(list.column_count(), 1);
+        assert!(
+            list.items().iter().all(|item| !item.detail.is_empty()),
+            "les tailles reviennent avec le format complet"
+        );
+    }
+
+    #[test]
+    fn l_ascenseur_d_un_panneau_bref_mesure_la_surface() {
+        // Assez d'entrées pour que la mesure ne soit pas ramenée au total : l'ascenseur
+        // borne `visible` par `total`, et deux fichiers donneraient deux dans les deux
+        // formats — un essai qui ne mesurerait rien.
+        let names: Vec<String> = (0..50).map(|index| format!("fichier-{index:02}")).collect();
+        let files: Vec<(&str, &str)> = names.iter().map(|name| (name.as_str(), "x")).collect();
+        let scratch = Scratch::new(&[], &files);
+        let (mut shell, mut commands) = shell(scratch.path(), scratch.path(), 80, 25);
+        let bar = find::<AirScrollBar>(shell.root(), identifier(5)).expect("ascenseur gauche");
+        assert_eq!(bar.visible(), 21, "vingt-et-une lignes en format complet");
+
+        shell.execute(SWITCH_LISTING_FORMAT);
+        turn(&mut shell, &mut commands);
+        let bar = find::<AirScrollBar>(shell.root(), identifier(5)).expect("ascenseur gauche");
+        // Vingt-et-une lignes, deux colonnes : quarante-deux entrées visibles d'un coup.
+        assert_eq!(bar.visible(), 42);
+    }
+
+    #[test]
+    fn le_menu_du_panneau_publie_le_format_d_affichage() {
+        // La commande n'a pas de touche : le framework n'a pas de table d'accélérateurs,
+        // et le menu est donc le seul chemin. Un item absent la rendrait inatteignable.
+        let bar = build_menu_bar();
+        let labels: Vec<&str> = bar
+            .menus()
+            .iter()
+            .flat_map(|menu| {
+                menu.items()
+                    .iter()
+                    .map(air_tui::widgets::AirMenuItem::label)
+            })
+            .collect();
+        assert!(
+            labels.contains(&"~F~ormat d'affichage"),
+            "le menu ne publie pas le format : {labels:?}"
         );
     }
 

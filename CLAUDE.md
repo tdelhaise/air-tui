@@ -186,6 +186,13 @@ qui écrit le registre. Retirer un artefact à la main demande donc de corriger 
 main **une fois**, puis de relancer un import pour que le registre soit régénéré. Payé deux
 fois en écrivant M7i.
 
+La même arête se présente par l'autre bout quand on **ajoute un rôle** à la palette : les
+trois artefacts n'ont pas la nouvelle entrée, donc `air-tui` ne compile plus, donc `xtask`
+non plus — et c'est `xtask` qui les régénère. La sortie est la même : ajouter l'entrée à la
+main dans les trois fichiers, bâtir, puis relancer les trois imports, qui réécrivent ce
+qu'il faut. Un `git diff` sur `theme/skins/` dit alors si la main avait vu juste ; au jalon
+M7m, elle avait écrit exactement ce que l'outil a produit.
+
 ```sh
 cargo build --example frame
 tools/pty-drive.py ./target/debug/examples/frame mc -- 800 1b5b32317e   # doit sortir
@@ -234,32 +241,34 @@ bureau du `░` à l'espace.
 
 Depuis le jalon M7g, les **trente-neuf** skins livrés avec `mc` 4.8.33 sont importables, et
 deux d'entre eux servent à vérifier les capacités que ce jalon a ajoutées — un attribut par
-rôle et la couleur du terminal. Les deux demandent d'**importer, bâtir, mesurer, puis
-rétablir l'artefact** :
+rôle et la couleur du terminal. Les deux sont **compilés dans le dépôt** depuis le jalon
+M7i, donc la mesure ne demande **rien d'autre que leur nom** : l'exemple `frame` ne connaît
+que `mc` et `tv`, mais `rmc` et `redit` prennent `--theme mc:<skin>`.
 
 ```sh
-cargo run -p xtask -- import-mc-skin --skin /usr/local/share/mc/skins/modarcon16-defbg.ini
-cargo build --example frame
-tools/pty-drive.py ./target/debug/examples/frame mc -- 800 1b5b32317e \
-    | grep -oE ';49m' | wc -l
-# doit donner 20 : le fond du terminal, qui traverse palette, quantificateur et encodeur.
+cargo build -p rmc
+mkdir -p /tmp/rmc-essai && printf 'abcd' > /tmp/rmc-essai/quatre.txt
+tools/pty-drive.py ./target/debug/rmc --theme mc:modarcon16_defbg /tmp/rmc-essai \
+    -- 700 1b5b32317e | grep -oE ';49m' | wc -l
+# doit donner 14 : le fond du terminal, qui traverse palette, quantificateur et encodeur.
 # `grep -c` donnerait 1 : la sortie d'un pty est une seule ligne, donc on compte les
 # occurrences et non les lignes — c'est exactement le piège qui fait croire à un défaut.
 
-cargo run -p xtask -- import-mc-skin --skin /usr/local/share/mc/skins/seasons-autumn16M.ini
-cargo build --example frame
-COLORTERM=truecolor tools/pty-drive.py ./target/debug/examples/frame mc -- 800 1b5b32317e \
-    | grep -oE $'\033\\[0;4;38;2;[0-9;]*m' | head -1
+COLORTERM=truecolor tools/pty-drive.py ./target/debug/rmc --theme mc:seasons_autumn16m \
+    /tmp/rmc-essai -- 700 1b5b32317e | grep -oE $'\033\\[0;4;38;2;[0-9;]*m' | head -1
 # doit donner un souligné sur une vraie couleur : la lettre d'accès rapide d'un menu
-
-git checkout crates/air-tui/src/theme/skins/midnight_commander.rs
-cargo xtask import-mc-skin --skin /usr/local/share/mc/skins/default.ini --check
 ```
 
-Ne pas oublier le `git checkout` : l'importeur écrit **toujours** dans
-`crates/air-tui/src/theme/skins/midnight_commander.rs`, et un artefact d'essai committé par
-distraction changerait le thème du dépôt sans qu'un contrôle le dise — `--check` ne le
-verrait pas, puisqu'il est cohérent avec son propre skin.
+Cette procédure en a remplacé une qui demandait d'**importer, bâtir, mesurer, puis
+rétablir l'artefact** — nécessaire avant M7i, quand un seul thème compilé tenait dans le
+dépôt et que chaque import l'écrasait. Elle était restée écrite ici trois jalons de trop,
+et elle nommait un fichier qui **n'existe plus** : `theme/skins/midnight_commander.rs`.
+L'importeur écrit le fichier qui porte le **nom du skin** — `default.rs` pour
+`default.ini` —, et il régénère le registre `theme/skins/mod.rs` à chaque fois. Si une
+mesure demande malgré tout d'importer un skin, c'est **ce** fichier qu'il faut rétablir par
+`git checkout`, et retirer celui qu'un skin inconnu du dépôt aurait créé : un artefact
+d'essai committé par distraction changerait un thème sans qu'aucun contrôle le dise, puisque
+`--check` le trouverait cohérent avec son propre skin.
 
 Pour compter les skins importables, `--check` suffit et distingue les deux cas : un message
 qui parle d'« empreinte » ou de « ne correspond plus » veut dire que le skin **a compilé**
@@ -355,12 +364,44 @@ printf 'une belle journee\n' > /tmp/redit-double.txt
 tools/pty-drive.py ./target/debug/redit /tmp/redit-double.txt -- \
     600 1b5b3c303b363b334d 400 18 400 1b5b31327e 600 1b5b32317e
 
+# Un menu ouvert est modal pour les lettres (M7m) : Alt+E, `z`, F2, F10 — et son contrôle,
+# la même lettre sans menu ouvert. Attention à ne **pas** mettre un `1b` nu pour refermer le
+# menu : le décodeur attendrait la suite et avalerait le F2 qui suit.
+printf 'origine\n' > /tmp/redit-menu.txt
+tools/pty-drive.py ./target/debug/redit /tmp/redit-menu.txt -- \
+    500 1b65 400 7a 400 1b5b31327e 600 1b5b32317e
+cat /tmp/redit-menu.txt    # doit contenir « origine » : la lettre n'a pas atteint le texte
+printf 'origine\n' > /tmp/redit-menu.txt
+tools/pty-drive.py ./target/debug/redit /tmp/redit-menu.txt -- \
+    500 7a 400 1b5b31327e 600 1b5b32317e
+cat /tmp/redit-menu.txt    # doit contenir « zorigine » : sans menu, elle s'insère
+
 cargo build -p rmc
 mkdir -p /tmp/rmc-essai/sous-repertoire && printf 'abcd' > /tmp/rmc-essai/quatre.txt
 tools/pty-drive.py ./target/debug/rmc /tmp/rmc-essai -- 700 1b5b32317e      # doit sortir
 tools/pty-drive.py ./target/debug/rmc /tmp/rmc-essai -- 600 09              # doit tenir
 # Tab, flèche bas, Inser, F10 : le panneau de droite devient actif, un item est marqué
 tools/pty-drive.py ./target/debug/rmc /tmp/rmc-essai -- 500 09 300 1b5b42 300 1b5b327e 700 1b5b32317e
+
+# Le format bref du jalon M7m, et son contrôle. `1b70` est Alt+P — le menu « Panneau » —,
+# puis `66` est la lettre d'accès rapide de « Format d'affichage », qui l'active.
+# Le séparateur de colonnes est le même glyphe que le trait vertical d'un cadre, donc
+# c'est la **différence** qui se mesure, et elle vaut une ligne de panneau :
+tools/pty-drive.py ./target/debug/rmc /tmp/rmc-essai -- 700 1b5b32317e \
+    | grep -oF '│' | wc -l
+# doit donner 84 : deux fenêtres, deux bords verticaux, vingt-et-une lignes
+tools/pty-drive.py ./target/debug/rmc /tmp/rmc-essai -- 500 1b70 400 66 700 1b5b32317e \
+    | grep -oF '│' | wc -l
+# doit donner 105 : vingt-et-un séparateurs de plus, un par ligne du panneau de gauche
+
+# Et la couleur, en thème Turbo Vision : `cpAppColor[60]`, bleu sur le cyan de la liste,
+# que Borland nomme « List divider ». Ici on cherche la **présence** et non un compte :
+# l'encodeur est différentiel, donc le nombre d'émissions d'un attribut dépend de ce qui
+# précède chaque cellule.
+tools/pty-drive.py ./target/debug/rmc --theme tv /tmp/rmc-essai \
+    -- 500 1b70 400 66 700 1b5b32317e | grep -oE '38;5;4;48;5;6m│' | head -1
+# doit sortir une occurrence, et **rien** sans la bascule : le format complet n'a qu'une
+# colonne, donc aucun séparateur.
 ```
 
 La sortie de `rmc` se lit en retirant les séquences d'échappement : les noms de fichiers
@@ -399,7 +440,10 @@ repeint, que le relâchement d'`Inser` a démarqué. Les deux étaient vrais ava
 Attention aux codes : `1b5b31327e` est `F2`, `1b5b31337e` est `F3`, `1b5b31387e` est `F7`,
 `1b5b32317e` est `F10`, `1b5b313b3244` est `Maj`+Gauche, `1b5b48` est `Début`, `0d` est
 `Entrée`, `03` est `Ctrl`+`C`, `16` est `Ctrl`+`V`, `18` est `Ctrl`+`X`, `1a` est
-`Ctrl`+`Z`, `12` est `Ctrl`+`R` et `0c` est `Ctrl`+`L`. `Ctrl`+`Z`
+`Ctrl`+`Z`, `12` est `Ctrl`+`R` et `0c` est `Ctrl`+`L`. `1b70` est `Alt`+`P`, `1b65` est
+`Alt`+`E`, et une lettre nue — `66` pour `f`, `7a` pour `z` — active l'item du menu ouvert
+qui la porte, ou se fait avaler par ce menu si elle n'en désigne aucun, depuis le jalon
+M7m. `Ctrl`+`Z`
 atteint bien l'application et ne la suspend pas : `cfmakeraw` efface `ISIG`. `1b5b3c303b363b334d` est un enfoncement du bouton gauche à la colonne 6,
 ligne 3 au format SGR 1006 — **comptées depuis un**, et la vue d'édition de `redit`
 commence à la colonne 1, ligne 2 de l'écran, sous la barre de menu et dans le cadre de sa

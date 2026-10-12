@@ -52,7 +52,7 @@ note   = "les quatre mécanismes existent et redit les emploie tous (M6) : journ
 ["008"]
 objet  = "Moteur de thèmes : palette par rôles, glyphes, décorations ; thèmes compilés"
 statut = "fait"
-note   = "palette transcrite de Borland (trente-neuf rôles depuis M7j, avec attributs depuis M7g), quantificateur, treize widgets colorés par rôles, thème MC et importeur de skins faits (M5, M5b, M6, M7a), coquille rmc faite (M7b) : les deux moitiés que l'ADR sépare existent séparément et se vérifient en deux lignes de commande. Les trente-neuf skins livrés avec mc 4.8.33 sont importables depuis M7g. Le choix du skin se fait par un nom depuis M7i, et AirDecorations — la troisième assiette du triplet — existe depuis M7j : le thème est enfin le triplet que l'ADR décrit. Reste que les boutons ne projettent pas d'ombre, et que AirRole::ButtonShadow n'est lu par personne"
+note   = "palette transcrite de Borland (quarante rôles depuis M7m, avec attributs depuis M7g), quantificateur, treize widgets colorés par rôles, thème MC et importeur de skins faits (M5, M5b, M6, M7a), coquille rmc faite (M7b) : les deux moitiés que l'ADR sépare existent séparément et se vérifient en deux lignes de commande. Les trente-neuf skins livrés avec mc 4.8.33 sont importables depuis M7g. Le choix du skin se fait par un nom depuis M7i, et AirDecorations — la troisième assiette du triplet — existe depuis M7j, avec son second champ depuis M7k : AirRole::ButtonShadow, transcrit à M5, a enfin un lecteur. Le quarantième rôle est le séparateur de colonnes d'une liste (M7m), que Borland nomme et qu'aucun des trente-neuf skins de mc ne décrit"
 
 ["009"]
 objet  = "Versionnement semver, par crate, incrémenté à chaque PR qui touche la crate"

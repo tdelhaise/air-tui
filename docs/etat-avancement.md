@@ -3,8 +3,8 @@
 Document de suivi **vivant** : où en est-on, quelle est la prochaine tâche. Il se met à
 jour à chaque session. L'historique figé est dans [`JOURNAL.md`](JOURNAL.md).
 
-**Dernière mise à jour : 2026-10-12** (jalon M7l — la recherche dans `redit` ; jalon M7k —
-l'ombre portée des boutons).
+**Dernière mise à jour : 2026-10-12** (jalon M7m — la liste à plusieurs colonnes ; jalon
+M7l — la recherche dans `redit` ; jalon M7k — l'ombre portée des boutons).
 
 ## Dépôt
 
@@ -27,7 +27,7 @@ contrôle, donc **aucun essai en pseudo-terminal** n'y tourne, et le fuzzing exi
 
 ## Où en est-on
 
-Jalons **M0 à M7l terminés**. Le dépôt porte ses conventions, ses ADR fondateurs, le socle
+Jalons **M0 à M7m terminés**. Le dépôt porte ses conventions, ses ADR fondateurs, le socle
 de rendu, le décodeur d'entrée, l'arbre de vues, treize widgets, la **couche MVC** de
 l'ADR-007, la hiérarchie d'objets complète, deux thèmes dont un **compilé**, et deux
 **applications** : `redit` ouvre un fichier, l'édite et l'enregistre ; `rmc` parcourt deux
@@ -36,9 +36,9 @@ arborescences côte à côte.
 Depuis M7g, les **trente-neuf** skins livrés avec `mc` 4.8.33 sont importables. Ils
 étaient neuf.
 
-Ce qui manque pour que ce soit un framework complet : l'étage d'entrée natif Linux (M8),
-une liste à plusieurs colonnes, et le **défilement d'un groupe** d'items plus long que sa
-place.
+Ce qui manque pour que ce soit un framework complet : l'étage d'entrée natif Linux (M8) et
+le **défilement d'un groupe** d'items plus long que sa place. La liste à plusieurs colonnes
+est faite au jalon M7m.
 
 ### Fait
 
@@ -616,6 +616,93 @@ affirmations de M7b se sont révélées fausses. Elles sont corrigées ici plut�
   annonçait le quantificateur « prévu au jalon M5 et **n'est pas écrit** », celui
   d'`AirCell` les tables UCD de même. Les deux existent depuis M5 et M3.
 
+### Fait au jalon M7m — la liste à plusieurs colonnes
+
+- **La mise en page est l'affaire de la vue, et l'ordre des items ne bouge pas.** Une liste
+  à deux colonnes reste une liste à **un** indice : `AirListBox` a gagné un
+  `column_count`, et ni `AirListItem`, ni `AirListRequest`, ni le contrôleur qui pousse le
+  reflet n'ont changé de forme. Aucun ADR n'a été écrit pour ce jalon, et c'est le
+  résultat : rien ici ne tranche une question d'architecture.
+- **Les colonnes se remplissent de haut en bas.** La cellule de la colonne *c* et de la
+  ligne *l* porte l'item `top_item + c × lignes + l` — l'ordre de `TListViewer::draw`,
+  `item = j * size.y + i + topItem`. C'est le seul qui garde à `Bas` le sens de « l'item
+  suivant » ; en lignes, une flèche vers le bas sauterait de deux items.
+- **La réponse à la question que M7b avait laissée ouverte.** Le module écrivait, pour
+  justifier l'absence de la seconde colonne, qu'elle « demande de décider ce que `Page bas`
+  veut dire ». La réponse est qu'une **page est la surface visible**, lignes × colonnes —
+  ce que `TListViewer` fait avec `size.y * numCols`. `visible_rows` garde son sens, la
+  hauteur d'une colonne, et `visible_items` est la mesure nouvelle : c'est elle que
+  l'ascenseur attend désormais, et `rmc` a changé de ligne en conséquence.
+- **L'unité de défilement devient la colonne, et seulement alors.** Dès qu'il y a plus
+  d'une colonne, `top_item` est un multiple du nombre de lignes : sans cet alignement,
+  descendre d'un item en bas de la dernière colonne décalerait toutes les autres d'une
+  ligne. Turbo Vision fait le même calcul dans `focusItem` et donne à l'ascenseur de
+  `TListViewer` un pas de flèche de `size.y` au lieu de 1 — les deux valeurs sont dans son
+  constructeur, et c'est ce qui a confirmé la règle au lieu de la faire deviner. Sur une
+  seule colonne le pas reste la ligne : s'aligner y ferait sauter une page entière.
+- **`Gauche` et `Droite` ne sont consommées que par une liste qui a plusieurs colonnes.**
+  Sur une colonne, elles restent disponibles pour un parent — `TListViewer::handleEvent`
+  rend la main sans rien faire quand `numCols == 1`, et c'est la même règle que celle du
+  dépôt : une vue ne prend pas ce dont elle n'a aucun usage.
+- **Un séparateur vertical, et une couleur nommée d'un seul côté.** Le caractère est le
+  même chez Borland (`0xB3`) et dans les skins de `mc` (`[Lines] vert`), et c'est déjà le
+  trait vertical du cadre de fenêtre du thème : le jeu de glyphes n'a donc **pas** gagné de
+  champ. La couleur, elle, est `cpListViewer[5]` → `cpGrayDialog[29]` → `cpAppColor[60]`,
+  que `dialogs.h` commente « ListViewer divider » et que `tvdemo2.cpp` nomme « List
+  divider » : la palette passe à **quarante** rôles. Aucun des trente-neuf skins livrés
+  avec `mc` n'a de clef pour ce trait, ni pour sa couleur ni pour son caractère — vérifié
+  sur les trente-neuf fichiers —, et la table de l'importeur le dit à sa ligne.
+- **`rmc` est le lecteur, et pas seulement un essai.** Son menu « Panneau » porte « Format
+  d'affichage », qui bascule le panneau actif entre le format **complet** — un nom, sa
+  taille à droite, une colonne — et le format **bref** — les noms seuls, deux colonnes. Les
+  tailles sont **absentes** et non tronquées : c'est ce que fait `mc`, dont le manuel écrit
+  « the brief view shows only the file name », et une colonne de dix-huit cellules ne porte
+  pas les deux. `mc` cycle sur quatre formats et `rmc` sur deux : « long » afficherait des
+  droits et des dates qu'`rmc` ne lit pas, « utilisateur » demanderait un langage de format.
+- **Le format est une décision de vue, donc le contrôleur oublie son reflet.** Changer de
+  format ne change pas le modèle : sa génération est la même, et le mécanisme 2 de
+  l'ADR-007 ne repousserait rien. C'est le contrôleur qui remet à `None` la génération
+  qu'il croyait reflétée — trois lignes, et pas un mécanisme de plus.
+- **La lettre d'accès rapide d'un item de menu tient enfin sa promesse.** Le libellé
+  `~F~ormat d'affichage` dessine son `F` dans la couleur d'accès rapide depuis le jalon
+  M5b, et cette lettre était **inerte** : la barre de menu ne traitait, dans un menu
+  ouvert, que `Échap`, les flèches et `Entrée`. `TMenuView::handleEvent` cherche la lettre
+  par `findItem` — sans distinguer la casse —, écarte les items grisés et pose aussitôt la
+  commande ; c'est transcrit. Sans cela, le seul chemin vers une commande de menu au
+  clavier aurait été trois flèches et `Entrée`, et le tilde aurait continué de promettre ce
+  qu'il ne faisait pas.
+- **Et un menu ouvert est désormais modal pour les lettres.** La frappe lui est adressée :
+  la laisser passer l'envoyait dans la vue focalisée, donc `Alt`+`E` puis `z` **écrivait un
+  `z` dans le document** de `redit`. Mesuré en pseudo-terminal, avec son contrôle — sans
+  menu ouvert, la même lettre s'insère toujours. Seules les lettres sont avalées : `F10`
+  avec un menu ouvert quitte encore, et c'est une absence de modalité assumée, pas un
+  oubli.
+- **Deux attentes d'essai fausses, et le code avait raison deux fois.** Passer à deux
+  colonnes depuis un défilement quelconque **ne** laisse pas le défilement aligné où
+  l'essai l'attendait : le curseur était resté en tête, donc `reveal` ramène la page sur
+  lui, ce qui est juste. Et l'essai du défilement par `Fin` ne mesurait rien avec vingt
+  items : la dernière page commence au même endroit qu'on s'aligne ou non. Il porte
+  désormais sur vingt-deux.
+- **Sept contrôles négatifs**, chacun vu échouer : pas de défilement ramené à la ligne,
+  molette ramenée à trois lignes, page ramenée à la hauteur, garde de `Gauche`/`Droite`
+  retirée, remplissage en lignes au lieu de colonnes, séparateur non dessiné, clic qui
+  ignore la colonne. Deux de plus dans `rmc` — le contrôleur qui n'oublie pas son reflet,
+  la liste qui ne change pas de colonnes — et deux dans la barre de menu.
+- **Mesuré en pseudo-terminal** : le panneau de gauche passe de 84 à **105** traits
+  verticaux à l'écran, soit vingt-et-un séparateurs de plus, un par ligne. Et en thème
+  Turbo Vision, l'octet exact de `cpAppColor[60]` — `38;5;4;48;5;6`, bleu sur le cyan de la
+  liste — n'apparaît **qu'**après la bascule.
+- **Trois défauts de documentation corrigés, trouvés en travaillant** : `CLAUDE.md` et
+  `docs/CONVENTIONS-fr.md` nommaient `theme/skins/midnight_commander.rs`, un fichier qui
+  n'existe plus depuis le jalon M7i — l'importeur écrit le fichier qui porte le nom du
+  skin —, et `CLAUDE.md` décrivait encore la procédure d'avant M7i pour mesurer deux skins,
+  qui demandait d'importer puis de rétablir un artefact là où `--theme mc:<skin>` suffit ;
+  le module de la liste annonçait le **double-clic** comme absent alors que M7e l'a écrit ;
+  `statuts.toml` disait de l'ADR-008 que « les boutons ne projettent pas d'ombre » et que
+  `AirRole::ButtonShadow` n'est « lu par personne », deux jours après M7k. Et le compte des
+  rôles était resté à trente-huit en quatre endroits, dont le nom d'un essai qui en
+  énumérait trente-deux.
+
 ### Fait au jalon M7l — la recherche dans `redit`
 
 - **La recherche n'est pas une action, et c'est la décision du jalon.** L'ADR-007 fait
@@ -951,13 +1038,16 @@ affirmations de M7b se sont révélées fausses. Elles sont corrigées ici plut�
   `mc`, ne connaît pas ses systèmes de fichiers virtuels, et n'affiche ni droits, ni
   propriétaire, ni date. La barre de touches ne publie que `Tab`, `F5` et `F10` : en
   annoncer dix dont sept ne feraient rien serait ce que le NO GO n° 2 interdit.
-- Les **colonnes multiples** d'une liste : `mc` sait afficher un répertoire sur deux ou
-  trois colonnes, et `TListViewer` portait un `numCols`. Une colonne suffit à un panneau de
-  fichiers, et la seconde demande de décider ce que `Page bas` veut dire.
-- L'ombre portée d'un **bouton**. Les fenêtres en projettent une depuis M7j, et le
-  mécanisme de l'ADR-015 suffirait aux boutons — un bouton est l'enfant d'une fenêtre, qui
-  possède donc la zone où son ombre tomberait. `AirRole::ButtonShadow`, transcrit de Borland
-  au jalon M5, est toujours **lu par personne**.
+- Le **défilement horizontal** d'une liste. `TListViewer` accepte un second ascenseur, dont
+  la valeur décale le texte de tous les items ; ici un nom plus large que sa colonne est
+  **tronqué** à la grappe près, et rien ne permet d'en voir la fin. `mc` a pour cela deux
+  caractères de skin, `[widget-panel] filename-scroll-left-char` et son pendant à droite,
+  que personne ne lit.
+- Une **table d'accélérateurs** au niveau de l'application. Deux chemins mènent une frappe
+  à une commande : les lettres `Alt`+X de la barre de menu — et, depuis M7m, la lettre d'un
+  item dans le menu ouvert — et les touches **nues** de la barre de statut. Il n'y a pas de
+  troisième, donc une commande comme le format d'affichage de `rmc` n'a pas de raccourci :
+  `mc` la pose sur `Alt+T`, et `rmc` ne l'a pas.
 - L'échange avec le **presse-papiers du système** : `AirClipboard` est interne au
   processus. Il ne parle ni à `pbcopy`, ni à `wl-clipboard`, ni à OSC 52 — trois mécanismes
   différents, dont le dernier est refusé par défaut par la plupart des terminaux et les
@@ -997,10 +1087,13 @@ affirmations de M7b se sont révélées fausses. Elles sont corrigées ici plut�
 demandent une console physique, inaccessible par SSH. Écrire du code qu'on ne peut pas
 vérifier est exactement ce que ce dépôt refuse. Les candidats, du plus petit au plus gros :
 
-L'ombre des boutons (M7k) et la recherche (M7l) sont faites. Ce qui reste :
+L'ombre des boutons (M7k), la recherche (M7l) et la liste à plusieurs colonnes (M7m) sont
+faites. Ce qui reste :
 
-1. **Une liste à plusieurs colonnes**, et le **défilement d'un groupe** plus long que sa
-   place : les deux absences mesurées du catalogue de widgets. Demandée pour la suite.
+1. **Le défilement d'un groupe** plus long que sa place : la dernière absence mesurée du
+   catalogue de widgets. `AirGroup` dispose ses enfants et les découpe, mais rien ne décale
+   la vue d'un conteneur dont le contenu dépasse — un dialogue à vingt champs sur un écran
+   de vingt-cinq lignes n'a aucun moyen de montrer les derniers.
 2. **Le remplacement dans `redit`**, que l'ADR-016 écarte explicitement de son jalon : il
    demande de décider ce qu'un « remplacer tout » fait à l'historique d'annulation — un pas,
    ou un par occurrence.
@@ -1040,4 +1133,5 @@ des numéros de touches fonctionnelles.
 | M7j | la peinture hors des limites, l'ombre portée, la troisième assiette | **fait** |
 | M7k | l'ombre portée des boutons, en demi-blocs, et le second champ des décorations | **fait** |
 | M7l | la recherche dans `redit` : une question au modèle, une politique au contrôleur | **fait** |
+| M7m | la liste à plusieurs colonnes, le quarantième rôle, et le format bref de `rmc` | **fait** |
 | M8 | étage natif Linux : evdev, `TIOCLINUX`, gpm | à faire |

@@ -73,8 +73,14 @@ moitié d'un `é` décomposé. Elle ignore la casse, ne va que vers l'avant, rep
 au début du document en le disant, et ne remplace rien : le remplacement est une mutation,
 et il demande de décider ce qu'il fait à l'historique d'annulation.
 
-Ce qui manque encore : l'étage d'entrée natif Linux, une liste à plusieurs colonnes, et le
-défilement d'un groupe d'items plus long que sa place.
+`rmc` affiche un panneau au **format bref** — plusieurs colonnes de noms, sans les
+tailles — par son menu « Panneau ». `mc` a pour cela la touche `Alt+T` ; `rmc` ne l'a
+pas, le framework n'ayant pas de table d'accélérateurs, et le menu est donc le seul
+chemin. Les colonnes se remplissent de haut en bas, `Gauche` et `Droite` passent de l'une
+à l'autre, et une page vaut ce qu'on voit.
+
+Ce qui manque encore : l'étage d'entrée natif Linux, et le défilement d'un groupe d'items
+plus long que sa place.
 L'avancement réel, jalon par jalon, est tenu dans
 [`docs/etat-avancement.md`](docs/etat-avancement.md) — et ce README décrit l'intention du
 projet, qui va plus loin que ce qui est livré.

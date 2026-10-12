@@ -59,9 +59,9 @@ L'**avancement** vit dans [`etat-avancement.md`](etat-avancement.md), l'**histor
 | `command` | `AirCommandSet` — le grisage en *pull* | M4 |
 | `model::history` | le journal de remplacements : fusion par geste, borne, point d'enregistrement | M7h |
 | `clipboard` | `AirClipboard` — le presse-papiers interne, possédé par le contrôleur | M7d |
-| `theme` | palette par rôles (trente-neuf, **avec attributs**), glyphes, **décorations** (deux ombres), quantificateur | M5, M7, M7g, M7j, M7k |
+| `theme` | palette par rôles (quarante, **avec attributs**), glyphes, **décorations** (deux ombres), quantificateur | M5, M7, M7g, M7j, M7k, M7m |
 | `theme::skins` | les thèmes compilés depuis un skin de Midnight Commander, et leur **registre** — **générés** | M7, M7i |
-| `widgets` | panneau, étiquette, fenêtre, bouton, barre de menu, barre de statut, champ de saisie, ascenseur, vue d'édition, dialogue de saisie, liste, **cases à cocher et boutons radio** | M5, M5b, M6, M7b, M7f |
+| `widgets` | panneau, étiquette, fenêtre, bouton, barre de menu, barre de statut, champ de saisie, ascenseur, vue d'édition, dialogue de saisie, liste (**à plusieurs colonnes**), cases à cocher et boutons radio | M5, M5b, M6, M7b, M7f, M7m |
 | `model` | `AirModel`, `AirChangeSet`, `AirGeneration`, `AirTextBuffer`, sa **sélection**, son **historique d'annulation** et la **recherche** — la couche MVC | M6, M7d, M7h, M7l |
 | `application` | `AirApplication`, `AirScreen`, `AirDesktop` — la boucle et le chrome | M6 |
 
@@ -106,6 +106,6 @@ Les modules annoncés dans l'architecture et **non encore écrits** : `input/evd
 assiette du triplet de l'ADR-008, existe depuis le jalon M7j et porte deux ombres depuis
 le jalon M7k.
 
-Côté widgets, les absences mesurées : une **liste à plusieurs colonnes**, et le
-**défilement d'un groupe** d'items plus long que sa place. Les cases à cocher, les boutons
-radio et la sélection de texte sont faits — M7f et M7d.
+Côté widgets, l'absence mesurée qui reste : le **défilement d'un groupe** d'items plus
+long que sa place. La **liste à plusieurs colonnes** est faite au jalon M7m, les cases à
+cocher et les boutons radio à M7f, la sélection de texte à M7d.

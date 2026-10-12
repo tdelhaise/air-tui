@@ -7,7 +7,7 @@
 //! # État
 //!
 //! **Deux thèmes, et c'est ce qui fait de ce module un moteur.** La palette indexée par
-//! rôles sémantiques — **trente-huit** rôles —, le jeu de glyphes et le quantificateur de
+//! rôles sémantiques — **quarante** rôles —, le jeu de glyphes et le quantificateur de
 //! couleurs existent depuis le jalon M5 ; le thème Midnight Commander et l'importeur de
 //! skins qui le produit, depuis M7a ; les quatre rôles de liste, depuis M7b ; ceux du
 //! texte sélectionné, depuis M7d ; ceux des cases à cocher et des boutons radio, depuis
@@ -224,7 +224,7 @@ mod tests {
         AirScrollBar, AirStaticText, AirStatusItem, AirStatusLine, AirWindow,
     };
 
-    /// Une palette dont les trente-huit rôles portent le même attribut.
+    /// Une palette dont les quarante rôles portent le même attribut.
     ///
     /// Elle n'a aucun intérêt visuel — tout y est gris clair sur bleu et en graisse — et
     /// c'est précisément ce qui la rend utile : si un widget peint une cellule sans
@@ -240,7 +240,7 @@ mod tests {
             dialog: [pair; 4],
             button: [pair; 6],
             scroll_bar: [pair; 2],
-            list: [pair; 4],
+            list: [pair; 5],
             editor: [pair; 1],
             input_line: [pair; 2],
             cluster: [pair; 3],
@@ -462,48 +462,17 @@ mod tests {
     }
 
     #[test]
-    fn les_trente_huit_roles_repondent_dans_les_deux_themes() {
+    fn les_quarante_roles_repondent_dans_les_deux_themes() {
         // Un rôle sans valeur serait un trou dans la palette, et le compilateur ne le
         // verrait pas : `color_pair` est exhaustif par construction, mais une palette
         // compilée depuis un skin pourrait porter des couples laissés à zéro.
-        let roles = [
-            AirRole::DesktopBackground,
-            AirRole::MenuBar,
-            AirRole::MenuDisabled,
-            AirRole::MenuHotkey,
-            AirRole::MenuSelected,
-            AirRole::MenuSelectedDisabled,
-            AirRole::MenuSelectedHotkey,
-            AirRole::StatusLine,
-            AirRole::StatusDisabled,
-            AirRole::StatusHotkey,
-            AirRole::WindowFrameActive,
-            AirRole::WindowFrameInactive,
-            AirRole::WindowFrameIcon,
-            AirRole::WindowTitle,
-            AirRole::WindowInterior,
-            AirRole::WindowText,
-            AirRole::DialogFrameActive,
-            AirRole::DialogFrameInactive,
-            AirRole::DialogFrameIcon,
-            AirRole::DialogInterior,
-            AirRole::ButtonNormal,
-            AirRole::ButtonDefault,
-            AirRole::ButtonFocused,
-            AirRole::ButtonDisabled,
-            AirRole::ButtonHotkey,
-            AirRole::ButtonShadow,
-            AirRole::ScrollBarPage,
-            AirRole::ScrollBarControls,
-            AirRole::ListNormal,
-            AirRole::ListSelected,
-            AirRole::ListMarked,
-            AirRole::ListMarkedSelected,
-        ];
-        assert_eq!(roles.len(), 32);
+        //
+        // La liste des rôles est celle de `palette`, et non une copie : celle qui était
+        // écrite ici s'était arrêtée à trente-deux, sous un nom qui en annonçait
+        // trente-huit.
         let midnight = AirTheme::midnight_commander();
         let mut distinct = Vec::new();
-        for role in roles {
+        for role in crate::theme::palette::ALL_ROLES {
             let pair = midnight.palette.color_pair(role);
             distinct.push((pair.foreground, pair.background));
         }
