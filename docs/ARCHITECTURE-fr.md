@@ -470,7 +470,9 @@ atteindre ses propres vues.
 décorations — parce que ce qui fait reconnaître un look tient autant aux caractères qu'aux
 couleurs. Il a été un **couple** pendant quatre jalons : la seule décoration que la
 troisième assiette aurait portée est l'ombre portée, et elle tombe hors des limites de la
-vue qui la projette. L'ADR-015 a tranché la question au jalon M7j.
+vue qui la projette. L'ADR-015 a tranché la question au jalon M7j, et le jalon M7k a donné
+à l'assiette son second champ — l'ombre des boutons, que Turbo Vision dessine et que
+Midnight Commander ne dessine pas.
 
 ### L'ombre portée, et l'invariant qui n'a pas bougé
 
@@ -487,10 +489,22 @@ Le dépôt employait déjà cette famille de solutions sans l'avoir nommée : la
 convenait pas à l'ombre, pour une raison précise — la zone d'ombre entrerait dans la
 détection de clic de la fenêtre et dans le calcul de son intérieur.
 
-L'ombre **recolore** ce qui est dessous en gardant le caractère, ce qui lui donne l'aspect
-d'une ombre sur le motif `░` du bureau plutôt que d'un rectangle collé à la fenêtre. Elle
-est découpée comme tout le reste : une fenêtre contre le bord du bureau n'en projette qu'un
-morceau.
+L'ombre d'une fenêtre **recolore** ce qui est dessous en gardant le caractère, ce qui lui
+donne l'aspect d'une ombre sur le motif `░` du bureau plutôt que d'un rectangle collé à la
+fenêtre. Elle est découpée comme tout le reste : une fenêtre contre le bord du bureau n'en
+projette qu'un morceau.
+
+Celle d'un **bouton** n'a pas la même apparence, et c'est pourquoi la vue déclare un
+**genre** — `AirShadowStyle` — et non un booléen : un trait fin qui épouse le bouton, peint
+en demi-blocs `▄` et `▀`, les caractères `0xDC` et `0xDF` que Turbo Vision emploie pour
+qu'une ombre de bouton paraisse deux fois plus fine que celle d'une fenêtre. Un demi-bloc
+ne couvrant que la moitié de sa cellule, elle garde le **fond** de ce qu'elle assombrit et
+n'en change que l'avant-plan — règle qui donne exactement l'attribut `0x70` de Borland dans
+un dialogue gris, et qui tient encore sur la fenêtre bleue de l'exemple `frame`.
+
+Deux propriétaires peignent des ombres, et pas un seul : la traversée de l'arbre, pour les
+enfants d'un groupe, et `AirPromptDialog`, qui compose ses contrôles lui-même. Les deux
+passent par la même fonction, `view::draw_view_shadow`.
 
 ### Un rôle décrit une présentation, pas un couple de couleurs
 

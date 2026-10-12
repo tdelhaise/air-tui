@@ -6,6 +6,60 @@ tête. On ajoute, on ne réécrit jamais une entrée passée.
 Une entrée par campagne, pas par commit. Répartition des rôles : `etat-avancement.md` est
 l'état vivant, ce journal est la trace figée, `INDEX.md` est la carte structurelle.
 
+## 2026-10-12 — Jalon M7k : l'ombre portée des boutons, et le champ qui a attendu son second lecteur
+
+- **Le meilleur résultat du jalon est ce qui n'a pas été écrit.** L'ADR-015 affirmait que
+  son mécanisme suffirait aux boutons ; la vérification est que `draw_view_shadow` n'a gagné
+  **aucun** cas particulier pour eux. Un bouton est l'enfant d'une fenêtre ou d'un dialogue,
+  qui possède donc la zone où son ombre tombe, et le découpage du peintre n'a pas bougé.
+- **Ce qui diffère est l'apparence, et elle diffère par trois choses à la fois** : la forme
+  — un trait qui **épouse** la vue, là où celle d'une fenêtre est le rectangle **décalé**
+  moins la vue —, le remplissage — des demi-blocs, là où l'autre recolore en gardant le
+  caractère — et le rôle de couleur. Trois différences simultanées, c'est la raison d'une
+  **énumération** à deux variantes plutôt que de trois champs de réglage sur `AirShadow` :
+  une ombre paramétrée par trois boutons décrirait des combinaisons qu'aucun thème ne
+  remplit, et un réglage sans lecteur est exactement ce que ce dépôt refuse d'écrire.
+- **Les demi-blocs sont une transcription, et non une idée de rendu.** Turbo Vision écrit
+  `0xDC` et `0xDF` de la page de code 437 — `▄` et `▀` — pour qu'une ombre de bouton
+  paraisse **deux fois plus fine** que celle d'une fenêtre : la cellule à droite du bouton
+  n'est dans l'ombre que par sa moitié basse, celle du dessous par sa moitié haute. La ligne
+  du dessous est décalée d'une colonne, parce que l'ombre est portée en bas **et** à droite.
+- **Une seconde convergence mesurée, et celle-là ne se devinait pas.** Un demi-bloc ne
+  couvre que la moitié de sa cellule, donc j'ai gardé le **fond** de ce qui est dessous et
+  n'ai changé que l'avant-plan — sans quoi l'autre moitié ne montrerait rien. Turbo Vision,
+  lui, écrit les deux couleurs de l'attribut `0x70`. Les deux règles donnent le **même
+  octet** dans un dialogue, parce que son fond *est* ce gris : l'ombre des boutons de `redit`
+  sort en `38;5;0;48;5;7`, soit exactement `0x70`. Elles ne diffèrent que là où ce dépôt
+  pose des boutons et où Borland n'en posait pas — la fenêtre **bleue** de l'exemple `frame`,
+  qui donne `38;5;0;48;5;4` au lieu d'un rectangle gris collé sur du bleu.
+- **Le premier champ que les deux thèmes du dépôt remplissent différemment.** `mc` met
+  `None` à l'ombre de bouton : ses boutons sont `[ OK ]`, plats, et son format de skin ne
+  décrit rien de tel. La règle écrite au jalon M7j — « une assiette ne gagne un champ que le
+  jour où deux thèmes le remplissent autrement » — est donc respectée plutôt que contournée,
+  et le **contrôle** de l'essai est ce thème-là, pas un thème fabriqué pour l'occasion.
+- **`AirRole::ButtonShadow` a enfin un lecteur**, cinq jalons après sa transcription. Aucun
+  rôle n'a été ajouté : la palette en compte toujours trente-neuf, et c'est l'un d'eux qui a
+  été **lu**.
+- **Un second propriétaire de surface, et une fonction rendue publique pour lui.**
+  `AirPromptDialog` compose ses trois contrôles lui-même — ils ne paraissent pas dans ses
+  enfants —, donc la traversée de l'arbre ne voit pas leurs ombres. Il appelle la **même**
+  fonction que la traversée plutôt que de refaire le calcul : une règle écrite deux fois
+  finit par ne plus l'être qu'une. C'est aussi ce qui fait que le champ de saisie n'en
+  projette pas sans qu'une exception soit écrite nulle part — c'est son état qui le dit.
+- **Une ligne de plus dans ce dialogue, et ce n'est pas un espacement.** Sa zone de contenu
+  en a cinq au lieu de quatre, la cinquième étant celle où l'ombre des boutons tombe. Sans
+  elle, le découpage l'écarterait : juste, et invisible. Deux essais qui comptaient six
+  lignes ont été corrigés — et c'est la bonne direction de correction, puisque la dimension
+  demandée a réellement changé.
+- **Les trois essais nouveaux ont été vus échouer** avant d'être crus : en posant
+  `button_shadow: None` dans les décorations de Turbo Vision, la géométrie, le fond conservé
+  et la table des décorations tombent ensemble, chacun en nommant ce qu'il attendait.
+- **Vérification** : 1313 essais, `fmt`, `clippy -D warnings`, `deny check`, les cinq
+  contrôles d'`xtask` et les trois `import-mc-skin --check`. En pseudo-terminal, l'exemple
+  `frame` émet deux `▄` et vingt-deux `▀` — dix et douze colonnes de bouton —, le même
+  compte dans le dialogue de `redit`, et **zéro** sous le thème de `mc`, dont les douze
+  `38;5;8;48;5;0` d'ombre de fenêtre sont inchangés.
+
 ## 2026-10-10 — Jalon M7j : la peinture hors des limites, et l'invariant qui n'a pas bougé
 
 - **La question posée était « une vue peut-elle peindre hors de ses limites ? ». La réponse

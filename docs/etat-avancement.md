@@ -3,8 +3,8 @@
 Document de suivi **vivant** : où en est-on, quelle est la prochaine tâche. Il se met à
 jour à chaque session. L'historique figé est dans [`JOURNAL.md`](JOURNAL.md).
 
-**Dernière mise à jour : 2026-10-10** (jalon M7j — la peinture hors des limites et
-l'ombre portée ; jalon M7i — plusieurs skins compilés ; les deux derniers gates).
+**Dernière mise à jour : 2026-10-12** (jalon M7k — l'ombre portée des boutons, et le
+second champ des décorations).
 
 ## Dépôt
 
@@ -27,7 +27,7 @@ contrôle, donc **aucun essai en pseudo-terminal** n'y tourne, et le fuzzing exi
 
 ## Où en est-on
 
-Jalons **M0 à M7j terminés**. Le dépôt porte ses conventions, ses ADR fondateurs, le socle
+Jalons **M0 à M7k terminés**. Le dépôt porte ses conventions, ses ADR fondateurs, le socle
 de rendu, le décodeur d'entrée, l'arbre de vues, treize widgets, la **couche MVC** de
 l'ADR-007, la hiérarchie d'objets complète, deux thèmes dont un **compilé**, et deux
 **applications** : `redit` ouvre un fichier, l'édite et l'enregistre ; `rmc` parcourt deux
@@ -616,6 +616,56 @@ affirmations de M7b se sont révélées fausses. Elles sont corrigées ici plut�
   annonçait le quantificateur « prévu au jalon M5 et **n'est pas écrit** », celui
   d'`AirCell` les tables UCD de même. Les deux existent depuis M5 et M3.
 
+### Fait au jalon M7k — l'ombre portée des boutons
+
+- **Le mécanisme n'a pas changé d'un mot, et c'est le résultat du jalon.** L'ADR-015 avait
+  écrit que son mécanisme suffirait aux boutons ; la vérification est que `draw_view_shadow`
+  n'a gagné aucun cas particulier pour eux. Un bouton est l'enfant d'une fenêtre ou d'un
+  dialogue, qui possède donc la zone où son ombre tombe.
+- **C'est l'apparence qui diffère, et elle diffère par trois choses à la fois** : la forme
+  (un trait qui **épouse** la vue, là où celle d'une fenêtre est le rectangle **décalé**),
+  le remplissage (des demi-blocs, là où l'autre recolore) et le rôle de couleur. Trois
+  différences simultanées, donc une **énumération** à deux variantes — `AirShadowStyle` — et
+  non trois champs de réglage sur `AirShadow` : une ombre paramétrée décrirait des
+  combinaisons qu'aucun thème ne remplit.
+- **`AirRole::ButtonShadow` a enfin un lecteur**, cinq jalons après sa transcription
+  (`cpButton[8]`, M5). Aucun rôle n'a été ajouté : la palette en compte toujours
+  trente-neuf, et c'est l'un d'eux qui a été **lu**.
+- **Les demi-blocs sont une transcription, et le dire était vérifiable** : Turbo Vision
+  écrit `0xDC` et `0xDF` de la page de code 437 — `▄` et `▀` — pour qu'une ombre de bouton
+  paraisse deux fois plus fine que celle d'une fenêtre. La cellule à droite du bouton n'est
+  dans l'ombre que par sa moitié basse, celle du dessous par sa moitié haute.
+- **Une seconde convergence mesurée, et elle ne se devinait pas.** Un demi-bloc ne couvre
+  que la moitié de sa cellule, donc l'ombre garde le **fond** de ce qu'elle assombrit et
+  n'en change que l'avant-plan. Turbo Vision, lui, écrit les deux couleurs de l'attribut
+  `0x70`. Les deux règles donnent le **même octet** dans un dialogue — son fond *est* ce
+  gris : l'ombre des boutons de `redit` sort en `38;5;0;48;5;7`, soit exactement `0x70`.
+  Elles ne diffèrent que sur la fenêtre **bleue** de l'exemple `frame`, où Borland ne posait
+  pas de boutons : `38;5;0;48;5;4` au lieu d'un rectangle gris collé sur du bleu.
+- **Le premier champ que les deux thèmes remplissent différemment.** `AirDecorations` porte
+  désormais `window_shadow` **et** `button_shadow`, et `mc` met `None` au second : ses
+  boutons sont `[ OK ]`, plats, et son format de skin ne décrit rien de tel. La règle écrite
+  à M7j — « une assiette ne gagne un champ que le jour où deux thèmes le remplissent
+  autrement » — est donc respectée plutôt que contournée. Le contrôle de l'essai est ce
+  thème-là, et non un thème fabriqué pour l'occasion.
+- **Le dialogue de saisie est un propriétaire comme un autre**, et c'est la seule chose que
+  ce jalon a rendue publique. `AirPromptDialog` compose ses trois contrôles lui-même : ils
+  ne paraissent pas dans ses enfants, donc la traversée ne voit pas leurs ombres. Il appelle
+  la **même** fonction que la traversée — `view::draw_view_shadow` — plutôt que de refaire
+  le calcul : une règle écrite deux fois finit par ne plus l'être qu'une (leçon de M7c).
+- **Une ligne de plus dans le dialogue, et ce n'est pas un espacement** : la zone de contenu
+  en a cinq au lieu de quatre, la cinquième étant celle où l'ombre des boutons tombe. Sans
+  elle, le découpage l'écarterait — ce qui serait juste, et invisible. Un dialogue de saisie
+  demande sept lignes au lieu de six, et deux essais qui comptaient les six ont été
+  corrigés.
+- **Les trois essais nouveaux ont été vus échouer** avant d'être crus : en posant
+  `button_shadow: None` dans les décorations de Turbo Vision, la géométrie, le fond conservé
+  et la table des décorations tombent ensemble, chacun en nommant ce qu'il attendait.
+- **1313 essais**, et les octets mesurés en pseudo-terminal : l'exemple `frame` émet deux
+  `▄` et vingt-deux `▀` — dix et douze colonnes de bouton —, le même compte dans le dialogue
+  de `redit`, et **zéro** sous le thème de `mc`, dont les douze `38;5;8;48;5;0` d'ombre de
+  fenêtre sont inchangés.
+
 ### Fait au jalon M7j — la peinture hors des limites, et l'ombre portée
 
 - **La question était « une vue peut-elle peindre hors de ses limites ? ». La réponse est
@@ -644,10 +694,10 @@ affirmations de M7b se sont révélées fausses. Elles sont corrigées ici plut�
   avait été écrit en remplissant la surface d'un motif, que le panneau conteneur repeint
   d'espaces. Le seul conteneur qui montre l'effet est le **vrai bureau**. L'essai éprouve
   donc le cas réel au lieu d'un montage.
-- **Trois choses déclarent une ombre, et c'est voulu** : la vue
-  (`AirViewState::casts_shadow`, faux par défaut), le thème (`AirDecorations`, qui les
-  éteint toutes d'un seul endroit) et la palette (`AirRole::WindowShadow`, trente-neuvième
-  rôle).
+- **Trois choses déclarent une ombre, et c'est voulu** : la vue (`AirViewState`, qui n'en
+  déclare aucune par défaut — le champ était un booléen `casts_shadow` et le jalon M7k en a
+  fait un **genre**, `shadow_style`), le thème (`AirDecorations`, qui les éteint toutes d'un
+  seul endroit) et la palette (`AirRole::WindowShadow`, trente-neuvième rôle).
 - **Ni `redit` ni `rmc` n'émettent d'ombre, et c'est juste** : leurs fenêtres occupent tout
   le bureau, donc l'ombre tombe hors de lui et le découpage l'écarte — pour `rmc`, celle du
   panneau de gauche tombe sur celui de droite, dessiné après, qui la recouvre. Une ombre ne
@@ -895,19 +945,17 @@ affirmations de M7b se sont révélées fausses. Elles sont corrigées ici plut�
 demandent une console physique, inaccessible par SSH. Écrire du code qu'on ne peut pas
 vérifier est exactement ce que ce dépôt refuse. Les candidats, du plus petit au plus gros :
 
-Les trois candidats qui restaient après M7g sont faits. Ce qui reste est plus petit, ou
-demande une décision qui n'est pas technique :
+L'ombre des boutons est faite (M7k). Ce qui reste est plus petit, ou demande une décision
+qui n'est pas technique :
 
-1. **Reprendre plus de trois skins**, si l'auteur du dépôt le décide : le mécanisme est en
+1. **La recherche dans `redit`** — `Ctrl`+`F` —, demandée en même temps que M7k et prise
+   juste après : le jalon suivant.
+2. **Une liste à plusieurs colonnes**, et le **défilement d'un groupe** plus long que sa
+   place : les deux absences mesurées du catalogue de widgets.
+3. **Reprendre plus de trois skins**, si l'auteur du dépôt le décide : le mécanisme est en
    place et le coût est chiffré — 395 Kio et deux dixièmes de seconde pour les trente-neuf.
    Ce qui reste à trancher n'est pas technique : c'est la place que prend la donnée d'un
    projet sous GPLv3 dans un dépôt sous MPL-2.0.
-2. **L'ombre portée des boutons**, qui achèverait la fidélité de l'ADR-015 et donnerait
-   enfin un lecteur à `AirRole::ButtonShadow`.
-3. **La recherche dans `redit`** — `Ctrl`+`F` —, qui demande de décider ce qu'on cherche
-   (texte brut, respect de la casse) et comment on le montre.
-4. **Une liste à plusieurs colonnes**, et le **défilement d'un groupe** plus long que sa
-   place : les deux absences mesurées du catalogue de widgets.
 
 Dettes plus anciennes : remonter la couverture de `air-tui-platform-posix` par des tests
 sous pty ; la **console Linux native**, dont dépend tout M8 ; et le protocole Kitty
@@ -938,4 +986,5 @@ des numéros de touches fonctionnelles.
 | M7h | l'annulation par journal de remplacements, et la mutation unique | **fait** |
 | M7i | plusieurs skins compilés, et le choix par un nom | **fait** |
 | M7j | la peinture hors des limites, l'ombre portée, la troisième assiette | **fait** |
+| M7k | l'ombre portée des boutons, en demi-blocs, et le second champ des décorations | **fait** |
 | M8 | étage natif Linux : evdev, `TIOCLINUX`, gpm | à faire |

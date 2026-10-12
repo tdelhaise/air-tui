@@ -59,7 +59,7 @@ L'**avancement** vit dans [`etat-avancement.md`](etat-avancement.md), l'**histor
 | `command` | `AirCommandSet` — le grisage en *pull* | M4 |
 | `model::history` | le journal de remplacements : fusion par geste, borne, point d'enregistrement | M7h |
 | `clipboard` | `AirClipboard` — le presse-papiers interne, possédé par le contrôleur | M7d |
-| `theme` | palette par rôles (trente-neuf, **avec attributs**), glyphes, **décorations**, quantificateur | M5, M7, M7g, M7j |
+| `theme` | palette par rôles (trente-neuf, **avec attributs**), glyphes, **décorations** (deux ombres), quantificateur | M5, M7, M7g, M7j, M7k |
 | `theme::skins` | les thèmes compilés depuis un skin de Midnight Commander, et leur **registre** — **générés** | M7, M7i |
 | `widgets` | panneau, étiquette, fenêtre, bouton, barre de menu, barre de statut, champ de saisie, ascenseur, vue d'édition, dialogue de saisie, liste, **cases à cocher et boutons radio** | M5, M5b, M6, M7b, M7f |
 | `model` | `AirModel`, `AirChangeSet`, `AirGeneration`, `AirTextBuffer`, sa **sélection** et son **historique d'annulation** — la couche MVC | M6, M7d, M7h |
@@ -103,7 +103,8 @@ L'**avancement** vit dans [`etat-avancement.md`](etat-avancement.md), l'**histor
 
 Les modules annoncés dans l'architecture et **non encore écrits** : `input/evdev` et
 `input/vt` (M8), et la crate `air-tui-platform-air`. `AirDecorations`, la troisième
-assiette du triplet de l'ADR-008, existe depuis le jalon M7j.
+assiette du triplet de l'ADR-008, existe depuis le jalon M7j et porte deux ombres depuis
+le jalon M7k.
 
 Côté widgets, les absences mesurées : une **liste à plusieurs colonnes**, et le
 **défilement d'un groupe** d'items plus long que sa place. Les cases à cocher, les boutons

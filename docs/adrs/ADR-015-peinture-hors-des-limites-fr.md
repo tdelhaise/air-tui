@@ -1,6 +1,6 @@
 # ADR-015 — Une vue ne peint pas hors de ses limites ; son propriétaire le fait pour elle
 
-**Statut :** Accepté — 2026-10-10
+**Statut :** Accepté — 2026-10-10, amendé le 2026-10-12 (jalon M7k, l'ombre des boutons)
 
 ## Contexte
 
@@ -59,11 +59,15 @@ et c'est tout ce qu'il faut.
 
 ### Ce qui déclare une ombre, et ce qui la dessine
 
-- la **vue** déclare qu'elle en projette une, par `AirViewState::casts_shadow`. Faux par
-  défaut : une ombre sur chaque vue couvrirait l'écran de gris ;
-- le **thème** décide de sa taille, par `AirDecorations` — enfin écrite, et avec une seule
-  assiette qui décrit quelque chose que l'on dessine ;
-- la **palette** donne sa couleur, par le rôle `AirRole::WindowShadow`.
+- la **vue** déclare le **genre** d'ombre qu'elle projette, par
+  `AirViewState::shadow_style` — `None` par défaut : une ombre sur chaque vue couvrirait
+  l'écran de gris. Un genre et non un booléen depuis le jalon M7k, parce qu'un bouton et
+  une fenêtre n'ont pas la même ombre, et que la vue est seule à savoir lequel des deux
+  elle est ;
+- le **thème** décide de son apparence, par `AirDecorations` — enfin écrite, et avec une
+  seule assiette qui décrit quelque chose que l'on dessine ;
+- la **palette** donne sa couleur, par les rôles `AirRole::WindowShadow` et
+  `AirRole::ButtonShadow`.
 
 Les trois sont nécessaires, et séparés pour la raison habituelle : un thème sans ombre les
 désactive toutes d'un coup, et une vue qui n'en projette pas n'en projette dans aucun thème.
@@ -83,11 +87,59 @@ c'est-à-dire exactement ce que `mc` nomme de son côté. Deux apparences qui co
 font pas une source, mais elles font un repère, et c'est ce qui est écrit à côté de la
 valeur.
 
-### Ce que l'ombre ne couvre pas encore
+### L'ombre des boutons — l'amendement du jalon M7k
 
-Les **boutons** n'en projettent pas. Turbo Vision leur en donne une, et le mécanisme de cet
-ADR y suffirait — un bouton est l'enfant d'une fenêtre, qui possède donc la zone où son
-ombre tomberait. Ce n'est pas fait, et `AirRole::ButtonShadow` reste **lu par personne**.
+Les boutons en projettent une depuis ce jalon, et `AirRole::ButtonShadow` a enfin un
+lecteur. Le mécanisme n'a pas changé d'un mot : un bouton est l'enfant d'une fenêtre ou
+d'un dialogue, qui possède donc la zone où son ombre tombe. C'est **l'apparence** qui
+diffère, et elle diffère par trois choses à la fois :
+
+| | fenêtre | bouton |
+| --- | --- | --- |
+| forme | le rectangle **décalé**, moins la vue | un trait qui **épouse** la vue |
+| taille | deux colonnes, une ligne | une colonne, une ligne |
+| remplissage | recolore, garde le caractère | demi-blocs `▄` et `▀` |
+| rôle | `WindowShadow` | `ButtonShadow` |
+
+Trois différences simultanées, c'est la raison d'une **énumération** — `AirShadowStyle`,
+deux variantes — plutôt que de trois champs sur `AirShadow`. Une ombre paramétrée par
+trois boutons décrirait des combinaisons qu'aucun thème ne remplit, et un réglage sans
+lecteur est exactement ce que cet ADR refuse d'écrire.
+
+Les demi-blocs sont la transcription de Turbo Vision, qui emploie `0xDC` et `0xDF` de la
+page de code 437 pour qu'une ombre de bouton paraisse **deux fois plus fine** que celle
+d'une fenêtre : la cellule à droite du bouton n'est dans l'ombre que par sa moitié basse,
+celle du dessous par sa moitié haute. La ligne du dessous est décalée d'une colonne, parce
+que l'ombre est portée en bas **et** à droite — sans ce décalage, le trait dépasserait sous
+le bord gauche du bouton, où rien ne le projette.
+
+### Le fond que le demi-bloc laisse voir, et une convergence mesurée
+
+Un demi-bloc ne couvre que la moitié de sa cellule : l'autre moitié doit montrer ce qu'il y
+a derrière. L'ombre d'un bouton ne prend donc du rôle que son **avant-plan**, et garde le
+fond de la cellule qu'elle assombrit. Turbo Vision écrit les deux couleurs de l'attribut
+`0x70` — noir sur gris.
+
+Les deux règles donnent le **même octet** dans un dialogue, et c'est mesuré : le fond d'un
+dialogue de Turbo Vision *est* le gris de `cpButton[8]`, donc l'ombre des boutons de
+`redit` sort en `38;5;0;48;5;7`, exactement l'attribut `0x70`. Elles ne diffèrent que là
+où ce dépôt pose aussi des boutons et où Borland n'en posait pas : sur la fenêtre **bleue**
+de l'exemple `frame`, où garder le fond donne `38;5;0;48;5;4` au lieu d'un rectangle gris
+collé sur du bleu.
+
+### Le dialogue de saisie est un propriétaire comme un autre
+
+`AirPromptDialog` compose ses trois contrôles lui-même : ils ne paraissent pas dans ses
+enfants, donc la traversée de l'arbre ne voit pas leurs ombres. C'est lui le propriétaire
+de la surface où elles tombent, et c'est donc lui qui les peint — par la **même** fonction
+que la traversée, `view::draw_view_shadow`, rendue publique pour cela. Un calcul écrit une
+seconde fois dans le dialogue aurait dédoublé la règle, et une règle écrite deux fois finit
+par ne plus l'être qu'une (leçon du jalon M7c).
+
+Conséquence qu'il faut nommer : la zone de contenu du dialogue a gagné une **cinquième
+ligne**, celle où l'ombre des boutons tombe. Ce n'est pas un espacement — sans elle, le
+découpage écarterait l'ombre, ce qui serait juste et invisible. Un dialogue de saisie
+demande donc sept lignes au lieu de six.
 
 ## Conséquences
 
@@ -102,7 +154,13 @@ ombre tomberait. Ce n'est pas fait, et `AirRole::ButtonShadow` reste **lu par pe
 - l'ombre est **découpée** comme tout le reste : une fenêtre contre le bord droit du bureau
   n'en projette qu'un morceau, ce qui est le comportement juste et non un cas à traiter ;
 - le découpage du peintre reste sans exception, donc rien de ce que M4 et M5b garantissent
-  n'est à revérifier.
+  n'est à revérifier ;
+- **jalon M7k** : `AirDecorations` porte **deux** champs, et c'est le premier que les deux
+  thèmes du dépôt remplissent différemment — Turbo Vision dessine un trait sous ses
+  boutons, Midnight Commander n'en dessine aucun, ses boutons étant `[ OK ]`, plats. La
+  règle « une assiette ne gagne un champ que le jour où deux thèmes le remplissent
+  autrement » est respectée plutôt que contournée ;
+- la palette garde **trente-neuf** rôles : aucun n'a été ajouté, un l'a été **lu**.
 
 ## Alternatives écartées
 

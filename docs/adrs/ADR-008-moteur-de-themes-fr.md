@@ -197,7 +197,8 @@ aurait annoncé une capacité absente.
 L'**ADR-015** a tranché la question sans toucher à l'invariant : ce qui dépasse d'une vue
 est peint par le propriétaire de la surface où cela dépasse. `AirDecorations` porte donc la
 taille de l'ombre, la palette sa couleur par le rôle `AirRole::WindowShadow` — trente-neuf
-rôles —, et `AirViewState::casts_shadow` dit quelles vues en projettent une.
+rôles —, et `AirViewState::shadow_style` dit quelles vues en projettent une, et de quel
+genre.
 
 Deux champs n'y sont **pas**, et c'est délibéré :
 
@@ -209,10 +210,14 @@ Deux champs n'y sont **pas**, et c'est délibéré :
 
 Une assiette ne gagne un champ que le jour où deux thèmes le remplissent différemment.
 
-Reste que les **boutons** ne projettent pas d'ombre, et que `AirRole::ButtonShadow` —
-`cpButton[8]`, transcrit au jalon M5 — est toujours **lu par personne**. Le mécanisme de
-l'ADR-015 y suffirait : un bouton est l'enfant d'une fenêtre, qui possède donc la zone où
-son ombre tomberait.
+**Fait au jalon M7k : l'assiette a un second champ, et c'est le premier que les deux
+thèmes remplissent différemment.** L'ombre des **boutons** — `cpButton[8]`, transcrit au
+jalon M5 et lu par personne jusque-là — est dessinée par Turbo Vision et **absente** de
+Midnight Commander, dont les boutons sont `[ OK ]`, plats, et dont le format de skin ne
+décrit rien de tel. La règle du paragraphe précédent est donc respectée plutôt que
+contournée : l'assiette a gagné `button_shadow` le jour où deux thèmes le remplissaient
+autrement, et pas avant. Le détail de l'apparence — un trait fin en demi-blocs, une
+colonne au lieu de deux — est dans l'ADR-015.
 
 **Fait au jalon M7b : `rmc`.** Cet ADR prévient que « ce qui fait reconnaître Midnight
 Commander est sa coquille, pas sa palette ». Les deux moitiés existent désormais

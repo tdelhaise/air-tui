@@ -51,7 +51,7 @@ pub mod palette;
 pub mod quantize;
 pub(crate) mod skins;
 
-pub use decorations::{AirDecorations, AirShadow};
+pub use decorations::{AirDecorations, AirShadow, AirShadowStyle};
 pub use glyphs::{AirClusterGlyphs, AirFrameGlyphs, AirGlyphSet};
 pub use palette::{AirColorPair, AirPalette, AirRole};
 pub use quantize::{AirColorDepth, quantize};

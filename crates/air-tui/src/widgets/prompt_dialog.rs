@@ -38,12 +38,25 @@ use crate::theme::AirRole;
 use crate::view::painter::AirPainter;
 use crate::view::{
     AirBorderStyle, AirContext, AirDrawContext, AirEvent, AirOutcome, AirView, AirViewId,
-    AirViewState,
+    AirViewState, draw_view_shadow,
 };
 use crate::widgets::{AirButton, AirInputLine};
 
-/// La hauteur de contenu d'un dialogue de saisie : étiquette, champ, vide, boutons.
-const CONTENT_ROWS: u16 = 4;
+/// La hauteur de contenu d'un dialogue de saisie : étiquette, champ, vide, boutons, et la
+/// ligne où tombe l'**ombre** des boutons.
+///
+/// La cinquième ligne est venue avec le jalon M7k, et elle n'est pas un espacement : une
+/// ombre de bouton tombe hors des limites du bouton, donc dans la zone de contenu du
+/// dialogue, qui en est le propriétaire (ADR-015). Sans cette ligne, le découpage
+/// l'écarterait — ce qui serait juste, et invisible.
+const CONTENT_ROWS: u16 = 5;
+
+/// La ligne des boutons dans la zone de contenu.
+///
+/// Nommée plutôt que déduite de [`CONTENT_ROWS`] : les boutons ne sont plus sur la
+/// dernière ligne depuis que l'ombre y tombe, et un `CONTENT_ROWS - 2` au site de calcul
+/// obligerait à relire les deux constantes pour comprendre laquelle a changé.
+const BUTTON_ROW: u16 = 3;
 
 /// La largeur du bouton de validation, bordures de libellé comprises.
 const CONFIRM_WIDTH: u16 = 10;
@@ -71,8 +84,8 @@ pub struct AirPromptDialog {
 impl AirPromptDialog {
     /// La hauteur qu'un dialogue de saisie demande, bordure comprise.
     ///
-    /// Six lignes : deux de cadre et quatre de contenu. Exposé pour qu'un appelant
-    /// calcule sa position sans deviner.
+    /// Sept lignes : deux de cadre et cinq de contenu, dont celle de l'ombre des boutons.
+    /// Exposé pour qu'un appelant calcule sa position sans deviner.
     #[must_use]
     pub const fn required_rows() -> u16 {
         CONTENT_ROWS.saturating_add(2)
@@ -99,7 +112,7 @@ impl AirPromptDialog {
         let confirm = AirButton::new(
             AirViewState::new(
                 Self::derived_identifier(identifier, 2),
-                AirRectangle::from_parts(0, 3, CONFIRM_WIDTH, 1),
+                AirRectangle::from_parts(0, BUTTON_ROW, CONFIRM_WIDTH, 1),
             ),
             "~O~K",
             OK,
@@ -108,7 +121,12 @@ impl AirPromptDialog {
         let cancel = AirButton::new(
             AirViewState::new(
                 Self::derived_identifier(identifier, 3),
-                AirRectangle::from_parts(CONFIRM_WIDTH.saturating_add(2), 3, CANCEL_WIDTH, 1),
+                AirRectangle::from_parts(
+                    CONFIRM_WIDTH.saturating_add(2),
+                    BUTTON_ROW,
+                    CANCEL_WIDTH,
+                    1,
+                ),
             ),
             "~A~nnuler",
             CANCEL,
@@ -178,7 +196,7 @@ impl AirPromptDialog {
         self.input
             .state_mut()
             .set_bounds(AirRectangle::from_parts(0, 1, content.columns, 1));
-        let row = CONTENT_ROWS.saturating_sub(1).min(content.rows);
+        let row = BUTTON_ROW.min(content.rows);
         self.confirm
             .state_mut()
             .set_bounds(AirRectangle::from_parts(0, row, CONFIRM_WIDTH, 1));
@@ -278,6 +296,12 @@ impl AirView for AirPromptDialog {
             &self.confirm as &dyn AirView,
             &self.cancel as &dyn AirView,
         ] {
+            // L'ombre avant le contrôle, et par la fonction de la traversée plutôt que par
+            // un calcul d'ici : ce dialogue est le **propriétaire** de la surface où elle
+            // tombe, et c'est la seule chose qui le distingue d'un parent ordinaire
+            // (ADR-015). Le champ de saisie n'en projette aucune, et c'est son état qui le
+            // dit — pas une exception écrite ici.
+            draw_view_shadow(painter, control, context);
             if let Some(mut child) = painter.child(control.state().bounds()) {
                 control.draw_content(&mut child, context);
             }
@@ -479,8 +503,34 @@ mod tests {
     }
 
     #[test]
-    fn un_dialogue_demande_six_lignes() {
-        assert_eq!(AirPromptDialog::required_rows(), 6);
+    fn un_dialogue_demande_sept_lignes() {
+        // Cinq de contenu — dont celle où tombe l'ombre des boutons — et deux de cadre.
+        assert_eq!(AirPromptDialog::required_rows(), 7);
+    }
+
+    #[test]
+    fn un_dialogue_peint_l_ombre_de_ses_deux_boutons() {
+        // Ce dialogue compose ses contrôles lui-même : ils ne paraissent pas dans ses
+        // enfants, donc la traversée ne voit pas leurs ombres. C'est lui le propriétaire
+        // de la surface où elles tombent, et c'est lui qui les peint (ADR-015).
+        let rendered = render(
+            &dialog(30),
+            AirSize::new(30, AirPromptDialog::required_rows()),
+        );
+        let lines: Vec<&str> = rendered.lines().collect();
+        let buttons = lines.get(4).copied().unwrap_or_default();
+        let under = lines.get(5).copied().unwrap_or_default();
+        assert_eq!(
+            buttons.matches('▄').count(),
+            2,
+            "un demi-bloc inférieur à droite de chaque bouton — ligne « {buttons} »"
+        );
+        // Dix et douze colonnes de bouton, donc dix et douze demi-blocs dessous.
+        assert_eq!(
+            under.matches('▀').count(),
+            22,
+            "les deux bandes du dessous — ligne « {under} »"
+        );
     }
 
     #[test]

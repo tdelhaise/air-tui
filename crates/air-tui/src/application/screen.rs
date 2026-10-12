@@ -673,7 +673,7 @@ mod tests {
         screen.set_desktop(desktop());
         screen.set_modal(prompt(50));
         let bounds = screen.modal_mut().expect("un modal").state().bounds();
-        assert_eq!(bounds.size, AirSize::new(30, 6));
+        assert_eq!(bounds.size, AirSize::new(30, 7));
         assert_eq!(bounds.left(), 25);
         assert_eq!(bounds.top(), 9);
     }
