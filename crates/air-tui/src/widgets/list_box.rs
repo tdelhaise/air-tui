@@ -558,7 +558,11 @@ fn start_of_column(item: usize, step: usize) -> usize {
 /// inemployée. Turbo Vision arrive au même endroit par l'autre bout, en calculant
 /// `size.x / numCols + 1` et en laissant le découpage manger ce qui dépasse.
 fn column_pitch(width: usize, count: usize) -> usize {
-    width.checked_div(count.max(1)).unwrap_or(width)
+    // Au moins une cellule : une liste trop étroite pour ses colonnes donnerait sinon un
+    // pas nul, donc toutes les colonnes au même endroit — et le dessin désignerait un
+    // autre item que le clic, ce qui est exactement la divergence que ce widget évite
+    // ailleurs en comptant les lignes d'après la hauteur utile.
+    width.checked_div(count.max(1)).unwrap_or(width).max(1)
 }
 
 impl AirView for AirListBox {
@@ -1395,6 +1399,27 @@ mod tests {
             "la première colonne ne peut pas commencer au milieu d'une autre"
         );
         assert_eq!(list.focused_item(), 7, "le curseur n'a pas bougé");
+    }
+
+    #[test]
+    fn une_liste_trop_etroite_pour_ses_colonnes_ne_les_superpose_pas() {
+        // Cas dégénéré, mais il doit rester cohérent : le pas vaut au moins une cellule,
+        // donc le clic et le dessin désignent la même colonne. Un pas nul mettrait toutes
+        // les colonnes à l'origine.
+        assert_eq!(column_pitch(1, 2), 1);
+        assert_eq!(column_pitch(0, 2), 1);
+        let mut list = AirListBox::new(AirViewState::new(
+            AirViewId::FIRST,
+            AirRectangle::from_parts(0, 0, 1, 2),
+        ));
+        list.set_column_count(2);
+        list.set_items(vec![AirListItem::new("a"), AirListItem::new("b")]);
+        let lines = render(&list, AirSize::new(1, 2));
+        assert_eq!(
+            lines.first().map(String::as_str),
+            Some("│"),
+            "il ne reste de place que pour le séparateur"
+        );
     }
 
     #[test]

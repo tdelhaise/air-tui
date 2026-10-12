@@ -91,7 +91,7 @@ l'état vivant, ce journal est la trace figée, `INDEX.md` est la carte structur
   compte des rôles, lui, était resté à trente-huit en quatre endroits — dont le **nom** d'un
   essai qui en énumérait trente-deux, et que j'ai remplacé par la liste unique qu'il aurait
   fallu partager dès le début.
-- **1359 essais**, zéro clippy, les cinq contrôles d'`xtask`, trois `import-mc-skin
+- **1360 essais**, zéro clippy, les cinq contrôles d'`xtask`, trois `import-mc-skin
   --check` aux empreintes inchangées, `check-dco --all`, et les octets mesurés sur macOS
   aarch64, hydrogen x86_64 et neon aarch64.
 
