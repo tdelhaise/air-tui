@@ -461,6 +461,49 @@ Sur la couverture, deux exigences de portée différente, à ne pas confondre :
 - un objectif élevé ailleurs, **non atteint** : `air-tui-platform-posix` demande un vrai
   terminal pour être couvert. Ne pas annoncer un seuil global qui n'existe pas.
 
+## `Alt`+lettre sur macOS : c'est au terminal de le dire
+
+Signalé à l'usage le 2026-10-12, et **ce n'est pas un défaut du code** : sans réglage,
+macOS emploie `Option` pour composer un caractère. `Option`+`F` produit un `ƒ`, le terminal
+n'annonce aucun modificateur, et tous les `Alt`+lettre de `redit` et de `rmc` sont inertes.
+C'est le défaut de Kitty, qui l'écrit dans son propre fichier de configuration : « *With
+this set to `no`, kitty will use the macOS native Option+Key to enter Unicode character
+behavior. This will break any Alt+Key keyboard shortcuts in your terminal programs.* »
+
+Le contrôle : `cat -v`, puis `Alt`+`F`. `^[f` veut dire que le terminal envoie `Alt` ; `ƒ`
+veut dire qu'il compose. Les réglages : `macos_option_as_alt yes` — ou `left` — dans
+`kitty.conf` ; « Utiliser la touche Option comme touche Meta » dans Terminal.app ; `Esc+`
+pour *Left Option key* dans iTerm2.
+
+Les quatre encodages mesurés en pty sur `redit`, en comptant le coin du déroulant — une
+couleur que seule la boîte de menu émet :
+
+```sh
+printf 'origine\n' > /tmp/redit-alt.txt
+for codes in 1b66 1b5b3130323b3375 1b5b3430323a303a3130323b3375 1b5b3430323a303a31303275
+do
+    tools/pty-drive.py ./target/debug/redit /tmp/redit-alt.txt -- 500 "$codes" \
+        400 1b5b32317e | grep -oE '38;5;0;48;5;7m┌' | wc -l
+done
+# doit donner 1, 1, 1 puis 0 — et 0 aussi sans aucune frappe, ce qui est le contrôle
+```
+
+| ce que le terminal envoie | le menu s'ouvre |
+|---|---|
+| `1b66` — `ESC f`, l'`Alt` à l'ancienne | **oui** |
+| `1b5b3130323b3375` — `CSI 102;3u`, protocole Kitty | **oui** |
+| `1b5b3430323a303a3130323b3375` — `CSI 402:0:102;3u`, le `ƒ` composé **avec** `Alt` et la disposition de base | **oui** |
+| `1b5b3430323a303a31303275` — `CSI 402:0:102u`, le `ƒ` seul | **non** |
+
+Le troisième cas est celui qui prouve que le framework fait sa part : `shortcut_key()`
+retombe sur la disposition de base, le mécanisme de l'ADR-003 écrit pour qu'`Alt`+`ф` ouvre
+le menu `a` sur un clavier cyrillique. Le quatrième est **indécidable** — un `Option`+`F`
+qui n'annonce rien est exactement la frappe de quelqu'un qui tape un `ƒ` —, et il n'y a
+donc rien à corriger sans casser la saisie de ce caractère.
+
+Les chemins qui restent ouverts sans ce réglage : le **clic** sur la barre de menu, les
+flèches et `Entrée`, et la lettre de l'item une fois le déroulant ouvert (jalon M7m).
+
 ## Git
 
 - Trunk-based. `main` protégée : pas de push direct, tout passe par une PR.
