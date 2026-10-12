@@ -101,6 +101,31 @@ scancode, et la détection des combinaisons comme `Ctrl+Shift+Alt+X` dépend du 
 clavier que le terminal annonce. Le détail est dans
 [`docs/adrs/ADR-003-entree-clavier-deux-etages-fr.md`](docs/adrs/ADR-003-entree-clavier-deux-etages-fr.md).
 
+### Sur macOS, la touche `Option` doit être réglée pour qu'`Alt` existe
+
+Sans réglage, macOS emploie `Option` pour **composer** un caractère : `Option`+`F` produit
+un `ƒ`, et le terminal ne rapporte aucun modificateur. Tous les `Alt`+lettre de `redit` et
+de `rmc` — l'ouverture d'un menu, la lettre d'accès rapide d'un bouton — sont alors
+inertes, et c'est le défaut de Kitty, qui le dit dans son propre fichier de
+configuration : « *With this set to `no`, kitty will use the macOS native Option+Key to
+enter Unicode character behavior. This will break any Alt+Key keyboard shortcuts in your
+terminal programs.* »
+
+Le contrôle tient en une seconde : `cat -v`, puis `Alt`+`F`. Si la sortie est `^[f`, le
+terminal envoie bien `Alt` ; si c'est `ƒ`, c'est la composition macOS.
+
+| Terminal | Réglage |
+|---|---|
+| Kitty | `macos_option_as_alt yes` dans `kitty.conf` — ou `left`, pour garder la composition sur l'`Option` droite |
+| Terminal.app | Réglages → Profils → Clavier → « Utiliser la touche Option comme touche Meta » |
+| iTerm2 | Profiles → Keys → Left Option key → `Esc+` |
+
+Ce n'est **pas** une limite du framework : dès que le terminal annonce le modificateur, la
+frappe est reconnue, y compris quand elle a produit un caractère composé — `shortcut_key()`
+retombe alors sur la disposition de base, le mécanisme écrit pour les claviers où `Alt`+`ф`
+doit ouvrir le menu `a`. Mais quand le terminal n'annonce rien, un `Option`+`F` est
+indiscernable d'un `ƒ` tapé exprès, et le framework n'a pas à deviner.
+
 ## Documentation
 
 - [`docs/INDEX.md`](docs/INDEX.md) — la carte du dépôt
