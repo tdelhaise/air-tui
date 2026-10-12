@@ -3,8 +3,9 @@
 Document de suivi **vivant** : où en est-on, quelle est la prochaine tâche. Il se met à
 jour à chaque session. L'historique figé est dans [`JOURNAL.md`](JOURNAL.md).
 
-**Dernière mise à jour : 2026-10-12** (jalon M7m — la liste à plusieurs colonnes ; jalon
-M7l — la recherche dans `redit` ; jalon M7k — l'ombre portée des boutons).
+**Dernière mise à jour : 2026-10-12** (correctif — le déroulant de menu découpé à une
+colonne ; jalon M7m — la liste à plusieurs colonnes ; jalon M7l — la recherche dans
+`redit`).
 
 ## Dépôt
 
@@ -615,6 +616,35 @@ affirmations de M7b se sont révélées fausses. Elles sont corrigées ici plut�
 - **Deux affirmations fausses corrigées dans `cell.rs`** : le doc-comment d'`AirColor`
   annonçait le quantificateur « prévu au jalon M5 et **n'est pas écrit** », celui
   d'`AirCell` les tables UCD de même. Les deux existent depuis M5 et M3.
+
+### Corrigé après le jalon M7m — le déroulant de menu découpé à une colonne
+
+- **Le défaut, signalé à l'usage.** Ouvrir un menu dans `redit` ne montrait pas de menu : il
+  n'en restait qu'une colonne de glyphes de cadre posée sur la bordure gauche de la fenêtre,
+  et ce reste n'était pas effacé à la fermeture. Il datait du jalon **M5b** et s'est vu le
+  jour où la touche `Option` a été réglée, c'est-à-dire le premier jour où un menu pouvait
+  s'ouvrir au clavier.
+- **La cause** : `AirMenuBar` gardait la largeur de la barre dans un champ posé par le
+  **constructeur**. `redit` et `rmc` construisent leur barre sur un rectangle d'attente de
+  1×1 — c'est `AirScreen` qui la dispose ensuite —, donc le champ valait 1, et ouvrir un
+  menu ramenait la barre à une colonne. Le découpage du peintre faisait le reste : l'invariant
+  a fonctionné, sur des limites fausses.
+- **Le correctif est une suppression** : le champ n'existe plus, `open_at` et `close`
+  changent la hauteur et lisent la largeur sur les limites courantes. Un état de moins, et
+  plus rien à rafraîchir au redimensionnement — ce que la barre ne faisait pas, faute d'un
+  `resize`.
+- **Trente-trois essais ne l'avaient pas vu** parce qu'ils construisent la barre avec sa
+  vraie largeur. L'essai de non-régression reproduit la séquence des applications —
+  construire petit, laisser l'écran disposer, ouvrir — et son contrôle est exact : greffé
+  sur le code d'origine, il échoue seul.
+- **La mesure en pseudo-terminal de M7m était faible**, et c'est dit : elle comptait une
+  occurrence de `38;5;0;48;5;7m┌`, qui était la **première cellule** du déroulant et tout ce
+  qui en était dessiné. Ce qui se mesure maintenant est la symétrie des **quatre** coins —
+  avant, `┌` et `└` passaient de 1 à 2 et `┐` et `┘` restaient à 1 ; après, les quatre
+  passent à 2, et à 3 dans `rmc`, qui a deux panneaux bordés.
+- **Audit de la classe de défaut** — une dimension copiée dans un champ au lieu d'être lue
+  sur les limites : aucun autre widget ne le fait, et `AirApplication::size`, le seul autre
+  champ de dimension, est rafraîchi au redimensionnement.
 
 ### Fait au jalon M7m — la liste à plusieurs colonnes
 

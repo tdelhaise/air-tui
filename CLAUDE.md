@@ -364,6 +364,17 @@ printf 'une belle journee\n' > /tmp/redit-double.txt
 tools/pty-drive.py ./target/debug/redit /tmp/redit-double.txt -- \
     600 1b5b3c303b363b334d 400 18 400 1b5b31327e 600 1b5b32317e
 
+# Le déroulant d'un menu, et le défaut corrigé juste après M7m : il était découpé à une
+# colonne. Ce qui se mesure, c'est la **symétrie** des quatre coins — avant le correctif,
+# `┌` et `└` passaient de 1 à 2 (la seule colonne dessinée) et `┐` et `┘` restaient à 1.
+for glyph in ┌ ┐ └ ┘
+do
+    printf '%s : ' "$glyph"
+    tools/pty-drive.py ./target/debug/redit /tmp/redit-alt.txt -- 500 1b66 400 1b5b32317e \
+        | grep -oF "$glyph" | wc -l
+done
+# doit donner 2 pour les quatre, et 1 pour les quatre sans la frappe `1b66`
+
 # Un menu ouvert est modal pour les lettres (M7m) : Alt+E, `z`, F2, F10 — et son contrôle,
 # la même lettre sans menu ouvert. Attention à ne **pas** mettre un `1b` nu pour refermer le
 # menu : le décodeur attendrait la suite et avalerait le F2 qui suit.
