@@ -491,6 +491,24 @@ même argument deux fois : ce dont le contrôleur a besoin, l'application ne le 
 Une première écriture faisait l'inverse, et le contrôleur de `redit` ne pouvait plus
 atteindre ses propres vues.
 
+### Une liste à plusieurs colonnes reste une liste à un indice — jalon M7m
+
+La mise en page est l'affaire de la **vue**, et c'est tout ce que les colonnes multiples
+ont demandé : `AirListBox` a gagné un nombre de colonnes, et ni l'item, ni la demande
+qu'une liste produit, ni le contrôleur qui lui pousse son reflet n'ont changé de forme. Les
+items restent une suite à un seul indice ; la grille est une lecture de cette suite, de haut
+en bas puis de gauche à droite.
+
+Ce qui en découle n'est pas un réglage de plus mais une **unité** qui change : avec
+plusieurs colonnes, le défilement se compte en colonnes et une page vaut la surface
+visible. C'est pourquoi `visible_items` existe à côté de `visible_rows`, et pourquoi c'est
+la première que l'ascenseur reçoit — il mesure ce que la fenêtre montre, non sa hauteur.
+Les quatre règles (ordre de remplissage, alignement du défilement, taille d'une page,
+`Gauche`/`Droite` prises seulement s'il y a plusieurs colonnes) sont transcrites de
+`TListViewer`, et le pas de flèche que son constructeur donne à son ascenseur — `size.y`
+quand il y a plusieurs colonnes, 1 sinon — est ce qui confirme l'alignement plutôt que de
+le laisser deviner.
+
 ## Les thèmes
 
 Écrit au jalon M5. Un thème est le **triplet** que l'ADR-008 décrit — palette, glyphes,
@@ -545,7 +563,7 @@ Deux chemins mènent un attribut à la grille, et aucun autre :
 `AirColorPair::cell(character)` et `AirPainter::draw_text_with_colors`. Un widget qui
 construirait sa cellule à partir des deux champs de couleur perdrait l'attribut **en
 silence** — et comme aucun des deux thèmes livrés n'en pose, rien ne le montrerait. Un test
-peint donc les douze widgets avec une palette dont les trente-huit rôles sont gras, et
+peint donc les douze widgets avec une palette dont les quarante rôles sont gras, et
 refuse la moindre cellule qui ne l'est pas.
 
 `AirColor` compte une troisième forme, `TerminalDefault` : non pas une couleur, mais

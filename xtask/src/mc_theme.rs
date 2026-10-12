@@ -11,10 +11,13 @@
 //! recouvrent largement, pas entièrement : `mc` ne connaît ni bouton par défaut, ni
 //! ascenseur, ni item de menu à la fois sélectionné et interdit.
 //!
-//! Les quatre rôles de **liste** vont dans l'autre sens, et c'est le seul endroit où
-//! `mc` est plus riche qu'air-tui ne le demande : il nomme les quatre — ordinaire,
-//! sous le curseur, marqué, les deux —, là où Turbo Vision n'en nomme que trois et laisse
-//! le quatrième à composer. Deux panneaux de fichiers, c'est ce que `mc` sait faire.
+//! Les rôles de **liste** vont dans les deux sens, et c'est le seul endroit où cela
+//! arrive. `mc` nomme les quatre états d'un item — ordinaire, sous le curseur, marqué,
+//! les deux —, là où Turbo Vision n'en nomme que trois et laisse le quatrième à composer :
+//! deux panneaux de fichiers, c'est ce que `mc` sait faire. Mais c'est Turbo Vision qui
+//! nomme le **séparateur** de colonnes, et aucun des trente-neuf skins livrés avec `mc`
+//! n'a de clef pour lui — ni pour sa couleur, ni pour son caractère : vérifié sur les
+//! trente-neuf fichiers, pas supposé.
 //!
 //! [`ROLE_SOURCES`] est donc une table explicite, et chaque entrée dit ce qu'elle est :
 //! **transcrite** d'une clef du skin, ou **dérivée** d'une règle qui est écrite à côté
@@ -398,6 +401,16 @@ const ROLE_SOURCES: &[RoleSource] = &[
         note: "",
     },
     RoleSource {
+        role: "ListDivider",
+        source: Source::Direct {
+            section: "core",
+            key: "_default_",
+        },
+        note: "mc ne nomme pas le séparateur de colonnes d'un panneau bref, ni sa \
+                     couleur ni son caractère : le trait prend celle des lignes \
+                     ordinaires, et son caractère est le [Lines] vert du skin",
+    },
+    RoleSource {
         role: "EditorSelected",
         source: Source::Direct {
             section: "editor",
@@ -469,7 +482,7 @@ const GROUPS: &[(&str, usize)] = &[
     ("dialog", 4),
     ("button", 6),
     ("scroll_bar", 2),
-    ("list", 4),
+    ("list", 5),
     ("editor", 1),
     ("input_line", 2),
     ("cluster", 3),
@@ -1095,13 +1108,13 @@ mod tests {
     }
 
     #[test]
-    fn la_table_couvre_les_trente_neuf_roles_une_fois_chacun() {
+    fn la_table_couvre_les_quarante_roles_une_fois_chacun() {
         let mut roles: Vec<&str> = ROLE_SOURCES.iter().map(|entry| entry.role).collect();
         let before = roles.len();
         roles.sort_unstable();
         roles.dedup();
         assert_eq!(roles.len(), before, "un rôle apparaît deux fois");
-        assert_eq!(before, 39, "AirPalette porte trente-neuf rôles");
+        assert_eq!(before, 40, "AirPalette porte quarante rôles");
     }
 
     #[test]
@@ -1133,7 +1146,7 @@ mod tests {
         let text = complete_skin("lightgray", "blue");
         let skin = parse(&text).expect("skin lisible");
         let compiled = compile(&skin, "essai.ini", 0x1234_5678_9abc_def0).expect("compilation");
-        assert_eq!(compiled.transcribed, 36);
+        assert_eq!(compiled.transcribed, 37);
         assert_eq!(compiled.composed, 3);
         assert_eq!(
             compiled.transcribed.saturating_add(compiled.composed),

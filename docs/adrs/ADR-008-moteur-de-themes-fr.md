@@ -1,6 +1,7 @@
 # ADR-008 — Moteur de thèmes
 
-**Statut :** Accepté — 2026-10-10
+**Statut :** Accepté — 2026-10-10, amendé le 2026-10-12 (jalon M7m, le quarantième
+rôle : le séparateur de colonnes d'une liste)
 
 ## Contexte
 
@@ -183,7 +184,7 @@ cellule à partir des deux champs de couleur du couple laisse l'attribut au bord
 et ni l'un ni l'autre des deux thèmes livrés n'en pose, donc rien ne le montrerait. Deux
 chemins le portent désormais — `AirColorPair::cell(character)` et
 `AirPainter::draw_text_with_colors` —, et un test peint les douze widgets avec une palette
-dont les trente-huit rôles sont gras en refusant la moindre cellule qui ne l'est pas. Le
+dont les quarante rôles sont gras en refusant la moindre cellule qui ne l'est pas. Le
 test a été vérifié par son contrôle : rétabli sur un seul site, il échoue en nommant le
 widget, la cellule et sa position.
 
@@ -197,8 +198,8 @@ aurait annoncé une capacité absente.
 L'**ADR-015** a tranché la question sans toucher à l'invariant : ce qui dépasse d'une vue
 est peint par le propriétaire de la surface où cela dépasse. `AirDecorations` porte donc la
 taille de l'ombre, la palette sa couleur par le rôle `AirRole::WindowShadow` — trente-neuf
-rôles —, et `AirViewState::shadow_style` dit quelles vues en projettent une, et de quel
-genre.
+rôles à ce jalon, quarante depuis M7m —, et `AirViewState::shadow_style` dit quelles vues
+en projettent une, et de quel genre.
 
 Deux champs n'y sont **pas**, et c'est délibéré :
 
@@ -218,6 +219,28 @@ décrit rien de tel. La règle du paragraphe précédent est donc respectée plu
 contournée : l'assiette a gagné `button_shadow` le jour où deux thèmes le remplissaient
 autrement, et pas avant. Le détail de l'apparence — un trait fin en demi-blocs, une
 colonne au lieu de deux — est dans l'ADR-015.
+
+**Fait au jalon M7m : le quarantième rôle, et un séparateur qui n'a de couleur que d'un
+côté.** Une liste à plusieurs colonnes sépare deux colonnes par un trait vertical, et les
+deux sources ne le décrivent pas au même degré :
+
+- le **caractère** est le même des deux côtés — `0xB3` de la page de code 437 chez Borland,
+  `[Lines] vert` dans les skins de `mc` —, et c'est déjà le trait vertical du cadre de
+  fenêtre du jeu de glyphes. Le jeu n'a donc **pas** gagné de champ : la règle écrite plus
+  haut vaut pour les glyphes comme pour les décorations, et deux thèmes qui remplissent un
+  champ de la même valeur n'en demandent pas un ;
+- la **couleur**, elle, est nommée par Turbo Vision et par lui seul : `cpListViewer[5]`,
+  soit `cpGrayDialog[29]`, soit `cpAppColor[60]` — que `dialogs.h` commente « ListViewer
+  divider » et que `tvdemo2.cpp` nomme « List divider ». La palette gagne donc
+  `AirRole::ListDivider`, et la méthode de M7b est reprise une fois de plus : la valeur est
+  confirmée par une source indépendante du calcul d'indice.
+
+Aucun des **trente-neuf** skins livrés avec `mc` n'a de clef pour ce séparateur, ni pour sa
+couleur ni pour son caractère — vérifié sur les trente-neuf fichiers. La table de
+l'importeur le dit à sa ligne, et le thème compilé donne au trait la couleur des lignes
+ordinaires. C'est le seul endroit du moteur où les deux sources se complètent dans les deux
+sens : `mc` nomme les quatre états d'un item là où Borland n'en nomme que trois, et Borland
+nomme le séparateur que `mc` passe sous silence.
 
 **Fait au jalon M7b : `rmc`.** Cet ADR prévient que « ce qui fait reconnaître Midnight
 Commander est sa coquille, pas sa palette ». Les deux moitiés existent désormais

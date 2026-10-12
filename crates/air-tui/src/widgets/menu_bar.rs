@@ -408,6 +408,19 @@ impl AirMenuBar {
         Some(command)
     }
 
+    /// L'indice de l'item du menu ouvert dont la lettre d'accès rapide est `character`.
+    ///
+    /// Un séparateur n'a pas de lettre, et un item sans commande non plus : les deux sont
+    /// écartés par `hotkey_character`, qui ne rend rien pour un libellé sans tilde.
+    fn item_for_hotkey(&self, character: char) -> Option<usize> {
+        let wanted = character.to_ascii_lowercase();
+        self.menus
+            .get(self.open?)?
+            .items
+            .iter()
+            .position(|item| split_hotkey(item.label()).hotkey_character() == Some(wanted))
+    }
+
     /// L'indice du menu dont la lettre d'accès rapide est `character`.
     fn menu_for_hotkey(&self, character: char) -> Option<usize> {
         let wanted = character.to_ascii_lowercase();
@@ -664,6 +677,29 @@ impl AirView for AirMenuBar {
                             None => AirOutcome::Consumed,
                         }
                     }
+                    // La lettre d'accès rapide d'un **item**, dans le menu ouvert : elle
+                    // le désigne et l'active d'un coup. C'est ce que fait
+                    // `TMenuView::handleEvent`, qui cherche la lettre par `findItem` —
+                    // sans distinguer la casse — puis pose `result = current->command`.
+                    //
+                    // Sans cela, le tilde du libellé promettait une touche qui ne faisait
+                    // rien : la lettre était dessinée dans la couleur d'accès rapide, et
+                    // inerte.
+                    AirKey::Character(character) => {
+                        // Un menu ouvert est **modal pour les lettres** : elles lui sont
+                        // adressées. Les laisser passer les écrivait dans le document —
+                        // mesuré en pseudo-terminal avant ce jalon, où `Alt`+`E` puis
+                        // `z` insérait un `z` dans le fichier de `redit`.
+                        event.consume();
+                        let Some(index) = self.item_for_hotkey(character) else {
+                            return AirOutcome::Consumed;
+                        };
+                        self.highlighted = index;
+                        match self.activate_highlighted(context) {
+                            Some(command) => AirOutcome::Command(command),
+                            None => AirOutcome::Consumed,
+                        }
+                    }
                     _ => AirOutcome::Ignored,
                 }
             }
@@ -805,6 +841,52 @@ mod tests {
         *surface
             .cell(point(column, row))
             .unwrap_or_else(|| panic!("la cellule ({column}, {row}) doit exister"))
+    }
+
+    #[test]
+    fn la_lettre_d_un_item_le_choisit_dans_le_menu_ouvert() {
+        // Le tilde du libellé promettait une touche : il la tient depuis ce jalon.
+        // `TMenuView::findItem` cherche la lettre sans distinguer la casse, et pose
+        // aussitôt la commande de l'item.
+        let mut bar = menu_bar(40);
+        assert_eq!(
+            dispatch(&mut bar, &mut alternate('f')),
+            AirOutcome::Consumed
+        );
+        let outcome = dispatch(&mut bar, &mut key(AirKey::Character('S')));
+        assert_eq!(outcome, AirOutcome::Command(SAVE), "la casse ne compte pas");
+        assert_eq!(bar.open_menu(), None, "activer un item referme le menu");
+    }
+
+    #[test]
+    fn une_lettre_inconnue_est_avalee_par_le_menu_ouvert() {
+        // Un menu ouvert est modal pour les lettres. Avant ce jalon, celle-ci traversait
+        // la barre et arrivait dans la vue focalisée : `Alt`+`E` puis `z` écrivait un `z`
+        // dans le document de `redit`, ce qui se mesure en pseudo-terminal.
+        let mut bar = menu_bar(40);
+        dispatch(&mut bar, &mut alternate('f'));
+        assert_eq!(
+            dispatch(&mut bar, &mut key(AirKey::Character('z'))),
+            AirOutcome::Consumed
+        );
+        assert_eq!(bar.open_menu(), Some(0), "et le menu reste ouvert");
+    }
+
+    #[test]
+    fn la_lettre_d_un_item_interdit_ne_produit_aucune_commande() {
+        // Même règle que pour `Entrée` : le grisage vient du jeu de commandes, et les
+        // deux chemins lisent la même source.
+        let mut bar = menu_bar(40);
+        let mut commands = AirCommandSet::new();
+        commands.disable(SAVE);
+        dispatch_with(&mut bar, &mut alternate('f'), &mut commands);
+        let outcome = dispatch_with(&mut bar, &mut key(AirKey::Character('s')), &mut commands);
+        assert_eq!(outcome, AirOutcome::Consumed);
+        assert_eq!(
+            bar.open_menu(),
+            Some(0),
+            "le menu reste ouvert sur un item interdit"
+        );
     }
 
     #[test]

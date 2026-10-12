@@ -160,7 +160,9 @@ demande donc sept lignes au lieu de six.
   boutons, Midnight Commander n'en dessine aucun, ses boutons étant `[ OK ]`, plats. La
   règle « une assiette ne gagne un champ que le jour où deux thèmes le remplissent
   autrement » est respectée plutôt que contournée ;
-- la palette garde **trente-neuf** rôles : aucun n'a été ajouté, un l'a été **lu**.
+- la palette garde **trente-neuf** rôles : aucun n'a été ajouté, un l'a été **lu**. Le
+  quarantième est venu au jalon M7m, pour le séparateur de colonnes d'une liste, et il n'a
+  rien à voir avec les ombres.
 
 ## Alternatives écartées
 

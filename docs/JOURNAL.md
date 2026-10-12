@@ -6,6 +6,95 @@ tête. On ajoute, on ne réécrit jamais une entrée passée.
 Une entrée par campagne, pas par commit. Répartition des rôles : `etat-avancement.md` est
 l'état vivant, ce journal est la trace figée, `INDEX.md` est la carte structurelle.
 
+## 2026-10-12 — Jalon M7m : la liste à plusieurs colonnes, et la question laissée ouverte en M7b
+
+- **Le jalon n'a pas d'ADR, et c'est son résultat.** Une liste à deux colonnes reste une
+  liste à **un** indice : la mise en page est l'affaire de la vue, l'ordre des items ne
+  bouge pas, et ni `AirListItem`, ni `AirListRequest`, ni le contrôleur qui pousse le
+  reflet n'ont changé de forme. Rien ici ne tranchait une question d'architecture, donc je
+  n'ai pas écrit d'ADR pour en avoir un.
+- **La question que M7b avait laissée ouverte avait une réponse courte.** Le module
+  justifiait l'absence de la seconde colonne en écrivant qu'elle « demande de décider ce
+  que `Page bas` veut dire ». La réponse : une page est la **surface** visible, lignes ×
+  colonnes. C'est ce que `TListViewer` calcule — `size.y * numCols` —, et ce que
+  `visible_items` mesure désormais à côté de `visible_rows`, qui garde son sens de hauteur
+  d'une colonne.
+- **Quatre règles, et je n'en ai inventé aucune.** L'ordre de remplissage
+  (`item = j * size.y + i + topItem`), l'alignement du défilement sur la colonne
+  (`topItem = item - item % size.y`), la taille d'une page, et le fait que `Gauche` et
+  `Droite` ne soient prises que s'il y a plusieurs colonnes : les quatre sont lisibles dans
+  `source/tvision/tlstview.cpp`. La plus utile est la troisième ligne du constructeur de
+  `TListViewer`, qui donne à l'ascenseur un pas de flèche de `size.y` quand `numCols > 1`
+  et de 1 sinon : elle **confirme** l'alignement au lieu de me laisser le deviner.
+- **Et l'alignement n'est pas un détail d'affichage.** Sans lui, descendre d'un item en bas
+  de la dernière colonne décalerait les autres colonnes d'une ligne : tout bouge, et l'œil
+  perd l'item qu'il suivait. Avec lui, les lignes restent où elles sont et c'est une colonne
+  entière qui entre. Sur une seule colonne la règle s'inverse — s'aligner ferait sauter une
+  page par pression de flèche —, donc le pas est conditionnel, et c'est la **seule** chose
+  que plusieurs colonnes changent au défilement.
+- **Le séparateur a montré quelque chose du moteur de thèmes.** Son caractère est le même
+  des deux côtés — `0xB3` chez Borland, `[Lines] vert` dans les skins —, et c'est déjà le
+  trait vertical du cadre de fenêtre : le jeu de glyphes n'a donc pas gagné de champ, parce
+  que la règle « une assiette ne gagne un champ que le jour où deux thèmes le remplissent
+  autrement » vaut pour les glyphes aussi. Sa **couleur**, elle, est nommée par Borland et
+  par lui seul : `cpAppColor[60]`, que `dialogs.h` commente « ListViewer divider » et que
+  `tvdemo2.cpp` nomme « List divider ». La palette passe à quarante rôles, et aucun des
+  trente-neuf skins de `mc` n'a de clef pour ce trait — vérifié sur les trente-neuf
+  fichiers. C'est le seul endroit du moteur où les deux sources se complètent dans les deux
+  sens.
+- **Un lecteur, pas un essai.** `rmc` bascule son panneau actif entre le format complet et
+  le format bref par son menu « Panneau ». Les tailles disparaissent en bref, et ce n'est
+  pas une troncature : le manuel de `mc` écrit que « the brief view shows only the file
+  name », et une colonne de dix-huit cellules ne porte pas un nom et une taille.
+- **Changer de format ne change pas le modèle, donc le contrôleur oublie son reflet.** La
+  génération du répertoire est la même, et le mécanisme 2 de l'ADR-007 ne repousserait rien.
+  Trois lignes dans `execute` remettent à `None` ce que le contrôleur croyait refléter — et
+  pas un mécanisme de plus, ce qui est la troisième fois que ce journal l'écrit.
+- **Un tilde qui promettait une touche depuis M5b.** Pour atteindre la commande au clavier,
+  j'ai voulu taper la lettre de l'item dans le menu ouvert : elle ne faisait **rien**. La
+  barre de menu ne traitait là que `Échap`, les flèches et `Entrée`, alors qu'elle dessinait
+  cette lettre dans la couleur d'accès rapide. `TMenuView::handleEvent` la cherche par
+  `findItem` sans distinguer la casse, écarte les items grisés et pose aussitôt la commande :
+  transcrit, avec ses trois essais. Un libellé qui montre une lettre inerte est exactement
+  ce que le NO GO n° 2 interdit, et il était là depuis quatre jalons.
+- **Et en vérifiant cela, j'ai trouvé pire.** Une lettre qui ne correspond à aucun item
+  traversait la barre et arrivait dans la vue focalisée : `Alt`+`E` puis `z` écrivait un
+  `z` dans le document de `redit`, et je l'ai mesuré avant de le corriger. Un menu ouvert
+  est maintenant **modal pour les lettres** — c'est ce que la boucle `execView` de Turbo
+  Vision fait de toute façon, puisqu'elle avale l'événement. Seules les lettres : `F10` avec
+  un menu ouvert quitte encore, et je l'écris plutôt que d'élargir la modalité à des touches
+  dont personne n'a mesuré le besoin.
+- **Deux attentes d'essai fausses, et le code avait raison les deux fois.** Passer à deux
+  colonnes depuis un défilement quelconque ne laisse pas la page où je l'attendais : le
+  curseur étant resté en tête, `reveal` ramène la page sur lui — ce qui est juste, et
+  l'essai mesurait `reveal` en croyant mesurer l'alignement. Et mon essai du défilement par
+  `Fin` ne mesurait rien avec vingt items, la dernière page commençant au même endroit
+  qu'on s'aligne ou non ; il porte maintenant sur vingt-deux, et la raison du nombre est
+  écrite à côté.
+- **Sept contrôles négatifs sur la liste**, vus échouer un par un, plus deux dans `rmc` et
+  deux dans la barre de menu. Le plus instructif est le premier : ramener le pas de
+  défilement à la ligne ne faisait tomber que **deux** essais sur quatre que je croyais
+  concernés — la molette a son propre pas, et l'essai de `Fin` ne discriminait pas. C'est ce
+  qui m'a fait renforcer le second au lieu de le croire.
+- **Mesuré en pseudo-terminal** : 84 traits verticaux à l'écran avant la bascule — deux
+  fenêtres, deux bords, vingt-et-une lignes, et le compte tombe juste —, 105 après, soit un
+  séparateur par ligne du panneau de gauche. En thème Turbo Vision, l'octet exact de
+  `cpAppColor[60]` n'apparaît qu'après la bascule.
+- **Trois documents mentaient, et je les ai trouvés en les suivant.** `CLAUDE.md` et
+  `docs/CONVENTIONS-fr.md` nommaient `theme/skins/midnight_commander.rs`, un fichier qui
+  n'existe plus depuis M7i : l'importeur écrit le fichier qui porte le nom du skin. Pire,
+  `CLAUDE.md` décrivait encore la procédure d'avant M7i pour mesurer deux skins — importer,
+  bâtir, mesurer, rétablir l'artefact — là où `rmc --theme mc:<skin>` suffit depuis trois
+  jalons ; la nouvelle est plus courte et ne touche plus à un fichier committé. Le module de
+  la liste annonçait le double-clic comme absent alors que M7e l'a écrit, et `statuts.toml`
+  disait de l'ADR-008 que les boutons ne projettent pas d'ombre, deux jours après M7k. Le
+  compte des rôles, lui, était resté à trente-huit en quatre endroits — dont le **nom** d'un
+  essai qui en énumérait trente-deux, et que j'ai remplacé par la liste unique qu'il aurait
+  fallu partager dès le début.
+- **1359 essais**, zéro clippy, les cinq contrôles d'`xtask`, trois `import-mc-skin
+  --check` aux empreintes inchangées, `check-dco --all`, et les octets mesurés sur macOS
+  aarch64, hydrogen x86_64 et neon aarch64.
+
 ## 2026-10-12 — Jalon M7l : la recherche, une question au modèle et une politique au contrôleur
 
 - **La décision du jalon est que chercher n'est pas une action.** L'ADR-007 fait passer

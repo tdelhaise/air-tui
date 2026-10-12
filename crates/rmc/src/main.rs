@@ -20,6 +20,11 @@
 //!   la racine : une seule source, deux chemins (ADR-007) ;
 //! - `Inser` marque et démarque ; le titre du panneau porte le compte et la taille de ce
 //!   qui est marqué ;
+//! - le menu « Panneau » bascule entre l'affichage **complet** — un nom, sa taille à
+//!   droite, une colonne — et l'affichage **bref** — les noms seuls, sur deux colonnes.
+//!   `mc` fait cela avec `Alt+T` et cycle sur quatre formats ; `rmc` n'a ni la touche, le
+//!   framework n'ayant pas de table d'accélérateurs, ni les deux autres formats, qui
+//!   demanderaient d'afficher des droits et des dates qu'`rmc` ne lit pas ;
 //! - `F5` relit le panneau actif, en gardant les marques des fichiers encore là ;
 //! - `F10` quitte, et le menu « Fichier » aussi ;
 //! - la molette et l'ascenseur défilent sans déplacer le curseur.
@@ -166,7 +171,8 @@ fn usage() -> String {
                --list-themes  énumère les noms acceptés\n\
          \n\
          Touches : Tab change de panneau, Entrée descend, Inser marque,\n\
-         F5 relit, F10 quitte.\n\
+         F5 relit, F10 quitte. Le menu « Panneau » passe de l'affichage\n\
+         complet à l'affichage bref, sur deux colonnes.\n\
          rmc n'exécute aucun programme et ne modifie aucun fichier.\n\
          Version {}\n",
         env!("CARGO_PKG_VERSION")
