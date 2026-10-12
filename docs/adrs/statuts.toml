@@ -87,4 +87,4 @@ note   = "AirTextBuffer tient son historique et les sept chirurgies de lignes so
 ["015"]
 objet  = "Une vue ne peint pas hors de ses limites ; son propriétaire le fait pour elle"
 statut = "fait"
-note   = "l'ombre portée est peinte par le parent dans la boucle où il dessine ses enfants (M7j), et l'invariant du découpage n'a pas bougé. Le dépôt employait déjà la première des trois stratégies — la barre de menu agrandit ses limites pour contenir son déroulant depuis M5b. Les boutons ne projettent pas encore d'ombre"
+note   = "l'ombre portée est peinte par le parent dans la boucle où il dessine ses enfants (M7j), et l'invariant du découpage n'a pas bougé. Le dépôt employait déjà la première des trois stratégies — la barre de menu agrandit ses limites pour contenir son déroulant depuis M5b. Les boutons en projettent depuis M7k, d'un autre genre — un trait fin en demi-blocs, une colonne au lieu de deux, et absent du thème de mc : c'est le premier champ de AirDecorations que les deux thèmes remplissent différemment"

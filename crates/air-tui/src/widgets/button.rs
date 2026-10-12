@@ -7,7 +7,7 @@
 use crate::command::AirCommand;
 use crate::geometry::{AirColumn, AirPoint, AirRectangle, AirRow};
 use crate::input::event::{AirInputEvent, AirKey, AirMouseButton, AirMouseEventKind};
-use crate::theme::AirRole;
+use crate::theme::{AirRole, AirShadowStyle};
 use crate::view::painter::AirPainter;
 use crate::view::{AirContext, AirDrawContext, AirEvent, AirOutcome, AirView, AirViewState};
 use crate::widgets::hotkey::split_hotkey;
@@ -38,6 +38,10 @@ impl AirButton {
     #[must_use]
     pub fn new(mut state: AirViewState, label: impl Into<String>, command: AirCommand) -> Self {
         state.set_border(false);
+        // Un bouton projette une ombre, et son propriétaire la peint : elle tombe hors de
+        // ses limites (ADR-015). Le **genre** suffit ici — c'est le thème qui décide de
+        // son apparence, et celui de Midnight Commander n'en dessine aucune.
+        state.set_shadow_style(Some(AirShadowStyle::Button));
         Self {
             state,
             label: label.into(),

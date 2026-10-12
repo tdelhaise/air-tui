@@ -7,7 +7,7 @@
 use crate::command::{AirCommand, CLOSE};
 use crate::geometry::{AirColumn, AirPoint, AirRectangle, AirRow};
 use crate::input::event::{AirInputEvent, AirMouseButton, AirMouseEventKind};
-use crate::theme::AirRole;
+use crate::theme::{AirRole, AirShadowStyle};
 use crate::view::painter::AirPainter;
 use crate::view::{
     AirBorderStyle, AirContext, AirDrawContext, AirEvent, AirGroup, AirOutcome, AirView, AirViewId,
@@ -45,7 +45,7 @@ impl AirWindow {
         // Une fenêtre projette une ombre, et c'est son **propriétaire** qui la peint :
         // elle tombe hors de ses limites, que le découpage du peintre ne laisse pas
         // franchir (ADR-015). La vue ne fait que le déclarer.
-        state.set_casts_shadow(true);
+        state.set_shadow_style(Some(AirShadowStyle::Window));
         Self {
             group: AirGroup::new(state),
             title: None,

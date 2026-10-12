@@ -88,6 +88,18 @@ Deux stratégies coexistent, et le choix entre elles n'est pas affaire de goût 
   ombre ferait entrer celle-ci dans sa détection de clic et dans le calcul de son
   intérieur.
 
+Deux propriétaires peignent des ombres, et pas un seul : la traversée de l'arbre pour les
+enfants d'un groupe, et `AirPromptDialog`, qui compose ses contrôles lui-même et ne les
+expose donc pas comme enfants. Les deux appellent la **même** fonction,
+`view::draw_view_shadow` — y refaire le calcul dédoublerait la règle.
+
+La vue déclare un **genre** d'ombre et non un booléen (`AirViewState::shadow_style`) :
+celle d'un bouton n'a pas la forme de celle d'une fenêtre. Un trait fin qui épouse le
+bouton, en demi-blocs `▄` et `▀` — les caractères `0xDC` et `0xDF` de Turbo Vision —, qui
+garde le **fond** de ce qu'il assombrit puisqu'un demi-bloc n'en couvre que la moitié. Le
+thème décide des deux indépendamment, et celui de `mc` n'a **pas** d'ombre de bouton : ses
+boutons sont `[ OK ]`, plats.
+
 Ne pas proposer une troisième : une marge de débordement déclarée par la vue rendrait
 l'invariant **conditionnel**, donc à vérifier à chaque lecture de code.
 
@@ -184,9 +196,32 @@ tools/pty-drive.py ./target/debug/examples/frame -- 800 1b5b32317e \
     | grep -oE '38;5;8;48;5;0' | wc -l
 # doit donner 12, et autant avec `frame mc` : mc nomme son ombre `gray;black` dans
 # `[core] shadow`, soit exactement l'attribut VGA 0x08 de Turbo Vision.
+
+# L'ombre des boutons du jalon M7k : deux demi-blocs inférieurs, vingt-deux supérieurs —
+# dix et douze colonnes de bouton. Comptés sur le glyphe, pas sur la couleur : le fond
+# vient de ce qui est dessous, donc il change d'un conteneur à l'autre.
+tools/pty-drive.py ./target/debug/examples/frame -- 800 1b5b32317e \
+    | grep -oF '▀' | wc -l            # doit donner 22, et 2 pour '▄'
+tools/pty-drive.py ./target/debug/examples/frame mc -- 800 1b5b32317e \
+    | grep -oF '▀' | wc -l            # doit donner 0 : mc n'ombre pas ses boutons
+
+# Et la couleur, une fois : noir sur le bleu de la fenêtre.
+tools/pty-drive.py ./target/debug/examples/frame -- 800 1b5b32317e \
+    | grep -oE '38;5;0;48;5;4m▄' | wc -l   # doit donner 2
+
+# Dans le dialogue de `redit` — F3 pour l'ouvrir, Alt+A pour l'abandonner, F10 —, le fond
+# est le gris du dialogue, donc l'octet est exactement l'attribut VGA 0x70 que Turbo Vision
+# écrit pour cpButton[8]. Ici on cherche la **présence** et non un compte : le nombre de
+# repeints d'une session en pty varie, et un compte en ferait un essai qui se contredit.
+printf 'origine\n' > /tmp/redit-essai.txt
+tools/pty-drive.py ./target/debug/redit /tmp/redit-essai.txt -- 600 1b5b31337e 600 1b61 600 1b5b32317e \
+    | grep -oE '38;5;0;48;5;7m[▄▀]' | head -1   # doit sortir une occurrence
+# `1b61` est Alt+A, la lettre d'accès rapide du bouton « Annuler » : un `1b` nu laisse le
+# décodeur attendre la suite de la séquence, le dialogue reste ouvert et consomme le F10 —
+# le verdict devient `timeout` alors que rien n'est cassé.
 ```
 
-`redit` et `rmc` n'en émettent **aucune**, et ce n'est pas un défaut : leurs fenêtres
+`redit` et `rmc` n'émettent **aucune ombre de fenêtre**, et ce n'est pas un défaut : leurs fenêtres
 occupent tout le bureau, donc l'ombre tombe hors de lui et le découpage l'écarte — pour
 `rmc`, celle du panneau de gauche tombe sur le panneau de droite, qui est dessiné après et
 la recouvre. Une ombre ne paraît que là où il y a quelque chose derrière, et l'exemple
@@ -374,8 +409,8 @@ Sur la couverture, deux exigences de portée différente, à ne pas confondre :
 Une fusion squash produit **un** commit sur `main`, et c'est lui qui doit porter le DCO.
 Sans `--body`, GitHub construit le corps en reprenant les messages des commits de la
 branche, trailers compris : le `Signed-off-by` arrive tout seul. Avec un `--body` écrit à
-la main, il **disparaît**, et c'est silencieux — aucun contrôle ne le voit, puisque
-`check-dco` n'est pas écrit.
+la main, il **disparaît**, et c'était silencieux jusqu'à ce que `check-dco` soit écrit —
+il l'est depuis, et c'est lui qui le verrait maintenant.
 
 Donc, quand on passe un corps à la main, y remettre la ligne :
 
@@ -389,5 +424,5 @@ Signed-off-by: Thierry DELHAISE <thierry.delhaise@air-desktop.org>"
 
 Payé au jalon M7g : son commit de fusion (`806f7ae`) est le seul de `main` sans DCO. Il
 n'est **pas réparable** — amender demanderait un force-push sur `main`, que ce dépôt
-interdit sans exception. Une règle outillée aurait rattrapé la distraction, et c'est
-exactement ce que `check-dco` ferait : il reste à écrire.
+interdit sans exception. Une règle outillée aurait rattrapé la distraction : `check-dco`
+l'est depuis, et il porte ce commit comme **pardon nommé**, annoncé à chaque exécution.

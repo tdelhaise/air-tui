@@ -37,10 +37,11 @@ use core::num::NonZeroU32;
 pub use group::AirGroup;
 pub use painter::AirPainter;
 
+use crate::cell::{AirCell, AirColor};
 use crate::command::{AirCommand, AirCommandSet};
 use crate::geometry::{AirColumn, AirPoint, AirRectangle, AirRow, AirSize};
 use crate::input::event::{AirInputEvent, AirKeyState};
-use crate::theme::{AirColorPair, AirFrameGlyphs, AirRole, AirTheme};
+use crate::theme::{AirFrameGlyphs, AirRole, AirShadow, AirShadowStyle, AirTheme};
 
 /// L'identifiant d'une vue.
 ///
@@ -298,12 +299,14 @@ pub struct AirViewState {
     pre_process: bool,
     /// Vrai si la vue voit les événements après celle qui a le focus.
     post_process: bool,
-    /// Vrai si la vue projette une ombre portée.
+    /// Le genre d'ombre que la vue projette, ou `None`.
     ///
-    /// Faux par défaut : une ombre sur chaque vue couvrirait l'écran de gris. Ce n'est
+    /// `None` par défaut : une ombre sur chaque vue couvrirait l'écran de gris. Ce n'est
     /// **pas** cette vue qui la dessine — elle tombe hors de ses limites, et son
-    /// propriétaire la peint pour elle (ADR-015).
-    casts_shadow: bool,
+    /// propriétaire la peint pour elle (ADR-015). Un **genre** et non un booléen depuis
+    /// le jalon M7k : un bouton et une fenêtre n'ont pas la même ombre, et c'est la vue
+    /// qui sait lequel des deux elle est.
+    shadow_style: Option<AirShadowStyle>,
 }
 
 impl AirViewState {
@@ -315,7 +318,7 @@ impl AirViewState {
             bounds,
             border: true,
             border_style: AirBorderStyle::Single,
-            casts_shadow: false,
+            shadow_style: None,
             visible: true,
             focused: false,
             enabled: true,
@@ -372,20 +375,21 @@ impl AirViewState {
         self.border_style
     }
 
-    /// Vrai si la vue projette une ombre portée.
+    /// Le genre d'ombre que la vue projette, s'il y en a un.
     #[must_use]
-    pub const fn casts_shadow(&self) -> bool {
-        self.casts_shadow
+    pub const fn shadow_style(&self) -> Option<AirShadowStyle> {
+        self.shadow_style
     }
 
-    /// Décide si la vue projette une ombre portée.
+    /// Décide du genre d'ombre que la vue projette.
     ///
     /// La vue ne la dessine pas : elle tombe hors de ses limites, et c'est son
-    /// propriétaire qui la peint (ADR-015). Le thème décide de sa taille et la palette de
-    /// sa couleur, donc une vue qui en projette n'en projette pas dans un thème qui n'en
-    /// a pas.
-    pub const fn set_casts_shadow(&mut self, casts_shadow: bool) {
-        self.casts_shadow = casts_shadow;
+    /// propriétaire qui la peint (ADR-015). Le thème décide de sa taille et de son
+    /// apparence, et la palette de sa couleur — donc une vue qui en projette n'en projette
+    /// pas dans un thème qui n'en a pas, et c'est le cas des boutons sous un thème de
+    /// Midnight Commander.
+    pub const fn set_shadow_style(&mut self, style: Option<AirShadowStyle>) {
+        self.shadow_style = style;
     }
 
     /// Choisit le style de bordure.
@@ -592,7 +596,7 @@ pub fn draw_view(
         // dessous, et le corps d'une fenêtre de premier plan recouvre l'ombre qu'une
         // autre y aurait projetée. Une passe globale des ombres ne saurait pas distinguer
         // les deux (ADR-015).
-        draw_child_shadow(&mut interior_painter, child.as_ref(), context);
+        draw_view_shadow(&mut interior_painter, child.as_ref(), context);
         if let Some(mut child_painter) = interior_painter.child(child.state().bounds())
             && let Some(found) = draw_view(child.as_ref(), &mut child_painter, context)
         {
@@ -602,31 +606,66 @@ pub fn draw_view(
     cursor
 }
 
-/// Peint l'ombre d'un enfant, dans les limites du **propriétaire**.
+/// Le demi-bloc inférieur, `▄` — l'ombre d'un bouton à **droite** de celui-ci.
+///
+/// Le caractère `0xDC` de la page de code 437, celui que Turbo Vision écrit. Le demi-bloc
+/// **inférieur** parce que l'ombre est décalée vers le bas : la moitié haute de cette
+/// cellule montre encore ce qu'il y a derrière.
+const BUTTON_SHADOW_RIGHT: char = '▄';
+
+/// Le demi-bloc supérieur, `▀` — l'ombre d'un bouton **sous** celui-ci.
+///
+/// Le caractère `0xDF` de la page de code 437. Symétrique du précédent : sous le bouton,
+/// c'est la moitié **haute** de la cellule qui est dans l'ombre.
+const BUTTON_SHADOW_BELOW: char = '▀';
+
+/// Peint l'ombre d'une vue, dans les limites du **propriétaire**.
 ///
 /// C'est la décision de l'ADR-015 : une vue ne peint pas hors de ses limites, et ce qui
 /// dépasse d'elle est peint par le propriétaire de la surface où cela dépasse. Le peintre
-/// reçu est donc celui du parent, et son découpage s'applique tel quel — une fenêtre
+/// reçu est donc celui du propriétaire, et son découpage s'applique tel quel — une fenêtre
 /// contre le bord du bureau ne projette qu'un morceau d'ombre, ce qui est juste.
 ///
-/// L'ombre **recolore** ce qui est dessous en gardant le caractère : c'est ce qui lui donne
-/// l'aspect d'une ombre sur le motif du bureau plutôt que d'un rectangle collé à la
-/// fenêtre.
-fn draw_child_shadow(
+/// Publique parce que la traversée de l'arbre n'est **pas** le seul propriétaire de
+/// surface : [`crate::widgets::AirPromptDialog`] compose ses contrôles lui-même — ils ne
+/// paraissent pas dans ses enfants —, donc c'est lui qui doit peindre l'ombre de ses deux
+/// boutons. Elle est le seul point d'entrée, pour que la règle « une vue invisible ne
+/// projette rien, un genre absent ne projette rien » ne soit écrite qu'une fois.
+pub fn draw_view_shadow(
     painter: &mut AirPainter<'_>,
-    child: &dyn AirView,
+    view: &dyn AirView,
     context: &AirDrawContext<'_>,
 ) {
-    if !child.state().is_visible() || !child.state().casts_shadow() {
+    if !view.state().is_visible() {
         return;
     }
-    let Some(shadow) = context.theme.decorations.shadow else {
+    let Some(style) = view.state().shadow_style() else {
         return;
     };
-    let colors = context.theme.palette.color_pair(AirRole::WindowShadow);
-    let bounds = child.state().bounds();
-    // La zone d'ombre est la vue **décalée**, moins la vue elle-même : les cellules qui
-    // restent dessous vont être recouvertes, et les recolorer serait du travail perdu.
+    let Some(shadow) = context.theme.decorations.shadow(style) else {
+        return;
+    };
+    let bounds = view.state().bounds();
+    match style {
+        AirShadowStyle::Window => draw_offset_shadow(painter, bounds, shadow, context.theme),
+        AirShadowStyle::Button => draw_hugging_shadow(painter, bounds, shadow, context.theme),
+    }
+}
+
+/// L'ombre d'une fenêtre : le rectangle décalé, moins la vue elle-même.
+///
+/// Elle **recolore** ce qui est dessous en gardant le caractère : c'est ce qui lui donne
+/// l'aspect d'une ombre sur le motif du bureau plutôt que d'un rectangle collé à la
+/// fenêtre.
+fn draw_offset_shadow(
+    painter: &mut AirPainter<'_>,
+    bounds: AirRectangle,
+    shadow: AirShadow,
+    theme: &AirTheme,
+) {
+    let colors = theme.palette.color_pair(AirRole::WindowShadow);
+    // Les cellules qui restent sous la vue vont être recouvertes par elle, et les
+    // recolorer serait du travail perdu.
     let shadowed = AirRectangle::new(
         AirPoint::new(
             AirColumn::new(bounds.left().saturating_add(shadow.columns)),
@@ -640,7 +679,8 @@ fn draw_child_shadow(
         while column < shadowed.right_exclusive() {
             let point = AirPoint::new(AirColumn::new(column), AirRow::new(row));
             if !bounds.contains(point) {
-                shade(painter, point, colors);
+                let character = painter.cell(point).map_or(' ', |cell| cell.character);
+                painter.set_cell(point, colors.cell(character));
             }
             column = column.saturating_add(1);
         }
@@ -648,10 +688,65 @@ fn draw_child_shadow(
     }
 }
 
-/// Recolore une cellule aux couleurs de l'ombre, en gardant son caractère.
-fn shade(painter: &mut AirPainter<'_>, point: AirPoint, colors: AirColorPair) {
-    let character = painter.cell(point).map_or(' ', |cell| cell.character);
-    painter.set_cell(point, colors.cell(character));
+/// L'ombre d'un bouton : un trait fin en demi-blocs, qui épouse la vue.
+///
+/// Deux bandes, et aucune cellule commune : une colonne à droite sur toute la hauteur du
+/// bouton, et une ligne dessous décalée d'une colonne. La ligne du dessous est décalée
+/// parce que l'ombre est portée en bas **et** à droite — sans ce décalage, le trait
+/// dépasserait sous le bord gauche du bouton, où rien ne le projette.
+///
+/// Elle garde le **fond** de la cellule et n'en change que l'avant-plan. La raison est
+/// dans le caractère : un demi-bloc ne couvre que la moitié de la cellule, donc l'autre
+/// moitié doit montrer ce qu'il y a derrière. Turbo Vision écrit les deux couleurs du
+/// rôle, ce qui donne le même résultat **dans un dialogue** — son fond est précisément
+/// celui du rôle — et un rectangle gris sur une fenêtre bleue, où ce dépôt pose aussi des
+/// boutons (l'exemple `frame`).
+fn draw_hugging_shadow(
+    painter: &mut AirPainter<'_>,
+    bounds: AirRectangle,
+    shadow: AirShadow,
+    theme: &AirTheme,
+) {
+    let foreground = theme.palette.color_pair(AirRole::ButtonShadow).foreground;
+    let right = AirRectangle::new(
+        AirPoint::new(
+            AirColumn::new(bounds.right_exclusive()),
+            AirRow::new(bounds.top()),
+        ),
+        AirSize::new(shadow.columns, bounds.size.rows),
+    );
+    let below = AirRectangle::new(
+        AirPoint::new(
+            AirColumn::new(bounds.left().saturating_add(shadow.columns)),
+            AirRow::new(bounds.bottom_exclusive()),
+        ),
+        AirSize::new(bounds.size.columns, shadow.rows),
+    );
+    for (area, character) in [(right, BUTTON_SHADOW_RIGHT), (below, BUTTON_SHADOW_BELOW)] {
+        let mut row = area.top();
+        while row < area.bottom_exclusive() {
+            let mut column = area.left();
+            while column < area.right_exclusive() {
+                let point = AirPoint::new(AirColumn::new(column), AirRow::new(row));
+                shade_half_block(painter, point, character, foreground);
+                column = column.saturating_add(1);
+            }
+            row = row.saturating_add(1);
+        }
+    }
+}
+
+/// Pose un demi-bloc d'ombre sur une cellule, en lui gardant son fond.
+fn shade_half_block(
+    painter: &mut AirPainter<'_>,
+    point: AirPoint,
+    character: char,
+    foreground: AirColor,
+) {
+    let background = painter
+        .cell(point)
+        .map_or(AirColor::TerminalDefault, |cell| cell.background);
+    painter.set_cell(point, AirCell::new(character, foreground, background));
 }
 
 /// Trace la bordure d'une vue avec les glyphes et les couleurs du thème.
@@ -955,7 +1050,7 @@ mod tests {
         frame_glyphs, minimum_bordered_size,
     };
     use crate::cell::{AirAttributes, AirCell, AirColor};
-    use crate::command::{AirCommandSet, SAVE};
+    use crate::command::{AirCommandSet, OK, SAVE};
     use crate::geometry::{AirColumn, AirPoint, AirRectangle, AirRow, AirSize};
     use crate::input::event::{
         AirInputEvent, AirKey, AirKeyEvent, AirKeyState, AirModifiers, AirMouseButton,
@@ -963,7 +1058,7 @@ mod tests {
     };
     use crate::surface::AirSurface;
     use crate::theme::{AirRole, AirTheme};
-    use crate::widgets::{AirPanel, AirWindow};
+    use crate::widgets::{AirButton, AirPanel, AirWindow};
 
     fn identifier(value: u32) -> AirViewId {
         AirViewId::new(value).expect("un identifiant non nul")
@@ -1151,6 +1246,100 @@ mod tests {
             surface.cell(point(4, 5)).map(|cell| cell.background),
             Some(shadow.background),
             "un panneau ne projette pas d'ombre"
+        );
+    }
+
+    // ------------------------------- l'ombre d'un bouton, en demi-blocs (M7k)
+
+    /// Une fenêtre qui tient un bouton, et la surface où elle est peinte.
+    ///
+    /// Le bouton est posé en `(1, 1)` de la zone de contenu, donc en `(2, 2)` de la
+    /// surface : la fenêtre occupe toute la surface, et sa bordure décale d'une cellule.
+    /// Les attentes comptent donc en coordonnées absolues, qui sont celles de la surface.
+    fn window_with_button(theme: &AirTheme) -> AirSurface {
+        let size = AirSize::new(14, 8);
+        let mut surface = AirSurface::new(size);
+        let mut window = AirWindow::new(state(1, AirRectangle::new(AirPoint::ORIGIN, size)));
+        window.insert(Box::new(AirButton::new(
+            state(2, AirRectangle::from_parts(1, 1, 6, 1)),
+            "ok",
+            OK,
+        )));
+        {
+            let mut painter = AirPainter::new(&mut surface);
+            draw_view(
+                &window,
+                &mut painter,
+                &AirDrawContext::new(theme, &AirCommandSet::new()),
+            );
+        }
+        surface
+    }
+
+    #[test]
+    fn l_ombre_d_un_bouton_epouse_ses_limites_en_demi_blocs() {
+        // Une colonne à droite sur la hauteur du bouton, une ligne dessous décalée d'une
+        // colonne — et les deux demi-blocs de Turbo Vision, `0xDC` et `0xDF` de la page
+        // de code 437.
+        let theme = AirTheme::turbo_vision();
+        let surface = window_with_button(&theme);
+        assert_eq!(
+            surface.cell(point(8, 2)).map(|cell| cell.character),
+            Some('▄'),
+            "la colonne de droite porte le demi-bloc inférieur"
+        );
+        for column in 3..9 {
+            assert_eq!(
+                surface.cell(point(column, 3)).map(|cell| cell.character),
+                Some('▀'),
+                "colonne {column} : la ligne du dessous porte le demi-bloc supérieur"
+            );
+        }
+        // Le décalage d'une colonne : sous le bord **gauche** du bouton, rien ne tombe.
+        assert_eq!(
+            surface.cell(point(2, 3)).map(|cell| cell.character),
+            Some(' '),
+            "l'ombre est portée en bas et à droite, donc la première colonne est libre"
+        );
+    }
+
+    #[test]
+    fn l_ombre_d_un_bouton_garde_le_fond_de_ce_qui_est_dessous() {
+        // Un demi-bloc ne couvre que la moitié de sa cellule : l'autre moitié doit montrer
+        // ce qu'il y a derrière, donc seul l'avant-plan vient du rôle. Turbo Vision écrit
+        // les deux couleurs, ce qui donne le même résultat dans un dialogue — son fond est
+        // celui du rôle — et un rectangle gris sur une fenêtre bleue.
+        let theme = AirTheme::turbo_vision();
+        let surface = window_with_button(&theme);
+        let shadow = theme.palette.color_pair(AirRole::ButtonShadow);
+        let interior = theme.palette.color_pair(AirRole::WindowInterior);
+        let shaded = surface.cell(point(8, 2)).copied().expect("une cellule");
+        assert_eq!(shaded.foreground, shadow.foreground);
+        assert_eq!(
+            shaded.background, interior.background,
+            "le fond est celui de la fenêtre, pas celui du rôle"
+        );
+        assert_ne!(
+            shadow.background, interior.background,
+            "l'essai doit discriminer : sans quoi il passerait aussi en écrivant les deux \
+             couleurs du rôle"
+        );
+    }
+
+    #[test]
+    fn un_theme_sans_ombre_de_bouton_n_en_dessine_pas() {
+        // Le contrôle, et ce n'est pas un thème fabriqué pour l'essai : `mc` dessine ses
+        // boutons en `[ OK ]`, plats, donc son thème n'a pas d'ombre de bouton — alors
+        // qu'il en a une pour ses fenêtres.
+        let theme = AirTheme::midnight_commander();
+        let surface = window_with_button(&theme);
+        let interior = theme.palette.color_pair(AirRole::WindowInterior);
+        let shaded = surface.cell(point(8, 2)).copied().expect("une cellule");
+        assert_eq!(shaded.character, ' ');
+        assert_eq!(shaded.background, interior.background);
+        assert!(
+            theme.decorations.window_shadow.is_some(),
+            "mais ses fenêtres en projettent une"
         );
     }
 
