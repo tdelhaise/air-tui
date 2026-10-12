@@ -3,8 +3,8 @@
 Document de suivi **vivant** : où en est-on, quelle est la prochaine tâche. Il se met à
 jour à chaque session. L'historique figé est dans [`JOURNAL.md`](JOURNAL.md).
 
-**Dernière mise à jour : 2026-10-12** (jalon M7k — l'ombre portée des boutons, et le
-second champ des décorations).
+**Dernière mise à jour : 2026-10-12** (jalon M7l — la recherche dans `redit` ; jalon M7k —
+l'ombre portée des boutons).
 
 ## Dépôt
 
@@ -27,7 +27,7 @@ contrôle, donc **aucun essai en pseudo-terminal** n'y tourne, et le fuzzing exi
 
 ## Où en est-on
 
-Jalons **M0 à M7k terminés**. Le dépôt porte ses conventions, ses ADR fondateurs, le socle
+Jalons **M0 à M7l terminés**. Le dépôt porte ses conventions, ses ADR fondateurs, le socle
 de rendu, le décodeur d'entrée, l'arbre de vues, treize widgets, la **couche MVC** de
 l'ADR-007, la hiérarchie d'objets complète, deux thèmes dont un **compilé**, et deux
 **applications** : `redit` ouvre un fichier, l'édite et l'enregistre ; `rmc` parcourt deux
@@ -616,6 +616,58 @@ affirmations de M7b se sont révélées fausses. Elles sont corrigées ici plut�
   annonçait le quantificateur « prévu au jalon M5 et **n'est pas écrit** », celui
   d'`AirCell` les tables UCD de même. Les deux existent depuis M5 et M3.
 
+### Fait au jalon M7l — la recherche dans `redit`
+
+- **La recherche n'est pas une action, et c'est la décision du jalon.** L'ADR-007 fait
+  passer toute mutation et tout déplacement par une `AirTextAction` ; chercher ne change
+  rien, donc `find_from` est une méthode de **lecture** du tampon. L'énumération des
+  actions — la table qui dit tout ce qui peut arriver au texte — n'a pas bougé d'une ligne,
+  et aucune action nouvelle n'a été écrite (ADR-016).
+- **Le gain n'est pas théorique.** Une action `Find` aurait obligé le tampon à dire « je
+  n'ai rien trouvé » par le canal des changements structurels, c'est-à-dire à inventer un
+  `AirTextChange` pour un fait qui n'en est pas un : **rien n'a changé**. L'échec d'une
+  recherche est une valeur de retour, et c'est le seul endroit où il ne demande rien à
+  personne.
+- **Ce que le contrôleur en fait tient en deux actions qui existaient déjà** : un
+  déplacement qui efface la sélection vers le début de l'occurrence, un déplacement qui
+  l'étend vers sa fin. Appliqués au même tour, donc la vue ne voit que l'état final.
+- **L'unité de comparaison est la grappe de graphème**, pas l'octet. Une occurrence qui
+  commencerait au milieu d'une grappe donnerait une sélection que le curseur — qui se
+  déplace par grappes depuis M3 — ne sait pas décrire : chercher `e` dans un `é`
+  **décomposé** ne trouve donc rien, et c'est juste. Effet secondaire agréable : la
+  comparaison grappe à grappe **est** la vérification des frontières, il n'y a pas de passe
+  de validation à oublier.
+- **Deux attentes d'essai fausses, et le code avait raison les deux fois** : « ÉTÉ » fait
+  cinq octets et non six — `É` en fait deux, `T` un seul — et « étendu » porte un **second**
+  `e`, que la recherche trouvait à bon droit. L'essai des frontières de grappe accusait donc
+  la bonne règle d'un défaut qu'elle n'avait pas ; il porte maintenant sur « état ».
+- **La politique est au contrôleur, et elle est nommée.** Le modèle cherche vers l'avant et
+  ne reprend pas au début ; `redit` reprend une fois depuis le début du document et
+  l'**annonce** dans le titre — une occurrence qui paraît avant le curseur sans un mot
+  d'explication ressemble à un défaut. Le dernier motif est au contrôleur pour la même
+  raison : ce n'est pas une propriété du document.
+- **Un motif n'est pas coupé de ses espaces**, là où un nom de fichier l'est : chercher
+  « le » entre deux espaces est une demande légitime. Les deux questions passent par le même
+  dialogue, donc la distinction est écrite dans la **réponse** et non dans le dialogue.
+- **Trois gestes, et le canal qu'ils prennent** : `Ctrl`+`F` ouvre la question, `Ctrl`+`L`
+  continue — le geste de Borland —, `F7` ouvre la question depuis la barre de statut, comme
+  l'éditeur de `mc`. Les deux premiers sortent de la vue d'édition par le canal des
+  **commandes** et non des intentions, pour la même raison que le presse-papiers : poser une
+  question à l'utilisateur n'appartient pas à une vue d'édition.
+- **Ce qui n'est pas fait, écrit comme tel** : pas de recherche en arrière — `redit` n'a pas
+  de geste pour la demander, et un réglage sans lecteur est ce que ce dépôt refuse d'écrire ;
+  pas de **remplacement**, qui est une mutation et demande de décider ce qu'un « remplacer
+  tout » fait à l'historique d'annulation ; pas d'expression régulière ; et pas de case
+  « respecter la casse » — le modèle sait les deux, `redit` ne sait poser que l'insensible,
+  parce que `AirPromptDialog` tient un champ et aucun parcours de focus interne.
+- **Le repliement de casse est simple et nommé** : `char::to_lowercase`, grappe à grappe.
+  `Ê` et `ê` se trouvent l'un l'autre, `ß` et `SS` non — le repliement complet change le
+  *nombre* de grappes, et aucune table de ce dépôt ne le décrit.
+- **1339 essais**, dont vingt-six pour la recherche, et trois essais en pseudo-terminal qui
+  vont par paire avec leur contrôle : `F7`, « belle », `Entrée`, `Ctrl`+`X`, `F2` laisse
+  « une  journee » dans le fichier — la coupe **prouve** la sélection —, un motif absent
+  laisse le fichier intact, et `Ctrl`+`L` coupe l'occurrence de la **seconde** ligne.
+
 ### Fait au jalon M7k — l'ombre portée des boutons
 
 - **Le mécanisme n'a pas changé d'un mot, et c'est le résultat du jalon.** L'ADR-015 avait
@@ -945,13 +997,13 @@ affirmations de M7b se sont révélées fausses. Elles sont corrigées ici plut�
 demandent une console physique, inaccessible par SSH. Écrire du code qu'on ne peut pas
 vérifier est exactement ce que ce dépôt refuse. Les candidats, du plus petit au plus gros :
 
-L'ombre des boutons est faite (M7k). Ce qui reste est plus petit, ou demande une décision
-qui n'est pas technique :
+L'ombre des boutons (M7k) et la recherche (M7l) sont faites. Ce qui reste :
 
-1. **La recherche dans `redit`** — `Ctrl`+`F` —, demandée en même temps que M7k et prise
-   juste après : le jalon suivant.
-2. **Une liste à plusieurs colonnes**, et le **défilement d'un groupe** plus long que sa
-   place : les deux absences mesurées du catalogue de widgets.
+1. **Une liste à plusieurs colonnes**, et le **défilement d'un groupe** plus long que sa
+   place : les deux absences mesurées du catalogue de widgets. Demandée pour la suite.
+2. **Le remplacement dans `redit`**, que l'ADR-016 écarte explicitement de son jalon : il
+   demande de décider ce qu'un « remplacer tout » fait à l'historique d'annulation — un pas,
+   ou un par occurrence.
 3. **Reprendre plus de trois skins**, si l'auteur du dépôt le décide : le mécanisme est en
    place et le coût est chiffré — 395 Kio et deux dixièmes de seconde pour les trente-neuf.
    Ce qui reste à trancher n'est pas technique : c'est la place que prend la donnée d'un
@@ -987,4 +1039,5 @@ des numéros de touches fonctionnelles.
 | M7i | plusieurs skins compilés, et le choix par un nom | **fait** |
 | M7j | la peinture hors des limites, l'ombre portée, la troisième assiette | **fait** |
 | M7k | l'ombre portée des boutons, en demi-blocs, et le second champ des décorations | **fait** |
+| M7l | la recherche dans `redit` : une question au modèle, une politique au contrôleur | **fait** |
 | M8 | étage natif Linux : evdev, `TIOCLINUX`, gpm | à faire |

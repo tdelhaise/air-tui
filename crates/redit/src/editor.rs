@@ -27,11 +27,15 @@ use std::path::{Path, PathBuf};
 use air_tui::application::{AirDesktop, AirScreen};
 use air_tui::clipboard::AirClipboard;
 use air_tui::command::{
-    AirCommand, AirCommandSet, CANCEL, COPY, CUT, OK, OPEN, PASTE, QUIT, REDO, SAVE, UNDO,
+    AirCommand, AirCommandSet, CANCEL, COPY, CUT, FIND, FIND_NEXT, OK, OPEN, PASTE, QUIT, REDO,
+    SAVE, UNDO,
 };
 use air_tui::geometry::{AirRectangle, AirSize};
 use air_tui::input::event::AirKey;
-use air_tui::model::{AirChangeSet, AirModel, AirTextAction, AirTextChange};
+use air_tui::model::{
+    AirChangeSet, AirModel, AirTextAction, AirTextChange, AirTextMotion, AirTextPosition,
+    AirTextSearch,
+};
 use air_tui::view::{AirView, AirViewId, AirViewState, find, find_mut};
 use air_tui::widgets::{
     AirEditorView, AirMenu, AirMenuBar, AirMenuItem, AirOrientation, AirPromptDialog, AirScrollBar,
@@ -68,6 +72,8 @@ enum Prompt {
     Open,
     /// Enregistrer sous le nom donné.
     SaveAs,
+    /// Chercher le motif donné.
+    Find,
 }
 
 /// Les identifiants des vues que le contrôleur retrouve à chaque tour.
@@ -99,6 +105,11 @@ pub struct Editor {
     views: Views,
     /// Ce que la question en cours doit déclencher.
     prompt: Option<Prompt>,
+    /// Le dernier motif cherché, pour « continuer la recherche ».
+    ///
+    /// Au **contrôleur** et non au modèle : un motif n'est pas un fait sur le texte, et un
+    /// tampon qui le retiendrait en ferait une propriété du document (ADR-016).
+    search: Option<AirTextSearch>,
     /// Le dernier message à afficher, s'il y en a un.
     message: Option<String>,
     /// Le presse-papiers interne, que le contrôleur possède.
@@ -140,6 +151,7 @@ impl Editor {
             root,
             views,
             prompt: None,
+            search: None,
             message: None,
             clipboard: AirClipboard::new(),
             quit: false,
@@ -236,6 +248,14 @@ impl Editor {
             commands.enable(PASTE);
         }
 
+        // Et le même *pull* pour la reprise de recherche, qui n'a pas de sens avant la
+        // première : le motif est au contrôleur, donc c'est lui qui sait.
+        if self.search.is_some() {
+            commands.enable(FIND_NEXT);
+        } else {
+            commands.disable(FIND_NEXT);
+        }
+
         // Et le même *pull* pour l'annulation, qui est la raison pour laquelle l'ADR-014
         // n'a ajouté **aucun** changement structurel : une vue qui demande au moment où
         // elle peint ne peut pas afficher un état périmé.
@@ -293,9 +313,13 @@ impl Editor {
         match command {
             QUIT => self.quit = true,
             NEW => self.start_new_document(),
-            OPEN => self.ask(Prompt::Open, "Ouvrir"),
+            OPEN => self.ask(Prompt::Open),
             SAVE => self.save(),
-            SAVE_AS => self.ask(Prompt::SaveAs, "Enregistrer sous"),
+            SAVE_AS => self.ask(Prompt::SaveAs),
+            // Chercher demande un motif, donc une question : la vue d'édition ne sait pas
+            // la poser, et c'est pourquoi `Ctrl`+`F` lui sort en commande (ADR-016).
+            FIND => self.ask(Prompt::Find),
+            FIND_NEXT => self.find_next(),
             DELETE_LINE => {
                 if let Some(editor) = find_mut::<AirEditorView>(&mut self.root, self.views.editor) {
                     let _ = editor;
@@ -358,20 +382,33 @@ impl Editor {
         }
     }
 
-    /// Pose la question d'un chemin de fichier, en modal.
-    fn ask(&mut self, prompt: Prompt, title: &str) {
-        let prefill = self
-            .document
-            .path()
-            .map(|path| path.to_string_lossy().into_owned())
-            .unwrap_or_default();
+    /// Pose une question en modal.
+    ///
+    /// Le titre, l'étiquette et le texte pré-rempli sont déduits de la question : les trois
+    /// sites d'appel n'ont plus qu'à dire **laquelle**, et un quatrième n'aurait pas à
+    /// choisir une étiquette qui ressemble aux autres.
+    fn ask(&mut self, prompt: Prompt) {
+        let (title, label, prefill) = match prompt {
+            Prompt::Open => ("Ouvrir", "Nom du fichier :", self.path_text()),
+            Prompt::SaveAs => ("Enregistrer sous", "Nom du fichier :", self.path_text()),
+            // Le dernier motif est pré-rempli : chercher deux fois la même chose est le
+            // cas courant, et `Ctrl`+`L` ne couvre que la reprise immédiate.
+            Prompt::Find => (
+                "Rechercher",
+                "Motif :",
+                self.search
+                    .as_ref()
+                    .map(|search| search.pattern.clone())
+                    .unwrap_or_default(),
+            ),
+        };
         let dialog = AirPromptDialog::new(
             AirViewState::new(
                 self.views.modal,
                 AirRectangle::from_parts(0, 0, 54, AirPromptDialog::required_rows()),
             ),
             title,
-            "Nom du fichier :",
+            label,
         )
         .with_text(prefill)
         .with_maximum_length(1024);
@@ -379,17 +416,83 @@ impl Editor {
         self.root.set_modal(Box::new(dialog));
     }
 
+    /// Le chemin du document, pour pré-remplir une question de fichier.
+    fn path_text(&self) -> String {
+        self.document
+            .path()
+            .map(|path| path.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    }
+
+    /// Cherche l'occurrence suivante du dernier motif, et retient ce qu'il faut dire.
+    ///
+    /// La **politique** est ici et non dans le tampon, qui ne répond qu'à une question
+    /// factuelle (ADR-016) : on cherche du curseur vers la fin, et si rien n'y est, on
+    /// reprend une fois depuis le début du document. La reprise est annoncée, parce qu'une
+    /// occurrence qui paraît avant le curseur sans un mot d'explication ressemble à un
+    /// défaut.
+    fn find_next(&mut self) {
+        let Some(search) = self.search.clone() else {
+            self.message = Some("aucun motif cherché".to_owned());
+            return;
+        };
+        let buffer = self.document.buffer();
+        let found = buffer
+            .find_from(buffer.cursor(), &search)
+            .map(|occurrence| (occurrence, false))
+            .or_else(|| {
+                buffer
+                    .find_from(AirTextPosition::new(0, 0), &search)
+                    .map(|occurrence| (occurrence, true))
+            });
+        let Some(((first, last), wrapped)) = found else {
+            self.message = Some(format!("« {} » introuvable", search.pattern));
+            return;
+        };
+        // Deux déplacements et aucune action nouvelle : le premier efface la sélection et
+        // pose l'ancre, le second l'étend jusqu'au bout de l'occurrence. Appliqués au même
+        // tour, donc la vue ne voit que l'état final.
+        for action in [
+            AirTextAction::move_by(AirTextMotion::To(first)),
+            AirTextAction::select_by(AirTextMotion::To(last)),
+        ] {
+            self.document.buffer_mut().apply(action, &mut self.changes);
+        }
+        self.message = if wrapped {
+            Some("recherche reprise au début".to_owned())
+        } else {
+            None
+        };
+    }
+
     /// Traite la réponse à la question en cours.
     fn answer(&mut self) {
         let Some(prompt) = self.prompt.take() else {
             return;
         };
-        let answer = find::<AirPromptDialog>(&self.root, self.views.modal)
-            .map(|dialog| dialog.text().trim().to_owned())
+        let raw = find::<AirPromptDialog>(&self.root, self.views.modal)
+            .map(|dialog| dialog.text().to_owned())
             .unwrap_or_default();
         let _ = self.root.take_modal();
+        // Un chemin se coupe de ses espaces, un motif **non** : chercher « le » entre deux
+        // espaces est une demande légitime, et la couper en ferait une autre.
+        let answer = match prompt {
+            Prompt::Find => raw,
+            Prompt::Open | Prompt::SaveAs => raw.trim().to_owned(),
+        };
         if answer.is_empty() {
-            self.message = Some("aucun nom de fichier".to_owned());
+            self.message = Some(match prompt {
+                Prompt::Find => "aucun motif".to_owned(),
+                Prompt::Open | Prompt::SaveAs => "aucun nom de fichier".to_owned(),
+            });
+            return;
+        }
+        if prompt == Prompt::Find {
+            // Le motif est retenu avant d'être cherché : une recherche infructueuse se
+            // continue quand même, et c'est ce qu'on attend après avoir corrigé une faute
+            // de frappe au curseur.
+            self.search = Some(AirTextSearch::new(answer));
+            self.find_next();
             return;
         }
         let path = PathBuf::from(answer);
@@ -402,6 +505,7 @@ impl Editor {
                 Ok(()) => self.message = None,
                 Err(error) => self.message = Some(error.to_string()),
             },
+            Prompt::Find => {}
         }
     }
 
@@ -426,7 +530,7 @@ impl Editor {
     /// Enregistre, ou demande un nom si le document n'en a pas.
     fn save(&mut self) {
         if self.document.path().is_none() {
-            self.ask(Prompt::SaveAs, "Enregistrer sous");
+            self.ask(Prompt::SaveAs);
             return;
         }
         match self.document.save(&mut self.changes) {
@@ -555,7 +659,10 @@ fn build_menu_bar() -> AirMenuBar {
             .with_item(AirMenuItem::new("C~o~ller", PASTE))
             .with_item(AirMenuItem::separator())
             .with_item(AirMenuItem::new("~T~out sélectionner", SELECT_ALL))
-            .with_item(AirMenuItem::new("~S~upprimer la ligne", DELETE_LINE)),
+            .with_item(AirMenuItem::new("~S~upprimer la ligne", DELETE_LINE))
+            .with_item(AirMenuItem::separator())
+            .with_item(AirMenuItem::new("Rec~h~ercher…", FIND))
+            .with_item(AirMenuItem::new("~C~ontinuer la recherche", FIND_NEXT)),
     )
     .with_menu(AirMenu::new("~A~ide").with_item(AirMenuItem::new("À ~p~ropos", ABOUT)))
 }
@@ -572,6 +679,14 @@ fn build_status_line() -> AirStatusLine {
         SAVE,
     ))
     .with_item(AirStatusItem::new("~F3~ Ouvrir", AirKey::Function(3), OPEN))
+    // `F7`, comme l'éditeur de `mc` : Turbo Vision n'a pas de touche de fonction pour
+    // chercher — son IDE passe par le menu et par `Ctrl`+`L` —, et une barre de statut qui
+    // ne montrerait pas la recherche la rendrait introuvable sans lire la documentation.
+    .with_item(AirStatusItem::new(
+        "~F7~ Chercher",
+        AirKey::Function(7),
+        FIND,
+    ))
     .with_item(AirStatusItem::new(
         "~F10~ Quitter",
         AirKey::Function(10),
@@ -582,7 +697,7 @@ fn build_status_line() -> AirStatusLine {
 #[cfg(test)]
 mod tests {
     use air_tui::command::{
-        AirCommandSet, CANCEL, COPY, CUT, OK, OPEN, PASTE, QUIT, REDO, SAVE, UNDO,
+        AirCommandSet, CANCEL, COPY, CUT, FIND, FIND_NEXT, OK, OPEN, PASTE, QUIT, REDO, SAVE, UNDO,
     };
     use air_tui::geometry::AirSize;
     use air_tui::input::event::{AirInputEvent, AirKey, AirKeyEvent};
@@ -862,6 +977,163 @@ mod tests {
         turn(&mut other, &mut commands);
         assert_eq!(other.document.buffer().lines(), ["contenu"]);
         let _ = std::fs::remove_file(&path);
+    }
+
+    // ------------------------------------------------- la recherche (ADR-016)
+
+    /// Un contrôleur sur un texte, prêt à chercher.
+    fn editor_with_text(text: &str) -> (Editor, AirCommandSet) {
+        let mut editor = editor(60, 20);
+        let mut commands = AirCommandSet::new();
+        let lines: Vec<String> = text.lines().map(str::to_owned).collect();
+        editor
+            .document
+            .buffer_mut()
+            .apply(AirTextAction::Load(lines), &mut editor.changes);
+        turn(&mut editor, &mut commands);
+        (editor, commands)
+    }
+
+    /// Pose la question, répond le motif, valide.
+    fn search_for(editor: &mut Editor, pattern: &str) {
+        editor.execute(FIND);
+        if let Some(dialog) = find_mut::<AirPromptDialog>(editor.root_mut(), super::identifier(9)) {
+            dialog.set_text(pattern);
+        }
+        editor.execute(OK);
+    }
+
+    #[test]
+    fn chercher_pose_une_question_et_selectionne_l_occurrence() {
+        let (mut editor, mut commands) = editor_with_text("une ligne\nune belle journee");
+        editor.execute(FIND);
+        let dialog = find::<AirPromptDialog>(editor.root(), super::identifier(9))
+            .expect("le dialogue de recherche");
+        assert_eq!(dialog.label(), "Motif :");
+        if let Some(dialog) = find_mut::<AirPromptDialog>(editor.root_mut(), super::identifier(9)) {
+            dialog.set_text("belle");
+        }
+        editor.execute(OK);
+        turn(&mut editor, &mut commands);
+        assert_eq!(
+            editor.document.buffer().selected_text().as_deref(),
+            Some("belle")
+        );
+        assert_eq!(editor.document.buffer().cursor().line, 1);
+        assert_eq!(editor.message, None);
+    }
+
+    #[test]
+    fn continuer_la_recherche_va_a_l_occurrence_suivante() {
+        let (mut editor, mut commands) = editor_with_text("ab\nab\nab");
+        search_for(&mut editor, "ab");
+        turn(&mut editor, &mut commands);
+        assert_eq!(editor.document.buffer().cursor().line, 0);
+        editor.execute(FIND_NEXT);
+        turn(&mut editor, &mut commands);
+        assert_eq!(editor.document.buffer().cursor().line, 1);
+        editor.execute(FIND_NEXT);
+        turn(&mut editor, &mut commands);
+        assert_eq!(editor.document.buffer().cursor().line, 2);
+    }
+
+    #[test]
+    fn la_recherche_reprend_au_debut_et_le_dit() {
+        // La politique du contrôleur, et elle est annoncée : une occurrence qui paraît
+        // avant le curseur sans un mot d'explication ressemble à un défaut.
+        let (mut editor, mut commands) = editor_with_text("motif\nrien du tout");
+        search_for(&mut editor, "motif");
+        turn(&mut editor, &mut commands);
+        assert_eq!(editor.message, None, "la première fois ne reprend rien");
+        editor.execute(FIND_NEXT);
+        turn(&mut editor, &mut commands);
+        assert_eq!(
+            editor.message.as_deref(),
+            Some("recherche reprise au début")
+        );
+        assert_eq!(editor.document.buffer().cursor().line, 0);
+    }
+
+    #[test]
+    fn un_motif_introuvable_est_nomme() {
+        let (mut editor, mut commands) = editor_with_text("abc");
+        search_for(&mut editor, "xyz");
+        turn(&mut editor, &mut commands);
+        assert_eq!(editor.message.as_deref(), Some("« xyz » introuvable"));
+        assert!(!editor.document.buffer().has_selection());
+    }
+
+    #[test]
+    fn continuer_est_grise_avant_la_premiere_recherche() {
+        // Le *pull* de l'ADR-007 : le motif est au contrôleur, donc c'est lui qui sait.
+        let (mut editor, mut commands) = editor_with_text("abc");
+        assert!(!commands.is_enabled(FIND_NEXT));
+        search_for(&mut editor, "b");
+        turn(&mut editor, &mut commands);
+        assert!(commands.is_enabled(FIND_NEXT));
+    }
+
+    #[test]
+    fn un_motif_introuvable_reste_retenu() {
+        // Corriger une faute de frappe au curseur doit pouvoir se continuer : le motif est
+        // retenu avant d'être cherché.
+        let (mut editor, mut commands) = editor_with_text("abc");
+        search_for(&mut editor, "xyz");
+        turn(&mut editor, &mut commands);
+        assert!(commands.is_enabled(FIND_NEXT));
+    }
+
+    #[test]
+    fn le_dernier_motif_prerempli_la_question_suivante() {
+        let (mut editor, mut commands) = editor_with_text("abc");
+        search_for(&mut editor, "b");
+        turn(&mut editor, &mut commands);
+        editor.execute(FIND);
+        let dialog = find::<AirPromptDialog>(editor.root(), super::identifier(9))
+            .expect("le dialogue de recherche");
+        assert_eq!(dialog.text(), "b");
+    }
+
+    #[test]
+    fn la_touche_f7_ouvre_la_recherche() {
+        // L'item de barre de statut lie la touche : c'est le même chemin que `F2` et `F3`,
+        // et il prouve que la recherche se trouve sans lire la documentation.
+        let (mut editor, mut commands) = editor_with_text("abc");
+        let outcome = press(&mut editor, AirKey::Function(7));
+        assert_eq!(outcome, AirOutcome::Command(FIND));
+        editor.execute(FIND);
+        turn(&mut editor, &mut commands);
+        assert!(editor.root().has_modal());
+    }
+
+    #[test]
+    fn un_motif_vide_refuse_et_le_dit_autrement_qu_un_nom_de_fichier() {
+        let mut editor = editor(60, 20);
+        editor.execute(FIND);
+        editor.execute(OK);
+        assert!(!editor.root().has_modal());
+        assert_eq!(editor.message.as_deref(), Some("aucun motif"));
+    }
+
+    #[test]
+    fn un_motif_garde_ses_espaces() {
+        // Un chemin se coupe de ses espaces, un motif non : chercher « b » entre deux
+        // espaces est une demande légitime.
+        let (mut editor, mut commands) = editor_with_text("a b c");
+        search_for(&mut editor, " b ");
+        turn(&mut editor, &mut commands);
+        assert_eq!(
+            editor.document.buffer().selected_text().as_deref(),
+            Some(" b ")
+        );
+    }
+
+    #[test]
+    fn continuer_sans_motif_ne_cherche_rien() {
+        let (mut editor, mut commands) = editor_with_text("abc");
+        editor.execute(FIND_NEXT);
+        turn(&mut editor, &mut commands);
+        assert_eq!(editor.message.as_deref(), Some("aucun motif cherché"));
     }
 
     #[test]

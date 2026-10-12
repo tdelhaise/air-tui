@@ -62,6 +62,7 @@
 //! chaque déplacement futur à deux endroits.
 
 use crate::model::history::{AirEditHistory, AirTextEdit, position_after};
+use crate::model::search::{AirTextSearch, find_in_line};
 use crate::model::{AirChangeSet, AirGeneration, AirModel};
 use crate::unicode::{
     grapheme_width, graphemes, next_grapheme_boundary, next_word_start, previous_grapheme_boundary,
@@ -442,6 +443,34 @@ impl AirTextBuffer {
     #[must_use]
     pub fn to_text(&self) -> String {
         self.lines.join("\n")
+    }
+
+    /// La première occurrence d'un motif à partir d'une position, s'il y en a une.
+    ///
+    /// Une **question**, et non une action : rien n'est déplacé, rien n'est sélectionné.
+    /// L'ADR-016 explique ce partage — le modèle répond un fait, le contrôleur décide
+    /// quoi en faire, y compris de reprendre au début du document.
+    ///
+    /// La recherche va vers l'avant, de la position donnée à la fin du texte, et ne
+    /// reprend **pas** au début : la reprise est une politique, pas un fait. Les deux
+    /// positions rendues sont sur une frontière de grappe, parce que l'unité de
+    /// comparaison en est une.
+    #[must_use]
+    pub fn find_from(
+        &self,
+        start: AirTextPosition,
+        search: &AirTextSearch,
+    ) -> Option<(AirTextPosition, AirTextPosition)> {
+        for (index, line) in self.lines.iter().enumerate().skip(start.line) {
+            let from = if index == start.line { start.offset } else { 0 };
+            if let Some((first, last)) = find_in_line(line, from, search) {
+                return Some((
+                    AirTextPosition::new(index, first),
+                    AirTextPosition::new(index, last),
+                ));
+            }
+        }
+        None
     }
 
     /// Le décalage, dans une ligne, de la grappe qui couvre une colonne d'affichage.
@@ -1147,7 +1176,9 @@ impl AirModel for AirTextBuffer {
 
 #[cfg(test)]
 mod tests {
-    use super::{AirTextAction, AirTextBuffer, AirTextChange, AirTextMotion, AirTextPosition};
+    use super::{
+        AirTextAction, AirTextBuffer, AirTextChange, AirTextMotion, AirTextPosition, AirTextSearch,
+    };
     use crate::model::{AirChangeSet, AirModel};
 
     /// Applique une suite d'actions et rend le journal.
@@ -1168,6 +1199,70 @@ mod tests {
             buffer,
             text.chars().map(AirTextAction::InsertCharacter).collect(),
         );
+    }
+
+    // ------------------------------------------------- la recherche (ADR-016)
+
+    #[test]
+    fn la_recherche_traverse_les_lignes_vers_l_avant() {
+        let buffer = AirTextBuffer::from_text("une ligne\nune autre\nla fin");
+        let found = buffer.find_from(AirTextPosition::new(0, 0), &AirTextSearch::new("autre"));
+        assert_eq!(
+            found,
+            Some((AirTextPosition::new(1, 4), AirTextPosition::new(1, 9)))
+        );
+    }
+
+    #[test]
+    fn la_recherche_part_de_la_position_donnee_et_non_du_debut() {
+        // La ligne de départ est parcourue depuis son décalage, les suivantes depuis zéro.
+        let buffer = AirTextBuffer::from_text("ab ab\nab");
+        let search = AirTextSearch::new("ab");
+        for (start, expected) in [
+            (AirTextPosition::new(0, 0), Some((0, 0))),
+            (AirTextPosition::new(0, 1), Some((0, 3))),
+            (AirTextPosition::new(0, 4), Some((1, 0))),
+        ] {
+            let found = buffer
+                .find_from(start, &search)
+                .map(|(first, _)| (first.line, first.offset));
+            assert_eq!(found, expected, "depuis {start:?}");
+        }
+    }
+
+    #[test]
+    fn la_recherche_ne_reprend_pas_au_debut() {
+        // Pas de bouclage dans le modèle : la reprise est une politique du contrôleur, et
+        // un modèle qui bouclerait la lui retirerait.
+        let buffer = AirTextBuffer::from_text("motif\nrien");
+        let found = buffer.find_from(AirTextPosition::new(1, 0), &AirTextSearch::new("motif"));
+        assert_eq!(found, None);
+    }
+
+    #[test]
+    fn une_position_de_depart_hors_du_texte_ne_trouve_rien() {
+        let buffer = AirTextBuffer::from_text("motif");
+        let found = buffer.find_from(AirTextPosition::new(9, 0), &AirTextSearch::new("motif"));
+        assert_eq!(found, None);
+    }
+
+    #[test]
+    fn les_deux_bouts_rendus_decrivent_la_selection_de_l_occurrence() {
+        // Ce que le contrôleur en fait : un déplacement qui efface la sélection vers le
+        // premier bout, un déplacement qui l'étend vers le second. Aucune action nouvelle.
+        let mut buffer = AirTextBuffer::from_text("une belle journee");
+        let (first, last) = buffer
+            .find_from(AirTextPosition::new(0, 0), &AirTextSearch::new("belle"))
+            .expect("une occurrence");
+        apply_all(
+            &mut buffer,
+            vec![
+                AirTextAction::move_by(AirTextMotion::To(first)),
+                AirTextAction::select_by(AirTextMotion::To(last)),
+            ],
+        );
+        assert_eq!(buffer.selected_text().as_deref(), Some("belle"));
+        assert_eq!(buffer.cursor(), last);
     }
 
     // ------------------------------------------------- annulation (ADR-014)

@@ -66,6 +66,13 @@ fichier**.
 **presse-papiers interne** : copier, couper, coller, dans l'application. L'échange avec le
 presse-papiers du système est un autre sujet, et il n'est pas traité.
 
+Il **annule** et rétablit par geste — `Ctrl`+`Z` et `Ctrl`+`R` —, et **cherche** un motif
+— `F7` ou `Ctrl`+`F`, `Ctrl`+`L` pour l'occurrence suivante. La recherche compare des
+**grappes de graphème** et non des octets, donc chercher `e` ne trouve pas la première
+moitié d'un `é` décomposé. Elle ignore la casse, ne va que vers l'avant, reprend une fois
+au début du document en le disant, et ne remplace rien : le remplacement est une mutation,
+et il demande de décider ce qu'il fait à l'historique d'annulation.
+
 Ce qui manque encore : l'étage d'entrée natif Linux, une liste à plusieurs colonnes, et le
 défilement d'un groupe d'items plus long que sa place.
 L'avancement réel, jalon par jalon, est tenu dans

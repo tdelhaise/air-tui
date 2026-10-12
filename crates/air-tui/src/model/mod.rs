@@ -46,8 +46,10 @@
 //! Un seul emprunt mutable est vivant à la fois, à chaque étape.
 
 pub(crate) mod history;
+pub mod search;
 pub mod text;
 
+pub use search::AirTextSearch;
 pub use text::{AirTextAction, AirTextBuffer, AirTextChange, AirTextMotion, AirTextPosition};
 
 /// Un compteur de génération monotone.
