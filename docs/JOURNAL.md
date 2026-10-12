@@ -6,6 +6,57 @@ tête. On ajoute, on ne réécrit jamais une entrée passée.
 Une entrée par campagne, pas par commit. Répartition des rôles : `etat-avancement.md` est
 l'état vivant, ce journal est la trace figée, `INDEX.md` est la carte structurelle.
 
+## 2026-10-12 — Jalon M7l : la recherche, une question au modèle et une politique au contrôleur
+
+- **La décision du jalon est que chercher n'est pas une action.** L'ADR-007 fait passer
+  toute mutation et tout déplacement par une `AirTextAction` ; chercher ne change rien,
+  donc `find_from` est une méthode de **lecture**. L'énumération des actions — la table qui
+  dit tout ce qui peut arriver au texte — n'a pas bougé d'une ligne, et je n'ai écrit aucune
+  action nouvelle.
+- **Et le gain n'est pas théorique.** Une action `Find` aurait obligé le tampon à répondre
+  « je n'ai rien trouvé » par le canal des changements structurels, c'est-à-dire à inventer
+  un `AirTextChange` pour un fait qui n'en est pas un : **rien n'a changé**. L'échec d'une
+  recherche est une valeur de retour, et c'est le seul endroit où il ne demande rien à
+  personne. Le même raisonnement sépare ensuite ce qui reste au contrôleur : le bouclage est
+  une politique qui se voit à l'écran, et un motif n'est pas une propriété du document.
+- **Ce que le contrôleur fait de la réponse tient en deux actions existantes** : un
+  déplacement qui efface la sélection vers le début de l'occurrence, un déplacement qui
+  l'étend vers sa fin. Appliquées au même tour, donc la vue ne voit que l'état final.
+- **L'unité de comparaison est la grappe de graphème, et ce n'est pas un raffinement.** Un
+  curseur d'air-tui se déplace par grappes depuis M3 : une occurrence qui commencerait au
+  milieu d'une grappe donnerait une sélection que le curseur ne sait pas décrire. Chercher
+  `e` dans un `é` décomposé ne trouve donc rien. Le détail agréable est que la comparaison
+  grappe à grappe **est** la vérification des frontières — il n'y a pas de passe de
+  validation à oublier, donc rien à oublier.
+- **Deux attentes d'essai fausses, et le code avait raison les deux fois.** « ÉTÉ » fait
+  cinq octets et non six — `É` en fait deux, `T` un seul. Et surtout : mon essai des
+  frontières de grappe cherchait `e` dans « étendu », qui porte un **second** `e` ; la
+  recherche le trouvait à bon droit, et l'essai accusait la bonne règle d'un défaut qu'elle
+  n'avait pas. Il porte maintenant sur « état », et la raison du choix de mot est écrite à
+  côté.
+- **Un motif n'est pas coupé de ses espaces, là où un nom de fichier l'est.** Chercher
+  « le » entre deux espaces est une demande légitime, et la couper en ferait une autre. Les
+  deux questions passent par le même dialogue, donc la distinction est écrite dans la
+  **réponse** — c'est l'endroit où elle se décide, pas le dialogue.
+- **Le motif est retenu avant d'être cherché**, même quand il ne donne rien : corriger une
+  faute de frappe et continuer est le geste suivant le plus probable. Un essai le fixe, pour
+  qu'une « simplification » ne le défasse pas.
+- **Trois gestes, et chacun a sa source.** `Ctrl`+`L` est le geste de Borland, qui répète la
+  recherche dans son IDE ; `F3`, que le même IDE emploie, est pris par « Ouvrir » dans
+  `redit` ; `F7` est celui de l'éditeur de `mc`, et il est dans la barre de statut parce
+  qu'une fonction qui ne s'y montre pas est introuvable sans lire la documentation.
+- **Ce qui n'est pas fait est écrit comme tel** : pas de recherche en arrière — `redit` n'a
+  pas de geste pour la demander, et un réglage sans lecteur est ce que ce dépôt refuse
+  d'écrire —, pas de remplacement, pas d'expression régulière, et pas de case « respecter la
+  casse » : le modèle sait les deux, `redit` ne sait poser que l'insensible, parce que
+  `AirPromptDialog` tient un champ et aucun parcours de focus interne.
+- **Vérification** : 1339 essais, et trois essais en pseudo-terminal qui vont **par paire**
+  avec leur contrôle. `F7`, « belle », `Entrée`, `Ctrl`+`X`, `F2` laisse « une  journee »
+  dans le fichier : la coupe prouve la sélection, ce qu'un examen de la sortie n'aurait pas
+  fait. Un motif absent laisse le fichier intact — sans ce contrôle, un `Ctrl`+`X` qui
+  couperait n'importe quoi donnerait le même verdict. Et `Ctrl`+`L` coupe l'occurrence de la
+  **seconde** ligne, ce qui distingue « continuer » de « chercher encore une fois ».
+
 ## 2026-10-12 — Jalon M7k : l'ombre portée des boutons, et le champ qui a attendu son second lecteur
 
 - **Le meilleur résultat du jalon est ce qui n'a pas été écrit.** L'ADR-015 affirmait que

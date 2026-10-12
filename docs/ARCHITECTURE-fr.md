@@ -413,12 +413,39 @@ pas eu à se poser la question, et aurait reconverti à chaque dessin.
 Le presse-papiers, lui, n'est **ni dans le modèle ni dans la vue** : il est partagé entre
 les deux widgets éditables, donc il appartient au contrôleur. Les vues le **demandent** par
 trois commandes — `COPY`, `CUT`, `PASTE` — sans jamais le toucher, comme un ascenseur
-demande une position sans rien défiler. Un widget qui copierait lui-même aurait besoin d'une
+demande une position sans rien défiler. La **recherche** sort par le même canal, et pour la
+même raison : `FIND` et `FIND_NEXT` demandent de poser une question à l'utilisateur, ce
+qu'une vue d'édition ne sait pas faire. Un widget qui copierait lui-même aurait besoin d'une
 référence mutable vers un état qu'il ne possède pas.
 
 Le champ de saisie fait exception, et c'est assumé : il tient sa sélection lui-même, parce
 qu'il tient déjà son texte. Lui donner un modèle pour une ligne serait payer l'ADR-007 sans
 rien en retirer.
+
+### La recherche est une question, pas une action — jalon M7l
+
+L'ADR-007 fait passer toute mutation et tout déplacement par une `AirTextAction`. La
+recherche n'en est pas une : elle ne change rien, elle **répond**. `find_from` est une
+méthode de **lecture** du tampon, et l'énumération des actions — la table qui dit tout ce
+qui peut arriver au texte — n'a pas bougé d'une ligne (ADR-016).
+
+Ce que le contrôleur en fait passe par deux actions qui existaient déjà : un déplacement
+qui efface la sélection vers le début de l'occurrence, un déplacement qui l'étend vers sa
+fin. Appliqués au même tour, donc la vue ne voit que l'état final.
+
+Le gain n'est pas théorique. Une action `Find` aurait obligé le tampon à dire « je n'ai
+rien trouvé » par le canal des **changements structurels**, c'est-à-dire à inventer un fait
+qui n'en est pas un : rien n'a changé. L'échec d'une recherche est une valeur de retour.
+
+Et ce qui reste au contrôleur y reste pour une raison nommée : le **bouclage** — reprendre
+au début du document — est une politique qui se voit à l'écran, et le **dernier motif** est
+au contrôleur parce qu'un motif n'est pas une propriété du document.
+
+L'unité de comparaison est la **grappe de graphème** et non l'octet : une occurrence qui
+commencerait au milieu d'une grappe donnerait une sélection que le curseur, qui se déplace
+par grappes depuis M3, ne sait pas décrire. Chercher `e` dans un `é` décomposé ne trouve
+donc rien, et la comparaison grappe à grappe **est** la vérification des frontières — il
+n'y a pas de passe de validation à oublier.
 
 ### L'annulation est une propriété de l'unique mutation — jalon M7h
 

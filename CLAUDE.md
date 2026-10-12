@@ -326,6 +326,25 @@ tools/pty-drive.py ./target/debug/redit /tmp/redit-geste.txt -- \
     500 6162 300 1b5b48 300 7a 400 1a 400 1b5b31327e 600 1b5b32317e
 cat /tmp/redit-geste.txt      # doit contenir « aborigine », et non « origine »
 
+# F7, « belle », Entrée, Ctrl+X, F2, F10 : la recherche sélectionne l'occurrence, donc
+# Ctrl+X la coupe — c'est la preuve la plus directe qu'elle a sélectionné quelque chose.
+printf 'une belle journee\n' > /tmp/redit-recherche.txt
+tools/pty-drive.py ./target/debug/redit /tmp/redit-recherche.txt -- \
+    500 1b5b31387e 400 62656c6c65 400 0d 400 18 400 1b5b31327e 600 1b5b32317e
+cat /tmp/redit-recherche.txt   # doit contenir « une  journee »
+# le contrôle : un motif absent ne sélectionne rien, donc Ctrl+X ne coupe rien
+printf 'une belle journee\n' > /tmp/redit-recherche.txt
+tools/pty-drive.py ./target/debug/redit /tmp/redit-recherche.txt -- \
+    500 1b5b31387e 400 78797a 400 0d 400 18 400 1b5b31327e 600 1b5b32317e
+cat /tmp/redit-recherche.txt   # doit contenir « une belle journee », intact
+
+# Et Ctrl+L va bien à l'occurrence **suivante** : sans lui, c'est la première qui serait
+# coupée, et les deux essais donneraient des fichiers différents du même programme.
+printf 'une belle journee\nune belle soiree\n' > /tmp/redit-suivante.txt
+tools/pty-drive.py ./target/debug/redit /tmp/redit-suivante.txt -- \
+    500 1b5b31387e 400 62656c6c65 400 0d 400 0c 400 18 400 1b5b31327e 600 1b5b32317e
+cat /tmp/redit-suivante.txt    # la seconde ligne doit porter « une  soiree »
+
 # double clic sur « belle » puis Ctrl+X : le mot est coupé, le fichier porte « une  journee »
 printf 'une belle journee\n' > /tmp/redit-double.txt
 tools/pty-drive.py ./target/debug/redit /tmp/redit-double.txt -- \
@@ -377,9 +396,10 @@ tools/pty-drive.py ./target/debug/rmc /tmp/rmc-essai -- \
 « 4 o » dirait que la flèche relâchée a descendu le curseur ; aucune marque au dernier
 repeint, que le relâchement d'`Inser` a démarqué. Les deux étaient vrais avant M7c.
 
-Attention aux codes : `1b5b31327e` est `F2`, `1b5b31337e` est `F3`, `1b5b32317e` est
-`F10`, `1b5b313b3244` est `Maj`+Gauche, `1b5b48` est `Début`, `03` est `Ctrl`+`C`, `16` est
-`Ctrl`+`V`, `18` est `Ctrl`+`X`, `1a` est `Ctrl`+`Z` et `12` est `Ctrl`+`R`. `Ctrl`+`Z`
+Attention aux codes : `1b5b31327e` est `F2`, `1b5b31337e` est `F3`, `1b5b31387e` est `F7`,
+`1b5b32317e` est `F10`, `1b5b313b3244` est `Maj`+Gauche, `1b5b48` est `Début`, `0d` est
+`Entrée`, `03` est `Ctrl`+`C`, `16` est `Ctrl`+`V`, `18` est `Ctrl`+`X`, `1a` est
+`Ctrl`+`Z`, `12` est `Ctrl`+`R` et `0c` est `Ctrl`+`L`. `Ctrl`+`Z`
 atteint bien l'application et ne la suspend pas : `cfmakeraw` efface `ISIG`. `1b5b3c303b363b334d` est un enfoncement du bouton gauche à la colonne 6,
 ligne 3 au format SGR 1006 — **comptées depuis un**, et la vue d'édition de `redit`
 commence à la colonne 1, ligne 2 de l'écran, sous la barre de menu et dans le cadre de sa

@@ -62,7 +62,7 @@ L'**avancement** vit dans [`etat-avancement.md`](etat-avancement.md), l'**histor
 | `theme` | palette par rôles (trente-neuf, **avec attributs**), glyphes, **décorations** (deux ombres), quantificateur | M5, M7, M7g, M7j, M7k |
 | `theme::skins` | les thèmes compilés depuis un skin de Midnight Commander, et leur **registre** — **générés** | M7, M7i |
 | `widgets` | panneau, étiquette, fenêtre, bouton, barre de menu, barre de statut, champ de saisie, ascenseur, vue d'édition, dialogue de saisie, liste, **cases à cocher et boutons radio** | M5, M5b, M6, M7b, M7f |
-| `model` | `AirModel`, `AirChangeSet`, `AirGeneration`, `AirTextBuffer`, sa **sélection** et son **historique d'annulation** — la couche MVC | M6, M7d, M7h |
+| `model` | `AirModel`, `AirChangeSet`, `AirGeneration`, `AirTextBuffer`, sa **sélection**, son **historique d'annulation** et la **recherche** — la couche MVC | M6, M7d, M7h, M7l |
 | `application` | `AirApplication`, `AirScreen`, `AirDesktop` — la boucle et le chrome | M6 |
 
 ## Les modules de `xtask`

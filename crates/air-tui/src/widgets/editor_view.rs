@@ -44,7 +44,10 @@
 //! et les convertir en colonnes demande le début de la ligne, que le reflet ne garde pas.
 //!
 //! Le copier-coller **sort par le canal des commandes** et non par celui des intentions :
-//! le presse-papiers n'appartient pas à cette vue, et c'est le contrôleur qui le tient.
+//! le presse-papiers n'appartient pas à cette vue, et c'est le contrôleur qui le tient. La
+//! recherche — `Ctrl`+`F`, et `Ctrl`+`L` pour la suivante — sort par le même canal et pour
+//! la même raison : il faut poser une question à l'utilisateur, ce qu'une vue d'édition ne
+//! sait pas faire (ADR-016).
 //!
 //! Le double clic sélectionne le segment sous le pointeur, le triple la ligne entière.
 //! La vue ne détecte **pas** le geste : la boucle d'application le synthétise et le lui
@@ -446,13 +449,24 @@ impl AirEditorView {
         }
     }
 
-    /// La commande de presse-papiers qu'une frappe demande, s'il y en a une.
+    /// La commande qu'une frappe demande, s'il y en a une.
     ///
-    /// `Ctrl`+`C`, `Ctrl`+`X` et `Ctrl`+`V` : les gestes que tout le monde connaît.
+    /// Cinq gestes sortent par le canal des **commandes** et non par celui des
+    /// intentions, et ils ont une chose en commun : ce qu'il leur faut n'appartient pas à
+    /// cette vue. Le presse-papiers est au contrôleur, et une question posée à
+    /// l'utilisateur l'est aussi.
+    ///
+    /// `Ctrl`+`C`, `Ctrl`+`X` et `Ctrl`+`V` sont les gestes que tout le monde connaît.
     /// Turbo Vision employait `Ctrl`+`Inser` et `Maj`+`Suppr`, que les terminaux ne
     /// transmettent pas tous — ils demandent le protocole Kitty pour être distingués de
     /// `Inser` et `Suppr` nus.
-    fn clipboard_command(key: &crate::input::event::AirKeyEvent) -> Option<AirCommand> {
+    ///
+    /// `Ctrl`+`F` ouvre la recherche et `Ctrl`+`L` reprend la dernière, qui est le geste
+    /// de Borland — `Ctrl`+`L` y répète la recherche. `F3`, que Turbo Vision emploie pour
+    /// la même chose dans son IDE, est pris par « Ouvrir » dans `redit` ; `Ctrl`+`G` et
+    /// `Ctrl`+`N` sont les gestes d'autres éditeurs, et aucun des deux n'a de source dans
+    /// ce que ce dépôt transcrit.
+    fn controller_command(key: &crate::input::event::AirKeyEvent) -> Option<AirCommand> {
         if !key.modifiers.control {
             return None;
         }
@@ -460,6 +474,8 @@ impl AirEditorView {
             AirKey::Character('c' | 'C') => Some(crate::command::COPY),
             AirKey::Character('x' | 'X') => Some(crate::command::CUT),
             AirKey::Character('v' | 'V') => Some(crate::command::PASTE),
+            AirKey::Character('f' | 'F') => Some(crate::command::FIND),
+            AirKey::Character('l' | 'L') => Some(crate::command::FIND_NEXT),
             _ => None,
         }
     }
@@ -615,10 +631,10 @@ impl AirView for AirEditorView {
                 AirOutcome::Consumed
             }
             AirInputEvent::Key(key) => {
-                // Les trois gestes du presse-papiers sortent par le canal des commandes
-                // et non par celui des intentions : le presse-papiers n'appartient pas à
-                // cette vue, et c'est le contrôleur qui le tient.
-                if let Some(command) = Self::clipboard_command(key) {
+                // Les gestes dont l'effet n'appartient pas à cette vue sortent par le
+                // canal des commandes et non par celui des intentions : le presse-papiers
+                // est au contrôleur, et la question d'une recherche l'est aussi.
+                if let Some(command) = Self::controller_command(key) {
                     event.consume();
                     return AirOutcome::Command(command);
                 }
@@ -1468,13 +1484,18 @@ mod tests {
     }
 
     #[test]
-    fn les_trois_gestes_du_presse_papiers_sortent_en_commandes() {
-        // Par le canal des commandes et non celui des intentions : le presse-papiers
-        // n'appartient pas à la vue.
+    fn les_gestes_du_controleur_sortent_en_commandes() {
+        // Par le canal des commandes et non celui des intentions : ni le presse-papiers ni
+        // la question d'une recherche n'appartiennent à la vue. La casse ne compte pas —
+        // un terminal qui transmet `Ctrl`+`Maj`+`F` donne une majuscule.
         for (character, expected) in [
             ('c', crate::command::COPY),
             ('x', crate::command::CUT),
             ('v', crate::command::PASTE),
+            ('f', crate::command::FIND),
+            ('F', crate::command::FIND),
+            ('l', crate::command::FIND_NEXT),
+            ('L', crate::command::FIND_NEXT),
         ] {
             let mut view = editor(10, 3);
             let outcome = press_with(&mut view, AirKey::Character(character), control());

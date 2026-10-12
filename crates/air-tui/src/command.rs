@@ -80,6 +80,20 @@ pub const PASTE: AirCommand = AirCommand::new(9);
 pub const UNDO: AirCommand = AirCommand::new(10);
 /// Rétablir le dernier geste annulé.
 pub const REDO: AirCommand = AirCommand::new(11);
+/// Chercher un motif — ouvrir la question, et non chercher.
+///
+/// Elle sort par le canal des **commandes** et non par celui des intentions, pour la même
+/// raison que le presse-papiers : ce qu'il faut pour chercher — poser une question à
+/// l'utilisateur — n'appartient pas à la vue d'édition. Le modèle, lui, ne reçoit aucune
+/// action : la recherche est une **question** qu'on lui pose, et le contrôleur traduit sa
+/// réponse en déplacements qui existent déjà (ADR-016).
+pub const FIND: AirCommand = AirCommand::new(12);
+/// Chercher l'occurrence suivante du dernier motif.
+///
+/// Le dernier motif est retenu par le **contrôleur** : c'est lui qui a posé la question,
+/// et un motif n'est pas un fait sur le texte. Cette commande est donc sans effet tant
+/// qu'aucune recherche n'a eu lieu, et le contrôleur la grise dans ce cas.
+pub const FIND_NEXT: AirCommand = AirCommand::new(13);
 /// Le premier numéro laissé aux applications.
 pub const FIRST_APPLICATION_COMMAND: AirCommand = AirCommand::new(256);
 
